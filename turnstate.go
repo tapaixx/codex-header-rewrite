@@ -41,8 +41,13 @@ const (
 // turnStateInfo is the non-secret envelope of one observed blob. Digest is a
 // short hash used to correlate an echo with the response that minted it without
 // comparing blobs by value.
+// Chars is the length of the blob as it travelled on the wire and Bytes the
+// length after decoding. Both are kept: a blob whose character count does not
+// match its byte count the way base64 requires is truncated or re-encoded, and
+// that is visible only when the two numbers are shown side by side.
 type turnStateInfo struct {
 	Digest     string    `json:"digest"`
+	Chars      int       `json:"chars,omitempty"`
 	Bytes      int       `json:"bytes,omitempty"`
 	Version    int       `json:"version,omitempty"`
 	IssuedAt   time.Time `json:"issued_at,omitempty"`
@@ -90,7 +95,7 @@ func turnStateDigest(blob string) string {
 // undecodable value is itself worth showing rather than hiding.
 func decodeTurnState(blob string) turnStateInfo {
 	blob = strings.TrimSpace(blob)
-	info := turnStateInfo{Digest: turnStateDigest(blob)}
+	info := turnStateInfo{Digest: turnStateDigest(blob), Chars: len(blob)}
 	if blob == "" {
 		return turnStateInfo{}
 	}

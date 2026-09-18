@@ -50,6 +50,16 @@ func TestTurnStateEnvelopeIsReadWithoutAnyKey(t *testing.T) {
 	if info.Bytes != fernetOverhead+3*fernetBlockSize {
 		t.Fatalf("bytes=%d", info.Bytes)
 	}
+	// Both lengths are reported: the wire length and the decoded length are
+	// different facts, and a mismatch between them is the tell for a truncated
+	// or re-encoded blob.
+	token := fernetToken(0x80, issued, 3)
+	if info.Chars != len(token) {
+		t.Fatalf("chars=%d want %d", info.Chars, len(token))
+	}
+	if info.Chars <= info.Bytes {
+		t.Fatalf("base64 text is longer than its bytes: chars=%d bytes=%d", info.Chars, info.Bytes)
+	}
 	if info.Digest == "" {
 		t.Fatal("a digest is what lets an echo be matched to its mint")
 	}

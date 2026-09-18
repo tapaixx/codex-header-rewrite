@@ -45,7 +45,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.5.1.so` | `codex-header-rewrite` | `0.5.1` |
+| `codex-header-rewrite-v0.5.2.so` | `codex-header-rewrite` | `0.5.2` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -58,7 +58,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.5.1.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.5.2.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -168,7 +168,7 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 ### 信封解码
 
-blob 是 Fernet token，版本号与铸造时间在信封里明文可读，**不需要密钥、也不解密密文**。历史详情直接显示摘要、铸造时间、版本、字节数与结构是否符合 Fernet（`1+8+16+16n+32`）；「Turn-State 解码」面板可以粘贴任意 blob 单独解码，历史详情里点「解码」会把该条的原始 blob 带过去。
+blob 是 Fernet token，版本号与铸造时间在信封里明文可读，**不需要密钥、也不解密密文**。历史详情与解码面板显示同一组字段：摘要、Base64 字符数、解码后总字节数、版本号、时间戳（Unix）、签发时间（本地与 UTC）、以及结构是否符合 Fernet（`1+8+16+16n+32`）。两个长度都保留 —— 字符数是线上传输的长度，字节数是信封真正的内容长度，被截断或重新编码过的 blob 只有在两者并排时才看得出来；「Turn-State 解码」面板可以粘贴任意 blob 单独解码，历史详情里点「解码」会把该条的原始 blob 带过去。
 
 > 参考实现说明：sub2api / xy2api 的做法是按（下游会话 → 最近铸造账号）记录，出站时剥离已知异账号的回带值。本插件改为**按 blob 摘要索引铸造方**，因此不依赖客户端是否带 `session-id`，也能指出具体是哪个凭证铸造的。
 

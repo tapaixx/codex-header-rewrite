@@ -861,13 +861,23 @@ function turnStateRows(label, info, extra = "", blob = "") {
   const shape = info.decodable
     ? (info.fernet_like ? '<span class="tag ok">Fernet 结构</span>' : '<span class="tag warn">结构不符</span>')
     : '<span class="tag bad">无法解码</span>';
+  // Both lengths stay visible: base64 characters is what travelled on the
+  // wire, decoded bytes is what the envelope actually contains, and the
+  // relationship between them is how a truncated blob shows itself.
+  const unix = info.issued_at && !info.issued_at.startsWith("0001")
+    ? Math.floor(new Date(info.issued_at).getTime() / 1000) : null;
+  const utc = unix !== null ? new Date(info.issued_at).toUTCString() : "-";
   return `<div class="ts-block">
     <div class="ts-title">${esc(label)}${extra}<span style="flex:1"></span>${decode}</div>
     <dl class="ts-grid">
       <dt>摘要</dt><dd class="mono">${esc(info.digest || "-")}</dd>
-      <dt>铸造时间</dt><dd>${issued}</dd>
-      <dt>版本 / 字节</dt><dd class="num">${info.decodable ? `0x${Number(info.version).toString(16).padStart(2, "0")} · ${info.bytes} B` : "-"}</dd>
-      <dt>结构</dt><dd>${shape}</dd>
+      <dt>Base64 字符数</dt><dd class="num">${info.chars ? `${info.chars} 个字符` : "-"}</dd>
+      <dt>解码后总字节数</dt><dd class="num">${info.decodable ? `${info.bytes} 字节` : "-"}</dd>
+      <dt>版本号</dt><dd class="num">${info.decodable ? `0x${Number(info.version).toString(16).padStart(2, "0")} (${info.version})` : "-"}</dd>
+      <dt>时间戳 (Unix)</dt><dd class="num">${unix !== null ? unix : "-"}</dd>
+      <dt>签发时间 (本地)</dt><dd>${issued}</dd>
+      <dt>签发时间 (UTC)</dt><dd class="num">${esc(utc)}</dd>
+      <dt>结构验证</dt><dd>${shape}</dd>
     </dl>
   </div>`;
 }
@@ -1064,9 +1074,10 @@ async function decodeTurnState() {
     const payload = await api("/turn-state/decode", { method: "POST", body: { token } });
     const info = payload.info || {};
     const origin = payload.origin_label || payload.origin_auth_index;
+    // Both lengths now live inside the envelope itself, so this only adds what
+    // the envelope cannot know: who minted the blob.
     $("decodeOutput").innerHTML = `${turnStateRows("解码结果", info)}
       <dl class="ts-grid" style="margin-top:8px">
-        <dt>输入长度</dt><dd class="num">${payload.chars} 字符</dd>
         <dt>铸造方</dt><dd>${origin ? esc(origin) : '<span class="muted">本次运行未记录到铸造方</span>'}</dd>
       </dl>`;
   } catch (error) {
