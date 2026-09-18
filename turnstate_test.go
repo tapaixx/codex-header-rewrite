@@ -26,11 +26,13 @@ func resetTurnStates(t *testing.T) {
 	t.Helper()
 	state.mu.Lock()
 	state.turnStates = map[string]turnStateOrigin{}
+	state.turnStateLatest = map[string]turnStateOrigin{}
 	state.turnStateWrites = 0
 	state.mu.Unlock()
 	t.Cleanup(func() {
 		state.mu.Lock()
 		state.turnStates = map[string]turnStateOrigin{}
+		state.turnStateLatest = map[string]turnStateOrigin{}
 		state.mu.Unlock()
 	})
 }
@@ -113,9 +115,9 @@ func TestEchoUnderAnotherCredentialIsFlaggedAndOwnCredentialIsNot(t *testing.T) 
 	resetTurnStates(t)
 	blob := fernetToken(0x80, time.Now(), 2)
 	state.mu.Lock()
-	noteTurnStateMintLocked(blob, "idx-a", "team-a")
-	sameEcho, echoed := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a")
-	crossEcho, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-b")
+	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna")
+	sameEcho, echoed := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a", "gpt-5.6-luna")
+	crossEcho, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-b", "gpt-5.6-luna")
 	state.mu.Unlock()
 
 	if !echoed || !sameEcho.known || sameEcho.crossAccount {
@@ -132,7 +134,7 @@ func TestEchoUnderAnotherCredentialIsFlaggedAndOwnCredentialIsNot(t *testing.T) 
 func TestUnknownOriginIsNotTreatedAsAMatch(t *testing.T) {
 	resetTurnStates(t)
 	state.mu.Lock()
-	echo, echoed := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {fernetToken(0x80, time.Now(), 1)}}, "idx-a")
+	echo, echoed := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {fernetToken(0x80, time.Now(), 1)}}, "idx-a", "gpt-5.6-luna")
 	state.mu.Unlock()
 	if !echoed {
 		t.Fatal("the blob was echoed")
@@ -146,11 +148,11 @@ func TestExpiredProvenanceIsForgotten(t *testing.T) {
 	resetTurnStates(t)
 	blob := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
-	noteTurnStateMintLocked(blob, "idx-a", "team-a")
+	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna")
 	origin := state.turnStates[turnStateDigest(blob)]
 	origin.seen = time.Now().UTC().Add(-turnStateTTL - time.Minute)
 	state.turnStates[turnStateDigest(blob)] = origin
-	echo, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-b")
+	echo, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-b", "gpt-5.6-luna")
 	state.mu.Unlock()
 	if echo.known {
 		t.Fatal("provenance past its TTL must not accuse a later credential")
@@ -161,7 +163,7 @@ func TestProvenanceTableStaysBounded(t *testing.T) {
 	resetTurnStates(t)
 	state.mu.Lock()
 	for i := 0; i < turnStateMaxEntries*2; i++ {
-		noteTurnStateMintLocked(fernetToken(0x80, time.Now().Add(time.Duration(i)*time.Second), 1), "idx-a", "team-a")
+		noteTurnStateMintLocked(fernetToken(0x80, time.Now().Add(time.Duration(i)*time.Second), 1), "idx-a", "team-a", "gpt-5.6-luna")
 	}
 	size := len(state.turnStates)
 	state.mu.Unlock()
@@ -179,5 +181,128 @@ func TestSessionIDIsReadInBothSpellings(t *testing.T) {
 	}
 	if got := clientSessionID(http.Header{}); got != "" {
 		t.Fatalf("got=%q", got)
+	}
+}
+
+// Same credential, different model: the blob belongs to the other model's turn
+// chain, so it is as unusable as a blob from another account.
+func TestSameCredentialDifferentModelCannotReuse(t *testing.T) {
+	resetTurnStates(t)
+	blob := fernetToken(0x80, time.Now(), 2)
+	state.mu.Lock()
+	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna")
+	same, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a", "gpt-5.6-luna")
+	other, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a", "gpt-5.1-codex")
+	unknownModel, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a", "")
+	state.mu.Unlock()
+
+	if same.crossModel || same.unusable() {
+		t.Fatalf("same model must stay reusable: %#v", same)
+	}
+	if !other.crossModel || !other.unusable() {
+		t.Fatalf("different model must be reported unusable: %#v", other)
+	}
+	if other.originModel != "gpt-5.6-luna" {
+		t.Fatalf("minting model not reported: %#v", other)
+	}
+	// Without a model on either side there is nothing to compare, so the echo
+	// stays unjudged on that axis rather than being accused.
+	if unknownModel.crossModel {
+		t.Fatalf("missing model must not be treated as a mismatch: %#v", unknownModel)
+	}
+}
+
+func TestCrossAccountOutranksModelComparison(t *testing.T) {
+	resetTurnStates(t)
+	blob := fernetToken(0x80, time.Now(), 1)
+	state.mu.Lock()
+	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna")
+	echo, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-b", "gpt-5.1-codex")
+	state.mu.Unlock()
+	if !echo.crossAccount || echo.crossModel {
+		t.Fatalf("a cross-account echo is reported as such, not as a model mismatch: %#v", echo)
+	}
+	if !echo.unusable() {
+		t.Fatal("cross-account echo is unusable")
+	}
+}
+
+func TestStaleBlobIsReportedExpiredButStaysUsableForStripping(t *testing.T) {
+	resetTurnStates(t)
+	fresh := fernetToken(0x80, time.Now().Add(-5*time.Minute), 1)
+	stale := fernetToken(0x80, time.Now().Add(-turnStateReuseWindow-10*time.Minute), 1)
+	state.mu.Lock()
+	noteTurnStateMintLocked(fresh, "idx-a", "team-a", "m")
+	noteTurnStateMintLocked(stale, "idx-a", "team-a", "m")
+	freshEcho, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {fresh}}, "idx-a", "m")
+	staleEcho, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {stale}}, "idx-a", "m")
+	state.mu.Unlock()
+
+	if freshEcho.expired {
+		t.Fatalf("a five minute old blob is fresh: %#v", freshEcho)
+	}
+	if freshEcho.ageSeconds < 240 || freshEcho.ageSeconds > 360 {
+		t.Fatalf("age=%d", freshEcho.ageSeconds)
+	}
+	if !staleEcho.expired {
+		t.Fatalf("a blob past the reuse window is expired: %#v", staleEcho)
+	}
+	// The window is observed rather than documented, so expiry alone never
+	// strips: guessing it wrong would break a chain that still worked.
+	if staleEcho.unusable() {
+		t.Fatal("expiry is reported, not enforced")
+	}
+}
+
+func TestExpiryIsJudgedWithoutAnyProvenance(t *testing.T) {
+	resetTurnStates(t)
+	stale := fernetToken(0x80, time.Now().Add(-2*turnStateReuseWindow), 1)
+	state.mu.Lock()
+	echo, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {stale}}, "idx-a", "m")
+	state.mu.Unlock()
+	if echo.known {
+		t.Fatal("this blob was never minted here")
+	}
+	if !echo.expired {
+		t.Fatal("age comes from the envelope, so it is readable without provenance")
+	}
+}
+
+func TestNewerMintReplacesTheRecentEntryPerCredentialAndModel(t *testing.T) {
+	resetTurnStates(t)
+	older := fernetToken(0x80, time.Now().Add(-20*time.Minute), 1)
+	newer := fernetToken(0x80, time.Now().Add(-1*time.Minute), 1)
+	state.mu.Lock()
+	noteTurnStateMintLocked(older, "idx-a", "team-a", "gpt-5.6-luna")
+	noteTurnStateMintLocked(newer, "idx-a", "team-a", "gpt-5.6-luna")
+	noteTurnStateMintLocked(older, "idx-a", "team-a", "gpt-5.1-codex")
+	noteTurnStateMintLocked(newer, "idx-b", "team-b", "gpt-5.6-luna")
+	recent := recentTurnStatesLocked()
+	state.mu.Unlock()
+
+	if len(recent) != 3 {
+		t.Fatalf("one row per credential and model: %#v", recent)
+	}
+	for _, origin := range recent {
+		if origin.authIndex == "idx-a" && origin.model == "gpt-5.6-luna" && origin.digest != turnStateDigest(newer) {
+			t.Fatal("a newer mint replaces the older one for the same pair")
+		}
+	}
+	if !recent[0].mintedAt.After(recent[len(recent)-1].mintedAt) {
+		t.Fatalf("recent list is newest first: %#v", recent)
+	}
+}
+
+func TestOlderMintDoesNotReplaceANewerOne(t *testing.T) {
+	resetTurnStates(t)
+	older := fernetToken(0x80, time.Now().Add(-30*time.Minute), 1)
+	newer := fernetToken(0x80, time.Now(), 1)
+	state.mu.Lock()
+	noteTurnStateMintLocked(newer, "idx-a", "team-a", "m")
+	noteTurnStateMintLocked(older, "idx-a", "team-a", "m")
+	recent := recentTurnStatesLocked()
+	state.mu.Unlock()
+	if len(recent) != 1 || recent[0].digest != turnStateDigest(newer) {
+		t.Fatalf("out of order mints must not rewind the latest entry: %#v", recent)
 	}
 }

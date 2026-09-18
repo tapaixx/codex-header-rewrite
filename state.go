@@ -19,11 +19,14 @@ type pluginState struct {
 	// turnStates maps a blob digest to the credential that minted it. It is a
 	// correlation aid held in memory only: losing it on restart costs a warning,
 	// never correctness.
-	turnStates      map[string]turnStateOrigin
+	turnStates map[string]turnStateOrigin
+	// turnStateLatest holds the newest blob per credential and model, which is
+	// the one a client could still legitimately be echoing.
+	turnStateLatest map[string]turnStateOrigin
 	turnStateWrites uint64
 }
 
-var state = &pluginState{rules: map[string]headerRule{}, pending: map[string]*pendingRequest{}, credentials: map[string]credentialSnapshot{}, turnStates: map[string]turnStateOrigin{}}
+var state = &pluginState{rules: map[string]headerRule{}, pending: map[string]*pendingRequest{}, credentials: map[string]credentialSnapshot{}, turnStates: map[string]turnStateOrigin{}, turnStateLatest: map[string]turnStateOrigin{}}
 
 func configurePlugin(raw []byte) error {
 	var req lifecycleRequest
@@ -65,6 +68,9 @@ func configurePlugin(raw []byte) error {
 	state.pending = map[string]*pendingRequest{}
 	if state.turnStates == nil {
 		state.turnStates = map[string]turnStateOrigin{}
+	}
+	if state.turnStateLatest == nil {
+		state.turnStateLatest = map[string]turnStateOrigin{}
 	}
 	for _, r := range rules {
 		state.rules[r.AuthIndex] = r
@@ -199,12 +205,12 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 		}
 		clears = append([]string(nil), rule.Remove...)
 	}
-	echo, echoed := evaluateTurnStateEchoLocked(req.Headers, authIndex)
+	echo, echoed := evaluateTurnStateEchoLocked(req.Headers, authIndex, sentModel(req.Model, req.RequestedModel))
 	stripped := false
-	if echoed && echo.crossAccount && hasRule && rule.Enabled && rule.StripForeignTurnState {
-		// The blob was minted under another credential. Echoing it here is the
-		// contradiction the guard exists for, so it is dropped from this request
-		// and the recorded "after" view shows it gone.
+	if echoed && echo.unusable() && hasRule && rule.Enabled && rule.StripForeignTurnState {
+		// The blob was minted under another credential or for another model, so
+		// no upstream turn chain can accept it here. It is dropped from this
+		// request and the recorded "after" view shows it gone.
 		clears = append(clears, turnStateHeader)
 		deleteHeaderFold(after, turnStateHeader)
 		stripped = true
@@ -216,9 +222,14 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 		pr.current.TurnStateOriginIndex = echo.originIndex
 		pr.current.TurnStateOriginLabel = echo.originLabel
 		pr.current.TurnStateStripped = stripped
+		pr.current.TurnStateExpired = echo.expired
+		pr.current.TurnStateAgeSeconds = echo.ageSeconds
 		if echo.known {
 			cross := echo.crossAccount
+			crossModel := echo.crossModel
 			pr.current.TurnStateCrossAccount = &cross
+			pr.current.TurnStateCrossModel = &crossModel
+			pr.current.TurnStateOriginModel = echo.originModel
 		}
 	}
 	pr.current.TurnStateSessionID = clientSessionID(req.Headers)
@@ -254,7 +265,7 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 	if label == "" {
 		label = attempt.CredentialName
 	}
-	noteTurnStateMintLocked(blob, attempt.AuthIndex, label)
+	noteTurnStateMintLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel))
 }
 func observeStreamHeaders(req streamChunkInterceptRequest) {
 	state.mu.Lock()

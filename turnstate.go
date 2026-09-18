@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -55,12 +56,31 @@ type turnStateInfo struct {
 	Decodable  bool      `json:"decodable"`
 }
 
-// turnStateOrigin records which credential minted a blob.
+// A minted blob is only reusable by the same credential, on the same model,
+// and while it is still fresh. Those three conditions are what make an echo
+// legitimate; failing any of them makes the echo a contradiction the upstream
+// can see.
+//
+// The freshness window is an observed rule of thumb rather than a documented
+// guarantee, so an expired echo is reported and never stripped: guessing the
+// window wrong would break a turn chain that would otherwise have worked.
+const turnStateReuseWindow = time.Hour
+
+// turnStateOrigin records what a blob was minted under.
 type turnStateOrigin struct {
+	digest    string
 	authIndex string
 	label     string
+	model     string
 	mintedAt  time.Time
 	seen      time.Time
+}
+
+// latestKey indexes the most recent blob per credential and model. A newer
+// mint for the same pair replaces the older one, because the older one is what
+// the upstream has already moved past.
+func turnStateLatestKey(authIndex, model string) string {
+	return authIndex + "\x00" + strings.TrimSpace(model)
 }
 
 func headerTurnState(h http.Header) string {
@@ -129,7 +149,7 @@ func decodeBase64Flexible(value string) ([]byte, error) {
 
 // noteTurnStateMintLocked records that authIndex minted this blob. Callers hold
 // state.mu.
-func noteTurnStateMintLocked(blob, authIndex, label string) {
+func noteTurnStateMintLocked(blob, authIndex, label, model string) {
 	digest := turnStateDigest(blob)
 	if blob == "" || digest == "" || authIndex == "" {
 		return
@@ -140,7 +160,15 @@ func noteTurnStateMintLocked(blob, authIndex, label string) {
 	if minted.IsZero() {
 		minted = now
 	}
-	state.turnStates[digest] = turnStateOrigin{authIndex: authIndex, label: label, mintedAt: minted, seen: now}
+	origin := turnStateOrigin{digest: digest, authIndex: authIndex, label: label, model: strings.TrimSpace(model), mintedAt: minted, seen: now}
+	state.turnStates[digest] = origin
+	if state.turnStateLatest == nil {
+		state.turnStateLatest = map[string]turnStateOrigin{}
+	}
+	key := turnStateLatestKey(origin.authIndex, origin.model)
+	if previous, ok := state.turnStateLatest[key]; !ok || !previous.mintedAt.After(origin.mintedAt) {
+		state.turnStateLatest[key] = origin
+	}
 	state.turnStateWrites++
 	if state.turnStateWrites%turnStateSweepPeriod == 0 || len(state.turnStates) > turnStateMaxEntries {
 		sweepTurnStatesLocked(now)
@@ -150,6 +178,11 @@ func noteTurnStateMintLocked(blob, authIndex, label string) {
 // sweepTurnStatesLocked drops expired entries, then oldest-first until the table
 // is back under its cap.
 func sweepTurnStatesLocked(now time.Time) {
+	for key, origin := range state.turnStateLatest {
+		if now.Sub(origin.seen) > turnStateTTL {
+			delete(state.turnStateLatest, key)
+		}
+	}
 	oldestKey, oldestSeen := "", time.Time{}
 	for digest, origin := range state.turnStates {
 		if now.Sub(origin.seen) > turnStateTTL {
@@ -195,15 +228,30 @@ type turnStateEcho struct {
 	known        bool
 	originIndex  string
 	originLabel  string
+	originModel  string
 	crossAccount bool
+	crossModel   bool
+	expired      bool
+	ageSeconds   int64
 }
 
-func evaluateTurnStateEchoLocked(headers http.Header, authIndex string) (turnStateEcho, bool) {
+// reusable reports whether the echo is one the upstream could legitimately
+// accept. Unknown provenance is not reusable-or-not, it is unjudged.
+func (e turnStateEcho) unusable() bool { return e.known && (e.crossAccount || e.crossModel) }
+
+func evaluateTurnStateEchoLocked(headers http.Header, authIndex, model string) (turnStateEcho, bool) {
 	blob := headerTurnState(headers)
 	if blob == "" {
 		return turnStateEcho{}, false
 	}
 	echo := turnStateEcho{info: decodeTurnState(blob)}
+	// Age comes from the envelope itself, so it can be judged even when this
+	// process never saw the blob being minted.
+	if !echo.info.IssuedAt.IsZero() {
+		age := time.Since(echo.info.IssuedAt)
+		echo.ageSeconds = int64(age.Seconds())
+		echo.expired = age > turnStateReuseWindow
+	}
 	origin, known := lookupTurnStateOriginLocked(blob)
 	if !known {
 		return echo, true
@@ -211,6 +259,22 @@ func evaluateTurnStateEchoLocked(headers http.Header, authIndex string) (turnSta
 	echo.known = true
 	echo.originIndex = origin.authIndex
 	echo.originLabel = origin.label
+	echo.originModel = origin.model
 	echo.crossAccount = origin.authIndex != authIndex
+	// Same credential, different model is still an echo the upstream cannot
+	// use: the blob was minted for the other model's turn chain.
+	echo.crossModel = !echo.crossAccount && origin.model != "" && strings.TrimSpace(model) != "" &&
+		!strings.EqualFold(origin.model, strings.TrimSpace(model))
 	return echo, true
+}
+
+// recentTurnStatesLocked lists the newest blob per credential and model, newest
+// first. Callers hold state.mu.
+func recentTurnStatesLocked() []turnStateOrigin {
+	out := make([]turnStateOrigin, 0, len(state.turnStateLatest))
+	for _, origin := range state.turnStateLatest {
+		out = append(out, origin)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].mintedAt.After(out[j].mintedAt) })
+	return out
 }

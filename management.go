@@ -16,14 +16,15 @@ import (
 var indexHTML []byte
 
 const (
-	resourceIndexPath     = "/index"
-	apiCredentialsPath    = "/codex-header-rewrite/credentials"
-	apiRulePath           = "/codex-header-rewrite/rule"
-	apiHistoryPath        = "/codex-header-rewrite/history"
-	apiHistoryClearPath   = "/codex-header-rewrite/history/clear"
-	apiOrphansCleanupPath = "/codex-header-rewrite/orphans/cleanup"
-	apiTestPath           = "/codex-header-rewrite/test"
+	resourceIndexPath      = "/index"
+	apiCredentialsPath     = "/codex-header-rewrite/credentials"
+	apiRulePath            = "/codex-header-rewrite/rule"
+	apiHistoryPath         = "/codex-header-rewrite/history"
+	apiHistoryClearPath    = "/codex-header-rewrite/history/clear"
+	apiOrphansCleanupPath  = "/codex-header-rewrite/orphans/cleanup"
+	apiTestPath            = "/codex-header-rewrite/test"
 	apiTurnStateDecodePath = "/codex-header-rewrite/turn-state/decode"
+	apiTurnStatesPath      = "/codex-header-rewrite/turn-states"
 )
 
 type credentialView struct {
@@ -71,6 +72,7 @@ func registerManagement() managementRegistration {
 		{Method: http.MethodPost, Path: apiOrphansCleanupPath, Description: "Remove orphaned credential data"},
 		{Method: http.MethodPost, Path: apiTestPath, Description: "Run a header rewrite test request"},
 		{Method: http.MethodPost, Path: apiTurnStateDecodePath, Description: "Decode an X-Codex-Turn-State envelope"},
+		{Method: http.MethodGet, Path: apiTurnStatesPath, Description: "List the newest turn state per credential and model"},
 	}, Resources: []resourceRoute{{Path: resourceIndexPath, Menu: pluginName, Description: "Codex credential header rewrite and history"}}}
 }
 
@@ -188,6 +190,30 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"cleared": strings.TrimSpace(body.AuthIndex)}), nil
+	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiTurnStatesPath):
+		// One row per credential and model: a newer mint for the same pair
+		// replaces the older one, so this is exactly the set a client could
+		// still be echoing.
+		state.mu.Lock()
+		recent := recentTurnStatesLocked()
+		state.mu.Unlock()
+		items := make([]map[string]any, 0, len(recent))
+		for _, origin := range recent {
+			age := int64(time.Since(origin.mintedAt).Seconds())
+			items = append(items, map[string]any{
+				"digest":      origin.digest,
+				"auth_index":  origin.authIndex,
+				"label":       origin.label,
+				"model":       origin.model,
+				"minted_at":   origin.mintedAt,
+				"age_seconds": age,
+				"expired":     time.Since(origin.mintedAt) > turnStateReuseWindow,
+			})
+		}
+		return jsonResponse(http.StatusOK, map[string]any{
+			"turn_states":          items,
+			"reuse_window_seconds": int64(turnStateReuseWindow.Seconds()),
+		}), nil
 	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiTurnStateDecodePath):
 		var body struct {
 			Token string `json:"token"`

@@ -77,7 +77,11 @@ type historyRecord struct {
 	TurnStateMinted       *turnStateInfo `json:"turn_state_minted,omitempty"`
 	TurnStateOriginIndex  string         `json:"turn_state_origin_index,omitempty"`
 	TurnStateOriginLabel  string         `json:"turn_state_origin_label,omitempty"`
+	TurnStateOriginModel  string         `json:"turn_state_origin_model,omitempty"`
 	TurnStateCrossAccount *bool          `json:"turn_state_cross_account,omitempty"`
+	TurnStateCrossModel   *bool          `json:"turn_state_cross_model,omitempty"`
+	TurnStateExpired      bool           `json:"turn_state_expired,omitempty"`
+	TurnStateAgeSeconds   int64          `json:"turn_state_age_seconds,omitempty"`
 	TurnStateStripped     bool           `json:"turn_state_stripped,omitempty"`
 	TurnStateSessionID    string         `json:"turn_state_session_id,omitempty"`
 }
