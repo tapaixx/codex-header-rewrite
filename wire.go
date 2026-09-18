@@ -1,9 +1,13 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -25,6 +29,8 @@ const (
 	methodManagementHandle             = "management.handle"
 	methodHostAuthList                 = "host.auth.list"
 	methodHostAuthGetRuntime           = "host.auth.get_runtime"
+	methodHostAuthGet                  = "host.auth.get"
+	methodHostHTTPDo                   = "host.http.do"
 )
 
 type envelope struct {
@@ -215,4 +221,98 @@ type hostAuthGetRequest struct {
 
 type hostAuthGetRuntimeResponse struct {
 	Auth hostAuthFileEntry `json:"auth"`
+}
+
+// hostAuthGetResponse carries one credential document. Hosts have used all
+// three field names for the payload, so each is accepted.
+type hostAuthGetResponse struct {
+	JSON json.RawMessage `json:"json"`
+	Auth json.RawMessage `json:"auth"`
+	Data json.RawMessage `json:"data"`
+}
+
+func (r hostAuthGetResponse) document() json.RawMessage {
+	for _, candidate := range []json.RawMessage{r.JSON, r.Auth, r.Data} {
+		if len(candidate) > 0 {
+			return candidate
+		}
+	}
+	return nil
+}
+
+// hostHTTPRequest is a host-mediated outbound request. Body is base64 encoded
+// by encoding/json, matching the host ABI's byte-buffer convention.
+type hostHTTPRequest struct {
+	Method  string      `json:"method"`
+	URL     string      `json:"url"`
+	Headers http.Header `json:"headers,omitempty"`
+	Body    []byte      `json:"body,omitempty"`
+}
+
+type hostHTTPResponse struct {
+	StatusCode int         `json:"status_code"`
+	Headers    http.Header `json:"headers,omitempty"`
+	Body       []byte      `json:"body,omitempty"`
+}
+
+// UnmarshalJSON accepts snake_case and Go-style casing, header maps of either
+// slices or scalars, and a body that is either base64 (the ABI convention) or
+// literal text (used by host test doubles).
+func (r *hostHTTPResponse) UnmarshalJSON(data []byte) error {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(data, &object); err != nil {
+		return err
+	}
+	out := hostHTTPResponse{}
+	if raw := firstRawField(object, "status_code", "statusCode", "StatusCode"); len(raw) > 0 {
+		if err := json.Unmarshal(raw, &out.StatusCode); err != nil {
+			var text string
+			if err := json.Unmarshal(raw, &text); err != nil {
+				return fmt.Errorf("invalid host HTTP status: %w", err)
+			}
+			parsed, convErr := strconv.Atoi(strings.TrimSpace(text))
+			if convErr != nil {
+				return fmt.Errorf("invalid host HTTP status: %w", convErr)
+			}
+			out.StatusCode = parsed
+		}
+	}
+	if raw := firstRawField(object, "headers", "Headers"); len(raw) > 0 && string(raw) != "null" {
+		var slices map[string][]string
+		if err := json.Unmarshal(raw, &slices); err == nil {
+			out.Headers = http.Header(slices)
+		} else {
+			var scalars map[string]string
+			if err := json.Unmarshal(raw, &scalars); err != nil {
+				return fmt.Errorf("invalid host HTTP headers: %w", err)
+			}
+			out.Headers = make(http.Header, len(scalars))
+			for key, value := range scalars {
+				out.Headers[key] = []string{value}
+			}
+		}
+	}
+	if raw := firstRawField(object, "body", "Body"); len(raw) > 0 && string(raw) != "null" {
+		var encoded string
+		if err := json.Unmarshal(raw, &encoded); err == nil {
+			if decoded, decodeErr := base64.StdEncoding.DecodeString(encoded); decodeErr == nil {
+				out.Body = decoded
+			} else {
+				out.Body = []byte(encoded)
+			}
+		} else if err := json.Unmarshal(raw, &out.Body); err != nil {
+			return fmt.Errorf("invalid host HTTP body: %w", err)
+		}
+	}
+	*r = out
+	return nil
+}
+
+func firstRawField(object map[string]json.RawMessage, names ...string) json.RawMessage {
+	for _, name := range names {
+		if raw, ok := object[name]; ok {
+			return raw
+		}
+	}
+	return nil
 }

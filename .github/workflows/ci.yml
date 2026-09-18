@@ -23,6 +23,12 @@ jobs:
       - run: go vet ./...
       - run: go vet -tags localtest -modfile=go.localtest.mod ./...
       - run: CGO_ENABLED=1 go build -buildmode=c-shared -o /tmp/codex-header-rewrite.so .
+      # The panel is one embedded document with no build step, so its inline
+      # script is syntax-checked here rather than at load time in a browser.
+      - name: Check panel script syntax
+        run: |
+          python3 -c "import re,pathlib;pathlib.Path('/tmp/panel.js').write_text(re.findall(r'<script>(.*?)</script>',pathlib.Path('web/index.html').read_text(),re.S)[-1])"
+          node --check /tmp/panel.js
       # Release only builds, packages, and publishes; the packaging rules
       # themselves are gated here, on stub libraries so no cross toolchain is
       # needed.

@@ -18,7 +18,9 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - 记录重写前/后的 Request Header 与 upstream Response Header。
 - Authorization、Cookie、API key、token/secret/password 等在写盘前永久脱敏。
 - 不保存 request / response body。
-- 中文内嵌 UI；敏感数据接口走 CPA Management API。
+- 自定义测试请求：预览规则改写结果（不发请求），或用该凭证向 Codex 发一次真实请求。
+- 模型一致性核对：记录上游实际声明的模型，与发出的模型比对，不一致时标红。
+- 中文内嵌 UI，单文档零外部依赖；敏感数据接口走 CPA Management API。
 - Linux amd64 / arm64 CI 与 tag Release。
 
 ## 安装
@@ -63,7 +65,36 @@ plugins:
       data_path: "plugins/data/codex-header-rewrite.db"
 ```
 
-首次打开插件页面时输入 CPA Management Key。Key 只保存在当前标签页的 `sessionStorage`。
+面板优先复用宿主管理面板已保存的管理密钥，读不到时才会提示填写；手工填写的 Key 只保存在当前标签页的 `sessionStorage`，不写入插件数据库。
+
+## 测试请求
+
+面板的「测试请求」面板可以自定义模型、提示词、推理强度、流式开关、临时 Header、临时移除，以及（高级）Codex 后端路径和原始 JSON 请求体。
+
+两种执行方式：
+
+- **预览 Header**：只在插件内解析，不读凭证、不发请求、不消耗额度，直接看到规则作用后的 Header 差异。
+- **发送测试请求**：用该凭证向 Codex 发一次**真实请求**，消耗真实额度，需要二次确认。返回 HTTP 状态、上游 Response Header、延迟、上游实际模型，失败时附一段截断的上游错误文本；可选记入历史（标记为「测试」，与线上请求区分）。
+
+两点边界：
+
+- 测试请求由插件通过宿主直接发往 Codex 后端，**不经过 Codex Provider Executor**。所以它验证的是规则本身是否按预期改写，而线上请求仍可能被 executor 覆盖特殊字段。
+- 目标地址被限定在 `https://chatgpt.com/backend-api/codex/` 前缀内，只能改路径。请求携带 bearer token，任意目标地址等于把凭证交给第三方。
+
+## 模型一致性核对
+
+上游实际服务的模型不在 Response Header 里，而在响应载荷里：流式事件的 `response.model`、非流式响应体的 `model`。插件按 SSE 帧读取载荷、只取出模型名，然后与发往上游的模型比对：
+
+| 显示 | 含义 |
+|---|---|
+| 一致 | 上游声明的模型与发出的模型相同（忽略大小写） |
+| 模型不一致 | 上游声明了另一个模型 |
+| 未声明 | 上游一次都没声明模型 —— 是「未知」，不是「一致」 |
+| 上游声明冲突 | 同一次响应里出现互相矛盾的声明，不猜测哪个为准 |
+
+终局事件（`response.completed` 等）的声明优先于过程中的声明。载荷只在内存里解析，请求体与响应体都不入库。
+
+> 参考实现说明：sub2api 的 `upstream_model_mismatch` 同样是读响应载荷声明的模型（`response.model` / `message.model` / `modelVersion`）后与发出的模型比对，不是按 Header 判断 —— Header 里没有这个信息。
 
 ## 重要限制
 
@@ -75,6 +106,13 @@ plugins:
 go mod tidy
 go test ./...
 go test -tags localtest -modfile=go.localtest.mod ./...
+```
+
+面板是单个内嵌文档，没有构建步骤。改完可以把内联脚本抽出来做语法检查（CI 也会跑同一条）：
+
+```bash
+python3 -c "import re,pathlib;pathlib.Path('/tmp/panel.js').write_text(re.findall(r'<script>(.*?)</script>',pathlib.Path('web/index.html').read_text(),re.S)[-1])"
+node --check /tmp/panel.js
 ```
 
 ## 发版

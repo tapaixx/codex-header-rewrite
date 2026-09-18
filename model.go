@@ -57,11 +57,24 @@ type historyRecord struct {
 	StatusCode      int         `json:"status_code,omitempty"`
 	Outcome         string      `json:"outcome"`
 	Error           string      `json:"error,omitempty"`
+	// UpstreamModel is the model the upstream response declared. Empty means
+	// the response never declared one, which is distinct from a match.
+	UpstreamModel string `json:"upstream_model,omitempty"`
+	ModelMismatch *bool  `json:"model_mismatch,omitempty"`
+	ModelConflict bool   `json:"model_conflict,omitempty"`
+	// Origin separates live proxy traffic from operator-issued test requests.
+	Origin string `json:"origin,omitempty"`
 }
+
+const (
+	originLive = "live"
+	originTest = "test"
+)
 
 type pendingAttempt struct {
 	historyRecord
 	persisted bool
+	models    modelObserver
 }
 
 type pendingRequest struct {

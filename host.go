@@ -48,5 +48,30 @@ func callHostAuthGetRuntime(authIndex string) (hostAuthGetRuntimeResponse, error
 	return out, err
 }
 
+// callHostAuthGet returns one credential document. The bytes contain
+// authentication material: callers consume them for a single upstream call and
+// never persist, log, or return them.
+func callHostAuthGet(authIndex string) (json.RawMessage, error) {
+	var out hostAuthGetResponse
+	if err := callHost(methodHostAuthGet, hostAuthGetRequest{AuthIndex: authIndex}, &out); err != nil {
+		return nil, err
+	}
+	document := out.document()
+	if len(document) == 0 {
+		return nil, errHostCall(methodHostAuthGet, "empty auth document")
+	}
+	return append(json.RawMessage(nil), document...), nil
+}
+
+func callHostHTTPDo(request hostHTTPRequest) (hostHTTPResponse, error) {
+	var out hostHTTPResponse
+	if err := callHost(methodHostHTTPDo, request, &out); err != nil {
+		return hostHTTPResponse{}, err
+	}
+	return out, nil
+}
+
 var hostAuthListFunc = callHostAuthList
 var hostAuthGetRuntimeFunc = callHostAuthGetRuntime
+var hostAuthGetFunc = callHostAuthGet
+var hostHTTPDoFunc = callHostHTTPDo

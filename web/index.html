@@ -1,43 +1,782 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Codex Header Rewrite</title>
 <style>
-body{font:14px system-ui;margin:0;background:#f6f8fb;color:#172033}*{box-sizing:border-box}header{padding:16px 20px;background:#fff;border-bottom:1px solid #e5eaf2;display:flex;justify-content:space-between}.wrap{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 60px)}aside{padding:14px;background:#fff;border-right:1px solid #e5eaf2}main{padding:18px;max-width:1100px;width:100%}.card{background:#fff;border:1px solid #e3e8f0;border-radius:10px;margin-bottom:14px}.hd{padding:13px 15px;border-bottom:1px solid #eef1f5;font-weight:700}.bd{padding:15px}.cred{padding:9px;border-radius:7px;cursor:pointer}.cred:hover,.cred.on{background:#eef4ff}.muted{color:#7b8799;font-size:12px}.row{display:grid;grid-template-columns:1fr 1fr 32px;gap:7px;margin:7px 0}.remove{grid-template-columns:1fr 32px}input,button{font:inherit;padding:7px 9px;border:1px solid #d8deea;border-radius:7px;background:#fff}button{cursor:pointer}.primary{background:#2563eb;color:#fff;border-color:#2563eb}.danger{color:#b42318}.warn{padding:9px;background:#fffaf0;border:1px solid #f5d98b;border-radius:7px;margin-top:10px;display:none}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:8px;border-bottom:1px solid #eef1f5;text-align:left}.overlay{position:fixed;inset:0;background:#0006;display:none;place-items:center}.modal{background:#fff;padding:20px;border-radius:12px;width:min(420px,90vw)}pre{white-space:pre-wrap;word-break:break-all;background:#f8fafc;padding:10px;border-radius:8px}@media(max-width:800px){.wrap{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid #e5eaf2}}
+:root{
+  --paper:#f6f5f2; --surface:#fff; --surface-sunk:#faf9f7;
+  --line:#e5e3dd; --line-strong:#d6d3cb;
+  --ink:#1b1b19; --ink-soft:#54534d; --ink-mute:#83817a;
+  --accent:#2c3e66; --accent-soft:#eceef5;
+  --set:#2f6b4f; --set-soft:#edf4ef;
+  --gone:#9b3a34; --gone-soft:#f8eeed;
+  --over:#8a6420; --over-soft:#f8f2e6;
+  --radius:10px;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:8px;padding:6px 11px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s,border-color .12s}
+button:hover:not(:disabled){background:var(--surface-sunk);border-color:#c4c0b6}
+button:active:not(:disabled){transform:translateY(.5px)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover:not(:disabled){background:#253556;border-color:#253556}
+button.quiet{border-color:transparent;background:transparent;padding:5px 8px;color:var(--ink-soft)}
+button.quiet:hover:not(:disabled){background:#ebe9e4;border-color:transparent}
+button.destructive{color:var(--gone)}
+button.icon{padding:6px}
+input,textarea,select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:8px;padding:6px 9px;width:100%}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--accent-soft);outline-offset:0;border-color:var(--accent)}
+textarea{resize:vertical;min-height:62px;font-family:var(--mono);font-size:12.5px}
+code,kbd{font-family:var(--mono)}
+.mono{font-family:var(--mono);font-size:12.5px}
+.num{font-variant-numeric:tabular-nums}
+.muted{color:var(--ink-mute);font-size:12.5px}
+
+.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;padding:12px 20px;background:rgba(246,245,242,.92);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+.brand{display:flex;flex-direction:column;line-height:1.25}
+.brand b{font-size:14.5px;letter-spacing:-.01em}
+.brand span{color:var(--ink-mute);font-size:12px}
+.topbar .spacer{flex:1}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border:1px solid var(--line-strong);border-radius:999px;font-size:12px;color:var(--ink-soft);background:var(--surface)}
+
+.shell{display:grid;grid-template-columns:284px minmax(0,1fr);gap:18px;padding:18px 20px 48px;max-width:1240px;margin:0 auto;align-items:start}
+.rail{position:sticky;top:64px;display:flex;flex-direction:column;gap:8px}
+.rail-head{display:flex;align-items:center;justify-content:space-between;padding:0 2px}
+.rail-head h2{margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-mute)}
+.cred{display:block;width:100%;text-align:left;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);cursor:pointer}
+.cred:hover{border-color:var(--line-strong)}
+.cred[aria-current=true]{border-color:var(--accent);box-shadow:inset 2px 0 0 var(--accent)}
+.cred b{display:block;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cred-meta{display:flex;align-items:center;gap:6px;margin-top:3px;color:var(--ink-mute);font-size:11.5px}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--line-strong);flex:none}
+.dot.on{background:var(--set)}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:16px}
+.panel-head{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.panel-head h3{margin:0;font-size:13.5px;font-weight:600}
+.panel-head .spacer{flex:1}
+.panel-body{padding:16px}
+.field{display:grid;gap:5px;margin-bottom:12px}
+.field label{font-size:12px;font-weight:500;color:var(--ink-soft)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.switch{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none}
+.switch input{appearance:none;width:34px;height:20px;margin:0;border-radius:999px;background:#dcdad3;border:none;position:relative;cursor:pointer;transition:background .15s}
+.switch input:after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s}
+.switch input:checked{background:var(--accent)}
+.switch input:checked:after{transform:translateX(14px)}
+.sub{margin:18px 0 8px;font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-mute)}
+.hrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) 30px;gap:8px;margin-bottom:8px}
+.hrow.single{grid-template-columns:minmax(0,1fr) 30px}
+.notice{display:flex;gap:9px;padding:10px 12px;border-radius:9px;font-size:12.5px;line-height:1.5}
+.notice.warn{background:var(--over-soft);color:#6b4d16}
+.notice.info{background:var(--surface-sunk);color:var(--ink-soft);border:1px solid var(--line)}
+.actions{display:flex;align-items:center;gap:9px;margin-top:16px}
+.actions .spacer{flex:1}
+
+/* Signature: the header diff. One aligned column pair, marked in the gutter,
+   used for both rule previews and recorded attempts. */
+.diff{border:1px solid var(--line);border-radius:10px;overflow:hidden;font-family:var(--mono);font-size:12.5px}
+.diff-head{display:grid;grid-template-columns:26px minmax(0,1fr) minmax(0,1fr);background:var(--surface-sunk);border-bottom:1px solid var(--line);font-family:var(--sans);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-mute)}
+.diff-head div{padding:7px 10px}
+.diff-row{display:grid;grid-template-columns:26px minmax(0,1fr) minmax(0,1fr);border-top:1px solid #f0efeb}
+.diff-row:first-child{border-top:none}
+.diff-row>div{padding:6px 10px;min-width:0;overflow-wrap:anywhere}
+/* An unchanged header carries the same value on both sides, so it is written
+   once across the pair instead of twice. */
+.diff-row.is-same>div.span{grid-column:2/span 2}
+.diff-mark{text-align:center;color:var(--ink-mute);background:var(--surface-sunk);border-right:1px solid var(--line);user-select:none}
+.diff-row .k{color:var(--ink-soft)}
+.diff-row .v{color:var(--ink)}
+.diff-row.is-set{background:var(--set-soft)} .diff-row.is-set .diff-mark{color:var(--set)}
+.diff-row.is-gone{background:var(--gone-soft)} .diff-row.is-gone .diff-mark{color:var(--gone)}
+.diff-row.is-gone .v.old{text-decoration:line-through;color:#9d6a66}
+.diff-row.is-over{background:var(--over-soft)} .diff-row.is-over .diff-mark{color:var(--over)}
+.diff-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12px;color:var(--ink-mute)}
+.diff-legend span{display:inline-flex;align-items:center;gap:6px}
+.swatch{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+.chain{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-family:var(--mono);font-size:12.5px}
+.chain .sep{color:var(--ink-mute)}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-family:var(--sans);font-size:11.5px;font-weight:500;border:1px solid transparent}
+.tag.ok{background:var(--set-soft);color:var(--set);border-color:#cfe3d6}
+.tag.bad{background:var(--gone-soft);color:var(--gone);border-color:#eed4d1}
+.tag.warn{background:var(--over-soft);color:#7a5a1c;border-color:#ecdcba}
+.tag.flat{background:var(--surface-sunk);color:var(--ink-soft);border-color:var(--line-strong)}
+
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-weight:600;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-mute);padding:0 10px 8px;border-bottom:1px solid var(--line)}
+td{padding:9px 10px;border-bottom:1px solid #f2f1ed;vertical-align:middle}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--surface-sunk)}
+tbody tr[aria-selected=true]{background:var(--accent-soft)}
+.pager{display:flex;align-items:center;gap:6px;justify-content:flex-end;margin-top:12px}
+.pager .page{min-width:30px;justify-content:center}
+.pager .page[aria-current=true]{background:var(--accent);border-color:var(--accent);color:#fff}
+.empty{padding:26px 10px;text-align:center;color:var(--ink-mute);font-size:12.5px}
+
+.overlay{position:fixed;inset:0;background:rgba(27,27,25,.38);display:none;place-items:center;z-index:50;padding:20px}
+.overlay[data-open=true]{display:grid}
+.dialog{background:var(--surface);border-radius:14px;border:1px solid var(--line);width:min(460px,100%);padding:20px;box-shadow:0 18px 40px rgba(27,27,25,.16)}
+.dialog h3{margin:0 0 6px;font-size:15px}
+.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,14px);background:var(--ink);color:#faf9f7;padding:9px 15px;border-radius:9px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .16s,transform .16s;z-index:60;max-width:min(560px,92vw)}
+.toast[data-show=true]{opacity:1;transform:translate(-50%,0)}
+.toast.bad{background:#7d2f2a}
+.spin{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:0s!important;transition-duration:0s!important}}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .rail{position:static}
+  .diff-head,.diff-row{grid-template-columns:24px minmax(0,1fr)}
+  .diff-head div:last-child,.diff-row>div:last-child{display:none}
+}
 </style>
 </head>
 <body>
-<header><div><b>Codex Header Rewrite</b><div class="muted">按 Codex credential 独立覆盖 / 移除 Header</div></div><div><button id="cleanup">清理遗留数据</button> <button id="authBtn">管理密钥</button></div></header>
-<div class="wrap">
-<aside><button id="refresh">刷新凭证</button><div id="list" style="margin-top:10px"></div></aside>
-<main>
-<section class="card"><div class="hd">当前凭证</div><div class="bd" id="summary">请选择 Codex 凭证</div></section>
-<section class="card"><div class="hd">Header 规则</div><div class="bd">
-<label><input id="enabled" type="checkbox"> 启用</label>
-<h4>设置 / 覆盖</h4><div id="sets"></div><button id="addSet">+ Header</button>
-<h4>移除</h4><div id="removes"></div><button id="addRemove">+ Header</button>
-<div id="warn" class="warn"></div>
-<div style="display:flex;justify-content:space-between;margin-top:14px"><button class="danger" id="reset">重置规则</button><button class="primary" id="save">保存规则</button></div>
-</div></section>
-<section class="card"><div class="hd">最近请求历史 <button class="danger" id="clearHistory" style="float:right">清空</button></div><div class="bd">
-<table><thead><tr><th>时间</th><th>模型</th><th>结果</th><th>状态码</th><th>Request ID</th></tr></thead><tbody id="history"></tbody></table><div id="pager"></div>
-</div></section>
-<section class="card" id="detail" style="display:none"><div class="hd">请求详情</div><div class="bd"><h4>重写前 Request Header</h4><pre id="before"></pre><h4>重写后 Request Header（Interceptor 阶段）</h4><pre id="after"></pre><h4>Upstream Response Header</h4><pre id="response"></pre><div class="muted">Codex executor 后续仍可能覆盖 Authorization、User-Agent、Content-Type、Chatgpt-Account-Id 等特殊字段。</div></div></section>
-</main></div>
-<div id="overlay" class="overlay"><div class="modal"><h3>CPA Management Key</h3><p class="muted">只保存在当前标签页 sessionStorage，不写入插件数据库。</p><input id="key" type="password" style="width:100%" placeholder="Management key"><p><button class="primary" id="connect">连接</button></p></div></div>
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/></symbol>
+  <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M5 4.5a1 1 0 0 1 1.5-.87l12 7.37a1 1 0 0 1 0 1.71l-12 7.37A1 1 0 0 1 5 19.5z"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-diff" viewBox="0 0 24 24"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="brand"><b>Codex Header Rewrite</b><span>按 Codex 凭证改写请求 Header，并核对上游实际服务的模型</span></div>
+  <div class="spacer"></div>
+  <span class="chip" id="keyChip" hidden><svg class="i"><use href="#i-key"/></svg><span id="keyChipText">密钥</span></span>
+  <button class="quiet" id="cleanupBtn" title="清理已不存在凭证的遗留规则与历史"><svg class="i"><use href="#i-eraser"/></svg>清理遗留</button>
+  <button class="quiet" id="keyBtn"><svg class="i"><use href="#i-key"/></svg>管理密钥</button>
+</header>
+
+<div class="shell">
+  <aside class="rail">
+    <div class="rail-head">
+      <h2>Codex 凭证</h2>
+      <button class="quiet icon" id="refreshBtn" title="刷新凭证"><svg class="i" id="refreshIcon"><use href="#i-refresh"/></svg></button>
+    </div>
+    <div id="credList"></div>
+  </aside>
+
+  <main>
+    <section class="panel">
+      <div class="panel-head"><h3 id="ruleTitle">Header 规则</h3><div class="spacer"></div><span class="muted" id="ruleUpdated"></span></div>
+      <div class="panel-body">
+        <label class="switch"><input type="checkbox" id="ruleEnabled"><span>启用改写</span></label>
+        <div class="sub">设置 / 覆盖</div>
+        <div id="setRows"></div>
+        <button class="quiet" id="addSet"><svg class="i"><use href="#i-plus"/></svg>添加 Header</button>
+        <div class="sub">移除</div>
+        <div id="removeRows"></div>
+        <button class="quiet" id="addRemove"><svg class="i"><use href="#i-plus"/></svg>添加 Header</button>
+        <div class="notice warn" id="ruleWarn" hidden><svg class="i"><use href="#i-alert"/></svg><span id="ruleWarnText"></span></div>
+        <div class="actions">
+          <button class="destructive" id="deleteRule"><svg class="i"><use href="#i-trash"/></svg>删除规则</button>
+          <div class="spacer"></div>
+          <button id="reloadRule">放弃修改</button>
+          <button class="primary" id="saveRule"><svg class="i"><use href="#i-save"/></svg>保存规则</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><svg class="i"><use href="#i-diff"/></svg><h3>Header 差异</h3><span class="tag flat" id="diffCount">无改动</span><div class="spacer"></div><span class="muted" id="diffSource">预览规则或选择一条历史</span></div>
+      <div class="panel-body">
+        <div id="diffBox"></div>
+        <div class="diff-legend">
+          <span><i class="swatch" style="background:var(--set)"></i>新增</span>
+          <span><i class="swatch" style="background:var(--over)"></i>覆盖</span>
+          <span><i class="swatch" style="background:var(--gone)"></i>移除</span>
+          <span><i class="swatch" style="background:var(--line-strong)"></i>未改动</span>
+        </div>
+        <div id="diffResponse"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><svg class="i"><use href="#i-flask"/></svg><h3>测试请求</h3><div class="spacer"></div><span class="muted">自定义请求，验证规则与上游模型</span></div>
+      <div class="panel-body">
+        <div class="grid2">
+          <div class="field"><label for="testModel">模型</label><input id="testModel" spellcheck="false"></div>
+          <div class="field"><label for="testEffort">推理强度</label><select id="testEffort"><option value="low">low</option><option value="minimal">minimal</option><option value="medium">medium</option><option value="high">high</option></select></div>
+        </div>
+        <div class="field"><label for="testPrompt">提示词</label><input id="testPrompt" spellcheck="false"></div>
+        <div class="grid2">
+          <label class="switch"><input type="checkbox" id="testStream" checked><span>流式（SSE）</span></label>
+          <label class="switch"><input type="checkbox" id="testApplyRule" checked><span>套用已保存规则</span></label>
+          <label class="switch"><input type="checkbox" id="testRecord" checked><span>记入历史</span></label>
+        </div>
+        <div class="sub">临时 Header（仅本次，规则可再覆盖）</div>
+        <div id="testHeaderRows"></div>
+        <button class="quiet" id="addTestHeader"><svg class="i"><use href="#i-plus"/></svg>添加 Header</button>
+        <div class="sub">临时移除（仅本次）</div>
+        <div id="testRemoveRows"></div>
+        <button class="quiet" id="addTestRemove"><svg class="i"><use href="#i-plus"/></svg>添加 Header</button>
+        <details id="advanced" style="margin-top:16px">
+          <summary class="muted" style="cursor:pointer">高级：端点与原始请求体</summary>
+          <div class="field" style="margin-top:12px"><label for="testEndpoint">端点（仅限 Codex 后端路径）</label><input id="testEndpoint" class="mono" spellcheck="false"></div>
+          <div class="field"><label for="testBody">原始 JSON 请求体（填写后覆盖上面的模型与提示词）</label><textarea id="testBody" spellcheck="false" placeholder='{"model":"…","input":[…],"stream":true}'></textarea></div>
+        </details>
+        <div class="notice info" style="margin-top:14px"><svg class="i"><use href="#i-info"/></svg><span>预览只在本地解析 Header，不发请求。发送会用该凭证向 Codex 发一次<b>真实请求</b>，消耗真实额度；测试请求由插件直接发往上游，不经过 Codex executor，因此看到的是规则生效后的 Header，而线上请求仍可能被 executor 覆盖。</span></div>
+        <div class="actions">
+          <div class="spacer"></div>
+          <button id="previewBtn"><svg class="i"><use href="#i-eye"/></svg>预览 Header</button>
+          <button class="primary" id="sendBtn"><svg class="i" id="sendIcon"><use href="#i-play"/></svg>发送测试请求</button>
+        </div>
+        <div id="testOutcome" style="margin-top:14px"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h3>请求历史</h3><div class="spacer"></div><span class="muted" id="historyMeta"></span><button class="quiet destructive" id="clearHistory"><svg class="i"><use href="#i-trash"/></svg>清空</button></div>
+      <div class="panel-body">
+        <table>
+          <thead><tr><th>时间</th><th>来源</th><th>模型：请求 → 上游</th><th>结果</th><th style="text-align:right">状态</th></tr></thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+        <div class="pager" id="pager"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="overlay" id="keyOverlay">
+  <div class="dialog">
+    <h3>CLIProxyAPI 管理密钥</h3>
+    <p class="muted" id="keyDialogHint">面板会先读取宿主管理面板已保存的密钥。读不到时才需要在这里填写，只保存在当前标签页，不写入插件数据库。</p>
+    <div class="field"><label for="keyInput">Management key</label><input id="keyInput" type="password" autocomplete="off" spellcheck="false"></div>
+    <div class="actions"><button class="quiet" id="keyCancel">取消</button><div class="spacer"></div><button class="primary" id="keyConnect">连接</button></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
 <script>
-const API='/v0/management/codex-header-rewrite';let key=sessionStorage.getItem('chr.key')||'',creds=[],selected='',rule={auth_index:'',enabled:false,set:{},remove:[]},history=[];const $=x=>document.getElementById(x),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function auth(){ $('overlay').style.display='grid';$('key').value=key }function hideAuth(){$('overlay').style.display='none'}
-async function api(path,opt={}){if(!key){auth();throw Error('需要管理密钥')}const h={...(opt.headers||{}),Authorization:'Bearer '+key};if(opt.body)h['Content-Type']='application/json';const r=await fetch(API+path,{...opt,headers:h});if(r.status===401){key='';sessionStorage.removeItem('chr.key');auth();throw Error('管理密钥无效')}const d=await r.json().catch(()=>({error:'无效响应'}));if(!r.ok)throw Error(d.error||('HTTP '+r.status));return d}
-function rowSet(k='',v=''){return '<div class="row"><input class="hk" value="'+esc(k)+'" placeholder="X-Header"><input class="hv" value="'+esc(v)+'" placeholder="value"><button class="x">×</button></div>'}function rowRemove(k=''){return '<div class="row remove"><input class="hk" value="'+esc(k)+'" placeholder="X-Header"><button class="x">×</button></div>'}function bindX(){document.querySelectorAll('.x').forEach(b=>b.onclick=()=>b.parentElement.remove())}
-async function loadCreds(){const d=await api('/credentials');creds=d.credentials||[];$('list').innerHTML=creds.map(c=>'<div class="cred '+(c.auth_index===selected?'on':'')+'" data-a="'+esc(c.auth_index)+'"><b>'+esc(c.label||c.name||c.auth_index)+'</b><div class="muted">'+esc(c.auth_index)+' · '+(c.history_count||0)+'/50</div></div>').join('')||'<div class="muted">没有 Codex 凭证</div>';document.querySelectorAll('.cred').forEach(e=>e.onclick=()=>select(e.dataset.a));if(!selected&&creds[0])select(creds[0].auth_index)}
-async function select(a){selected=a;const c=creds.find(x=>x.auth_index===a);$('summary').innerHTML='<b>'+esc(c?.label||c?.name||a)+'</b><div class="muted">'+esc(a)+'</div>';await Promise.all([loadRule(),loadHistory(1)]);loadCreds()}
-async function loadRule(){if(!selected)return;const d=await api('/rule?auth_index='+encodeURIComponent(selected));rule=d.rule;$('enabled').checked=!!rule.enabled;$('sets').innerHTML=Object.entries(rule.set||{}).map(([k,v])=>rowSet(k,v)).join('');$('removes').innerHTML=(rule.remove||[]).map(rowRemove).join('');bindX();$('warn').style.display=(d.warnings||[]).length?'block':'none';$('warn').textContent='注意：'+(d.warnings||[]).join('、')+' 可能被 Codex executor 后续覆盖。'}
-function collect(){const set={};document.querySelectorAll('#sets .row').forEach(r=>{const k=r.querySelector('.hk').value.trim();if(k)set[k]=r.querySelector('.hv').value});const remove=[];document.querySelectorAll('#removes .row').forEach(r=>{const k=r.querySelector('.hk').value.trim();if(k)remove.push(k)});return{auth_index:selected,enabled:$('enabled').checked,set,remove}}
-async function save(){if(!selected)return;await api('/rule',{method:'PUT',body:JSON.stringify(collect())});await loadRule();alert('已保存，下一请求立即生效')}
-async function loadHistory(page=1){if(!selected)return;const d=await api('/history?auth_index='+encodeURIComponent(selected)+'&page='+page);history=d.items||[];$('history').innerHTML=history.map((r,i)=>'<tr data-i="'+i+'"><td>'+esc(new Date(r.started_at).toLocaleString())+'</td><td>'+esc(r.model||r.requested_model||'—')+'</td><td>'+esc(r.outcome)+'</td><td>'+(r.status_code||'—')+'</td><td>'+esc((r.request_id||'').slice(0,16))+'</td></tr>').join('')||'<tr><td colspan="5" class="muted">暂无记录</td></tr>';document.querySelectorAll('#history tr[data-i]').forEach(e=>e.onclick=()=>show(history[+e.dataset.i]));$('pager').innerHTML='';for(let i=1;i<=(d.total_pages||0);i++){const b=document.createElement('button');b.textContent=i;b.onclick=()=>loadHistory(i);$('pager').appendChild(b)}}
-function show(r){$('detail').style.display='block';$('before').textContent=JSON.stringify(r.before_headers||{},null,2);$('after').textContent=JSON.stringify(r.after_headers||{},null,2);$('response').textContent=JSON.stringify(r.response_headers||{},null,2)}
-$('authBtn').onclick=auth;$('connect').onclick=()=>{key=$('key').value.trim();if(!key)return;sessionStorage.setItem('chr.key',key);hideAuth();loadCreds().catch(e=>alert(e.message))};$('refresh').onclick=()=>loadCreds().catch(e=>alert(e.message));$('addSet').onclick=()=>{$('sets').insertAdjacentHTML('beforeend',rowSet());bindX()};$('addRemove').onclick=()=>{$('removes').insertAdjacentHTML('beforeend',rowRemove());bindX()};$('save').onclick=()=>save().catch(e=>alert(e.message));$('reset').onclick=async()=>{if(selected&&confirm('确认删除当前规则？')){await api('/rule?auth_index='+encodeURIComponent(selected),{method:'DELETE'});await loadRule()}};$('clearHistory').onclick=async()=>{if(selected&&confirm('确认清空当前历史？')){await api('/history/clear',{method:'POST',body:JSON.stringify({auth_index:selected})});await loadHistory(1);await loadCreds()}};$('cleanup').onclick=async()=>{if(confirm('清理不存在凭证的遗留规则和历史？')){const d=await api('/orphans/cleanup',{method:'POST'});alert('已清理 '+(d.deleted||[]).length+' 个');await loadCreds()}};if(!key)auth();else loadCreds().catch(e=>alert(e.message));
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const PLUGIN_SEGMENT = "/codex-header-rewrite";
+const SESSION_KEY = "chr.key";
+
+const store = {
+  creds: [], selected: "", rule: null, warnings: [], defaults: {},
+  history: [], page: 1, totalPages: 0, selectedRecord: "", busy: false,
+};
+
+/* ---------- management key ----------------------------------------------
+   The host manager keeps its key in localStorage, obfuscated behind an
+   enc::v1/enc::v2 envelope. Reading it means the panel adds no second
+   credential lifecycle; the manual dialog is only a fallback for hosts whose
+   storage this panel cannot read. */
+const MANAGER_NAMESPACE = "cli-proxy-api-webui::secure-storage";
+const ENVELOPE = /^enc::(v\d+)::/u;
+
+function envelopeVersion(value) {
+  const match = typeof value === "string" ? ENVELOPE.exec(value) : null;
+  return match ? match[1] : "";
+}
+function obfuscationKey(version) {
+  const host = globalThis.location?.host || "";
+  const agent = globalThis.navigator?.userAgent || "";
+  if (version === "v2") return host ? `${MANAGER_NAMESPACE}|v2|${host}` : `${MANAGER_NAMESPACE}|v2`;
+  return host || agent ? `${MANAGER_NAMESPACE}|${host}|${agent}` : MANAGER_NAMESPACE;
+}
+function decodeEnvelope(value) {
+  const version = envelopeVersion(value);
+  if (!version) return value;
+  if (version !== "v1" && version !== "v2") return "";
+  try {
+    const raw = atob(value.slice(9));
+    const key = new TextEncoder().encode(obfuscationKey(version));
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i) ^ key[i % key.length];
+    return new TextDecoder().decode(out);
+  } catch { return ""; }
+}
+function extractKey(value) {
+  let current = decodeEnvelope(value);
+  for (let depth = 0; depth < 3 && typeof current === "string"; depth += 1) {
+    try { current = JSON.parse(current); } catch { break; }
+  }
+  // An undecoded envelope is not a credential: forwarding one produces a 401
+  // that looks like the operator's key changed when it did not.
+  if (typeof current === "string") return envelopeVersion(current) ? "" : current;
+  if (!current || typeof current !== "object") return "";
+  return current.managementKey || current.state?.managementKey || (typeof current.value === "string" ? current.value : "");
+}
+function hostKey() {
+  for (const name of ["cli-proxy-auth", "managementKey"]) {
+    const key = extractKey(globalThis.localStorage?.getItem?.(name) || "");
+    if (key) return key;
+  }
+  return "";
+}
+function currentKey() {
+  return hostKey() || sessionStorage.getItem(SESSION_KEY) || "";
+}
+function renderKeyChip() {
+  const source = hostKey() ? "宿主" : (sessionStorage.getItem(SESSION_KEY) ? "本页" : "");
+  $("keyChip").hidden = !source;
+  $("keyChipText").textContent = `密钥来自${source}`;
+}
+
+/* ---------- management base --------------------------------------------
+   Routes are declared by the plugin, so the plugin segment is fixed; only the
+   host's own prefix is derived, which keeps the panel working when the host
+   registers an architecture-suffixed plugin id or mounts a different prefix. */
+function managementBase() {
+  const path = String(globalThis.location?.pathname || "").split(/[?#]/u, 1)[0];
+  const marker = "/resource/plugins/";
+  const index = path.indexOf(marker);
+  if (index >= 0) return `${path.slice(0, index)}/management${PLUGIN_SEGMENT}`;
+  return `/v0/management${PLUGIN_SEGMENT}`;
+}
+
+async function api(path, options = {}) {
+  const key = currentKey();
+  if (!key) { openKeyDialog(); throw new Error("需要 CLIProxyAPI 管理密钥"); }
+  const headers = { Accept: "application/json", Authorization: `Bearer ${key}` };
+  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  const response = await fetch(managementBase() + path, {
+    ...options,
+    credentials: "same-origin",
+    headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  if (response.status === 401 || response.status === 403) {
+    sessionStorage.removeItem(SESSION_KEY);
+    renderKeyChip();
+    openKeyDialog(hostKey() ? "宿主保存的密钥被拒绝，请确认宿主管理面板仍处于登录状态，或在此填写密钥。" : "");
+    throw new Error("管理密钥无效或权限不足");
+  }
+  const payload = await response.json().catch(() => ({ error: "响应不是合法 JSON" }));
+  if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+  return payload;
+}
+
+let toastTimer = 0;
+function toast(message, bad = false) {
+  const node = $("toast");
+  node.textContent = message;
+  node.classList.toggle("bad", bad);
+  node.dataset.show = "true";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { node.dataset.show = "false"; }, bad ? 5200 : 2600);
+}
+const fail = (error) => toast(error?.message || String(error), true);
+
+/* ---------- header row editors ---------------------------------------- */
+function headerRow(container, name = "", value = null) {
+  const row = document.createElement("div");
+  row.className = value === null ? "hrow single" : "hrow";
+  const key = document.createElement("input");
+  key.className = "hk mono";
+  key.placeholder = "X-Header";
+  key.spellcheck = false;
+  key.value = name;
+  row.append(key);
+  if (value !== null) {
+    const val = document.createElement("input");
+    val.className = "hv mono";
+    val.placeholder = "value";
+    val.spellcheck = false;
+    val.value = value;
+    row.append(val);
+  }
+  const remove = document.createElement("button");
+  remove.className = "quiet icon";
+  remove.title = "删除这一行";
+  remove.innerHTML = '<svg class="i"><use href="#i-x"/></svg>';
+  remove.addEventListener("click", () => row.remove());
+  row.append(remove);
+  container.append(row);
+  return key;
+}
+function readPairs(container) {
+  const out = {};
+  for (const row of container.querySelectorAll(".hrow")) {
+    const name = row.querySelector(".hk").value.trim();
+    if (name) out[name] = row.querySelector(".hv").value;
+  }
+  return out;
+}
+function readNames(container) {
+  const out = [];
+  for (const row of container.querySelectorAll(".hrow")) {
+    const name = row.querySelector(".hk").value.trim();
+    if (name) out.push(name);
+  }
+  return out;
+}
+
+/* ---------- credentials ----------------------------------------------- */
+async function loadCredentials() {
+  const icon = $("refreshIcon");
+  icon.classList.add("spin");
+  try {
+    const payload = await api("/credentials");
+    store.creds = payload.credentials || [];
+    store.defaults = payload.test_defaults || {};
+    applyTestDefaults();
+    renderCredentials();
+    if (!store.selected && store.creds[0]) await selectCredential(store.creds[0].auth_index);
+  } finally {
+    icon.classList.remove("spin");
+  }
+}
+function renderCredentials() {
+  const list = $("credList");
+  list.replaceChildren();
+  if (!store.creds.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "宿主里没有 Codex 凭证";
+    list.append(empty);
+    return;
+  }
+  for (const cred of store.creds) {
+    const button = document.createElement("button");
+    button.className = "cred";
+    button.setAttribute("aria-current", String(cred.auth_index === store.selected));
+    button.innerHTML = `<b>${esc(cred.label || cred.name || cred.auth_index)}</b>
+      <span class="cred-meta"><i class="dot${cred.has_rule ? " on" : ""}"></i>${cred.has_rule ? "规则已保存" : "无规则"}
+      <span class="num">· ${cred.history_count || 0}/50 条</span></span>`;
+    button.addEventListener("click", () => selectCredential(cred.auth_index).catch(fail));
+    list.append(button);
+  }
+}
+async function selectCredential(authIndex) {
+  store.selected = authIndex;
+  store.selectedRecord = "";
+  renderCredentials();
+  const cred = store.creds.find((item) => item.auth_index === authIndex);
+  $("ruleTitle").textContent = `Header 规则 · ${cred?.label || cred?.name || authIndex}`;
+  await Promise.all([loadRule(), loadHistory(1)]);
+}
+
+/* ---------- rule ------------------------------------------------------ */
+async function loadRule() {
+  if (!store.selected) return;
+  const payload = await api(`/rule?auth_index=${encodeURIComponent(store.selected)}`);
+  store.rule = payload.rule;
+  store.warnings = payload.warnings || [];
+  $("ruleEnabled").checked = !!store.rule.enabled;
+  $("setRows").replaceChildren();
+  for (const [name, value] of Object.entries(store.rule.set || {})) headerRow($("setRows"), name, value);
+  $("removeRows").replaceChildren();
+  for (const name of store.rule.remove || []) headerRow($("removeRows"), name);
+  const updated = store.rule.updated_at && !store.rule.updated_at.startsWith("0001")
+    ? `更新于 ${new Date(store.rule.updated_at).toLocaleString()}` : "尚未保存";
+  $("ruleUpdated").textContent = updated;
+  renderWarnings(store.warnings);
+}
+function renderWarnings(warnings) {
+  const box = $("ruleWarn");
+  box.hidden = !warnings.length;
+  if (warnings.length) {
+    $("ruleWarnText").innerHTML = `${warnings.map((name) => `<code>${esc(name)}</code>`).join("、")} 属于 Codex executor 的特殊字段，改写可能在 interceptor 之后被覆盖。`;
+  }
+}
+function collectRule() {
+  return { auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")) };
+}
+
+/* ---------- diff: the panel's one signature view ----------------------
+   Rows are keyed by header name across both sides so a value change lines up
+   instead of appearing as an unrelated add and drop. */
+function diffRows(before, after) {
+  const names = new Map();
+  const put = (name) => names.set(name.toLowerCase(), name);
+  Object.keys(before || {}).forEach(put);
+  Object.keys(after || {}).forEach(put);
+  const rows = [];
+  for (const [lower, name] of [...names.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const oldValue = pickHeader(before, lower);
+    const newValue = pickHeader(after, lower);
+    let kind = "same";
+    if (oldValue === null && newValue !== null) kind = "set";
+    else if (oldValue !== null && newValue === null) kind = "gone";
+    else if (oldValue !== newValue) kind = "over";
+    rows.push({ name, oldValue, newValue, kind });
+  }
+  return rows;
+}
+function pickHeader(headers, lowerName) {
+  if (!headers) return null;
+  for (const [name, values] of Object.entries(headers)) {
+    if (name.toLowerCase() === lowerName) return Array.isArray(values) ? values.join(", ") : String(values);
+  }
+  return null;
+}
+const MARKS = { set: "+", gone: "−", over: "~", same: "·" };
+function renderDiff(before, after, sourceLabel) {
+  $("diffSource").textContent = sourceLabel;
+  const rows = diffRows(before, after);
+  const box = $("diffBox");
+  if (!rows.length) {
+    box.innerHTML = '<div class="empty">没有 Header 可比较。预览规则或选择一条历史记录。</div>';
+    return;
+  }
+  const changed = rows.filter((row) => row.kind !== "same").length;
+  $("diffCount").textContent = changed ? `${changed} 处改动` : "无改动";
+  box.innerHTML = `<div class="diff">
+    <div class="diff-head"><div></div><div>改写前</div><div>改写后</div></div>
+    ${rows.map((row) => row.kind === "same"
+      ? `<div class="diff-row is-same">
+          <div class="diff-mark">${MARKS.same}</div>
+          <div class="span"><span class="k">${esc(row.name)}</span><br><span class="v">${esc(row.newValue ?? "—")}</span></div>
+        </div>`
+      : `<div class="diff-row is-${row.kind}">
+          <div class="diff-mark">${MARKS[row.kind]}</div>
+          <div><span class="k">${esc(row.name)}</span><br><span class="v old">${esc(row.oldValue ?? "—")}</span></div>
+          <div><span class="k">${esc(row.name)}</span><br><span class="v">${esc(row.newValue ?? "—")}</span></div>
+        </div>`).join("")}
+  </div>`;
+}
+function renderResponseHeaders(headers, extra = "") {
+  const box = $("diffResponse");
+  const entries = Object.entries(headers || {});
+  if (!entries.length && !extra) { box.replaceChildren(); return; }
+  box.innerHTML = `${extra}${entries.length ? `<div class="sub">上游 Response Header</div>
+    <div class="diff">${entries.sort((a, b) => a[0].localeCompare(b[0])).map(([name, values]) => `<div class="diff-row is-same">
+      <div class="diff-mark">·</div><div><span class="k">${esc(name)}</span></div>
+      <div><span class="v">${esc(Array.isArray(values) ? values.join(", ") : values)}</span></div></div>`).join("")}</div>` : ""}`;
+}
+
+/* ---------- model chain ----------------------------------------------- */
+function modelChain(record) {
+  const requested = record.requested_model || "";
+  const sent = record.model || record.sent_model || "";
+  const upstream = record.upstream_model || "";
+  const parts = [];
+  if (requested && requested !== sent) parts.push(`<span>${esc(requested)}</span><span class="sep">→</span>`);
+  parts.push(`<span>${esc(sent || "—")}</span>`);
+  parts.push('<span class="sep">→</span>');
+  parts.push(upstream ? `<span>${esc(upstream)}</span>` : '<span class="tag flat">未声明</span>');
+  if (record.model_mismatch === true) parts.push('<span class="tag bad">模型不一致</span>');
+  else if (record.model_mismatch === false) parts.push('<span class="tag ok">一致</span>');
+  if (record.model_conflict) parts.push('<span class="tag warn">上游声明冲突</span>');
+  return `<div class="chain">${parts.join("")}</div>`;
+}
+const OUTCOMES = {
+  succeeded: ["ok", "成功"], failed: ["bad", "失败"], error: ["bad", "错误"],
+  switched: ["warn", "已换凭证"], in_flight: ["flat", "进行中"], dry_run: ["flat", "预览"],
+};
+function outcomeTag(outcome) {
+  const [kind, label] = OUTCOMES[outcome] || ["flat", outcome || "—"];
+  return `<span class="tag ${kind}">${esc(label)}</span>`;
+}
+
+/* ---------- history --------------------------------------------------- */
+async function loadHistory(page = 1) {
+  if (!store.selected) return;
+  const payload = await api(`/history?auth_index=${encodeURIComponent(store.selected)}&page=${page}`);
+  store.history = payload.items || [];
+  store.page = payload.page || 1;
+  store.totalPages = payload.total_pages || 0;
+  $("historyMeta").textContent = payload.total ? `${payload.total} 条 · 第 ${store.page}/${store.totalPages} 页` : "";
+  const body = $("historyBody");
+  body.replaceChildren();
+  if (!store.history.length) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">暂无记录</td></tr>';
+    $("pager").replaceChildren();
+    return;
+  }
+  for (const record of store.history) {
+    const row = document.createElement("tr");
+    row.setAttribute("aria-selected", String(record.id === store.selectedRecord));
+    row.innerHTML = `<td class="num">${esc(new Date(record.started_at).toLocaleString())}</td>
+      <td>${record.origin === "test" ? '<span class="tag flat">测试</span>' : '<span class="muted">线上</span>'}</td>
+      <td>${modelChain(record)}</td>
+      <td>${outcomeTag(record.outcome)}${record.error ? ` <span class="muted">${esc(record.error)}</span>` : ""}</td>
+      <td class="num" style="text-align:right">${record.status_code || "—"}</td>`;
+    row.addEventListener("click", () => showRecord(record));
+    body.append(row);
+  }
+  renderPager();
+}
+function renderPager() {
+  const pager = $("pager");
+  pager.replaceChildren();
+  if (store.totalPages <= 1) return;
+  const button = (label, page, disabled, current) => {
+    const node = document.createElement("button");
+    node.className = "quiet page";
+    node.innerHTML = label;
+    node.disabled = !!disabled;
+    if (current) node.setAttribute("aria-current", "true");
+    node.addEventListener("click", () => loadHistory(page).catch(fail));
+    return node;
+  };
+  pager.append(button('<svg class="i"><use href="#i-left"/></svg>', store.page - 1, store.page <= 1));
+  for (let page = 1; page <= store.totalPages; page += 1) pager.append(button(String(page), page, false, page === store.page));
+  pager.append(button('<svg class="i"><use href="#i-right"/></svg>', store.page + 1, store.page >= store.totalPages));
+}
+function showRecord(record) {
+  store.selectedRecord = record.id;
+  for (const row of $("historyBody").querySelectorAll("tr")) row.setAttribute("aria-selected", "false");
+  renderDiff(record.before_headers, record.after_headers, `历史 · ${new Date(record.started_at).toLocaleString()}`);
+  const meta = `<div class="notice info" style="margin-bottom:12px"><svg class="i"><use href="#i-info"/></svg><span>
+    ${modelChain(record)}<span class="muted">Request ID ${esc(record.request_id || "—")} · ${esc(record.source_format || "—")} · ${record.stream ? "流式" : "非流式"}</span></span></div>`;
+  renderResponseHeaders(record.response_headers, meta);
+  $("diffBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  loadHistory(store.page).catch(fail);
+}
+
+/* ---------- test request ---------------------------------------------- */
+function applyTestDefaults() {
+  if (!$("testModel").value) $("testModel").value = store.defaults.model || "";
+  if (!$("testPrompt").value) $("testPrompt").value = store.defaults.prompt || "";
+  $("testEndpoint").placeholder = store.defaults.endpoint || "";
+}
+function collectTest(dryRun) {
+  const request = {
+    auth_index: store.selected,
+    model: $("testModel").value.trim(),
+    prompt: $("testPrompt").value,
+    reasoning_effort: $("testEffort").value,
+    stream: $("testStream").checked,
+    apply_rule: $("testApplyRule").checked,
+    headers: readPairs($("testHeaderRows")),
+    remove: readNames($("testRemoveRows")),
+    dry_run: dryRun,
+    record: dryRun ? false : $("testRecord").checked,
+  };
+  const endpoint = $("testEndpoint").value.trim();
+  if (endpoint) request.endpoint = endpoint;
+  const body = $("testBody").value.trim();
+  if (body) request.body = body;
+  return request;
+}
+async function runTest(dryRun) {
+  if (!store.selected) { toast("先选择一个 Codex 凭证", true); return; }
+  if (!dryRun) {
+    const cred = store.creds.find((item) => item.auth_index === store.selected);
+    const name = cred?.label || cred?.name || store.selected;
+    if (!confirm(`将使用「${name}」向 Codex 发送一次真实请求，会消耗该凭证的真实额度。继续？`)) return;
+  }
+  const button = dryRun ? $("previewBtn") : $("sendBtn");
+  button.disabled = true;
+  if (!dryRun) $("sendIcon").classList.add("spin");
+  try {
+    const payload = await api("/test", { method: "POST", body: collectTest(dryRun) });
+    renderTestResult(payload.result, dryRun);
+    if (payload.result?.recorded) await Promise.all([loadHistory(1), loadCredentials()]);
+  } catch (error) {
+    fail(error);
+  } finally {
+    button.disabled = false;
+    $("sendIcon").classList.remove("spin");
+  }
+}
+function renderTestResult(result, dryRun) {
+  if (!result) return;
+  renderDiff(result.before_headers, result.after_headers, dryRun ? "预览 · 未发送请求" : `测试请求 · ${new Date().toLocaleString()}`);
+  const bits = [];
+  bits.push(outcomeTag(result.outcome));
+  if (!dryRun) {
+    bits.push(`<span class="tag flat">HTTP ${result.status_code || "—"}</span>`);
+    bits.push(`<span class="tag flat"><svg class="i"><use href="#i-clock"/></svg><span class="num">${result.latency_ms ?? 0} ms</span></span>`);
+    if (result.recorded) bits.push('<span class="tag flat">已记入历史</span>');
+  }
+  bits.push(`<span class="tag ${result.rule_applied ? "ok" : "flat"}">${result.rule_applied ? "规则已套用" : "未套用规则"}</span>`);
+  const summary = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${bits.join("")}</div>`;
+  const chain = dryRun ? "" : `<div style="margin-top:10px">${modelChain({ model: result.sent_model, upstream_model: result.upstream_model, model_mismatch: result.model_mismatch, model_conflict: result.model_conflict })}</div>`;
+  const errors = [result.error, result.error_preview].filter(Boolean)
+    .map((text) => `<div class="notice warn" style="margin-top:10px"><svg class="i"><use href="#i-alert"/></svg><span class="mono">${esc(text)}</span></div>`).join("");
+  $("testOutcome").innerHTML = `${summary}${chain}${errors}
+    <div class="muted" style="margin-top:8px">${esc(result.method || "POST")} ${esc(result.endpoint || "")}</div>`;
+  if (!dryRun) renderResponseHeaders(result.response_headers);
+  else renderResponseHeaders(null);
+}
+
+/* ---------- key dialog ------------------------------------------------ */
+function openKeyDialog(hint = "") {
+  if (hint) $("keyDialogHint").textContent = hint;
+  $("keyOverlay").dataset.open = "true";
+  $("keyInput").value = sessionStorage.getItem(SESSION_KEY) || "";
+  $("keyInput").focus();
+}
+function closeKeyDialog() { $("keyOverlay").dataset.open = "false"; }
+
+/* ---------- wiring ---------------------------------------------------- */
+$("refreshBtn").addEventListener("click", () => loadCredentials().catch(fail));
+$("addSet").addEventListener("click", () => headerRow($("setRows"), "", "").focus());
+$("addRemove").addEventListener("click", () => headerRow($("removeRows")).focus());
+$("addTestHeader").addEventListener("click", () => headerRow($("testHeaderRows"), "", "").focus());
+$("addTestRemove").addEventListener("click", () => headerRow($("testRemoveRows")).focus());
+$("reloadRule").addEventListener("click", () => loadRule().then(() => toast("已恢复服务器版本")).catch(fail));
+$("saveRule").addEventListener("click", async () => {
+  if (!store.selected) return;
+  try {
+    const payload = await api("/rule", { method: "PUT", body: collectRule() });
+    store.rule = payload.rule;
+    renderWarnings(payload.warnings || []);
+    await Promise.all([loadRule(), loadCredentials()]);
+    toast("已保存，下一请求立即生效");
+  } catch (error) { fail(error); }
+});
+$("deleteRule").addEventListener("click", async () => {
+  if (!store.selected || !confirm("删除该凭证的 Header 规则？历史记录不受影响。")) return;
+  try {
+    await api(`/rule?auth_index=${encodeURIComponent(store.selected)}`, { method: "DELETE" });
+    await Promise.all([loadRule(), loadCredentials()]);
+    toast("规则已删除");
+  } catch (error) { fail(error); }
+});
+$("clearHistory").addEventListener("click", async () => {
+  if (!store.selected || !confirm("清空该凭证的全部请求历史？")) return;
+  try {
+    await api("/history/clear", { method: "POST", body: { auth_index: store.selected } });
+    await Promise.all([loadHistory(1), loadCredentials()]);
+    toast("历史已清空");
+  } catch (error) { fail(error); }
+});
+$("cleanupBtn").addEventListener("click", async () => {
+  if (!confirm("清理宿主中已不存在的凭证留下的规则与历史？")) return;
+  try {
+    const payload = await api("/orphans/cleanup", { method: "POST" });
+    await loadCredentials();
+    toast(`已清理 ${(payload.deleted || []).length} 个遗留凭证`);
+  } catch (error) { fail(error); }
+});
+$("previewBtn").addEventListener("click", () => runTest(true));
+$("sendBtn").addEventListener("click", () => runTest(false));
+$("keyBtn").addEventListener("click", () => openKeyDialog());
+$("keyCancel").addEventListener("click", closeKeyDialog);
+$("keyConnect").addEventListener("click", () => {
+  const key = $("keyInput").value.trim();
+  if (!key) return;
+  sessionStorage.setItem(SESSION_KEY, key);
+  renderKeyChip();
+  closeKeyDialog();
+  loadCredentials().catch(fail);
+});
+$("keyInput").addEventListener("keydown", (event) => { if (event.key === "Enter") $("keyConnect").click(); });
+$("keyOverlay").addEventListener("click", (event) => { if (event.target === $("keyOverlay")) closeKeyDialog(); });
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeKeyDialog(); });
+
+renderKeyChip();
+renderDiff(null, null, "预览规则或选择一条历史");
+if (currentKey()) loadCredentials().catch(fail);
+else openKeyDialog();
 </script>
-</body></html>
+</body>
+</html>

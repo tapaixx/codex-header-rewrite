@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -20,6 +21,7 @@ const (
 	apiHistoryPath         = "/codex-header-rewrite/history"
 	apiHistoryClearPath    = "/codex-header-rewrite/history/clear"
 	apiOrphansCleanupPath  = "/codex-header-rewrite/orphans/cleanup"
+	apiTestPath            = "/codex-header-rewrite/test"
 )
 
 type credentialView struct {
@@ -41,6 +43,7 @@ func registerManagement() managementRegistration {
 		{Method: http.MethodGet, Path: apiHistoryPath, Description: "List credential header history"},
 		{Method: http.MethodPost, Path: apiHistoryClearPath, Description: "Clear credential history"},
 		{Method: http.MethodPost, Path: apiOrphansCleanupPath, Description: "Remove orphaned credential data"},
+		{Method: http.MethodPost, Path: apiTestPath, Description: "Run a header rewrite test request"},
 	}, Resources: []resourceRoute{{Path: resourceIndexPath, Menu: pluginName, Description: "Codex credential header rewrite and history"}}}
 }
 
@@ -71,7 +74,13 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 		if err != nil {
 			return jsonError(http.StatusBadGateway, err.Error()), nil
 		}
-		return jsonResponse(http.StatusOK, map[string]any{"credentials": items}), nil
+		// The panel renders the test form from these defaults so the form and
+		// the server never drift apart.
+		return jsonResponse(http.StatusOK, map[string]any{"credentials": items, "test_defaults": map[string]any{
+			"model":    defaultTestModel,
+			"endpoint": defaultTestURL,
+			"prompt":   defaultTestPrompt,
+		}}), nil
 	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiRulePath):
 		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
 		if authIndex == "" {
@@ -148,6 +157,20 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"cleared": strings.TrimSpace(body.AuthIndex)}), nil
+	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiTestPath):
+		var body testRequest
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return jsonError(http.StatusBadRequest, "invalid JSON body"), nil
+		}
+		result, err := runTestRequest(body)
+		if err != nil {
+			var testErr *testRequestError
+			if errors.As(err, &testErr) {
+				return jsonError(testErr.status, testErr.message), nil
+			}
+			return jsonError(http.StatusInternalServerError, err.Error()), nil
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"result": result}), nil
 	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiOrphansCleanupPath):
 		deleted, err := cleanupOrphans()
 		if err != nil {

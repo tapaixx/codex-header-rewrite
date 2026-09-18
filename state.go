@@ -176,7 +176,7 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 		}
 		clears = append([]string(nil), rule.Remove...)
 	}
-	pr.current = &pendingAttempt{historyRecord: historyRecord{ID: fmt.Sprintf("%s#%d", req.RequestID, pr.attempts), RequestID: req.RequestID, Attempt: pr.attempts, AuthIndex: authIndex, AuthID: authID, CredentialName: cred.Name, CredentialLabel: cred.Label, Model: req.Model, RequestedModel: req.RequestedModel, SourceFormat: req.SourceFormat, Stream: req.Stream, StartedAt: time.Now().UTC(), BeforeHeaders: redactHeaders(before), AfterHeaders: redactHeaders(after), Outcome: "in_flight"}}
+	pr.current = &pendingAttempt{historyRecord: historyRecord{ID: fmt.Sprintf("%s#%d", req.RequestID, pr.attempts), RequestID: req.RequestID, Attempt: pr.attempts, AuthIndex: authIndex, AuthID: authID, CredentialName: cred.Name, CredentialLabel: cred.Label, Model: req.Model, RequestedModel: req.RequestedModel, SourceFormat: req.SourceFormat, Stream: req.Stream, StartedAt: time.Now().UTC(), BeforeHeaders: redactHeaders(before), AfterHeaders: redactHeaders(after), Outcome: "in_flight", Origin: originLive}}
 	state.mu.Unlock()
 	return requestInterceptResponse{Headers: updates, ClearHeaders: clears}, nil
 }
@@ -190,18 +190,22 @@ func observeResponse(req responseInterceptRequest) {
 	}
 	pr.current.ResponseHeaders = redactHeaders(req.ResponseHeaders)
 	pr.current.StatusCode = req.StatusCode
+	// The body is read here only to learn which model the upstream served. The
+	// model name is kept; the body itself is not stored anywhere.
+	pr.current.models.observeBody(req.Body)
 }
 func observeStreamHeaders(req streamChunkInterceptRequest) {
-	if req.ChunkIndex != streamChunkHeaderInitIndex {
-		return
-	}
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	pr := state.pending[req.RequestID]
 	if pr == nil || pr.current == nil {
 		return
 	}
-	pr.current.ResponseHeaders = redactHeaders(req.ResponseHeaders)
+	if req.ChunkIndex == streamChunkHeaderInitIndex {
+		pr.current.ResponseHeaders = redactHeaders(req.ResponseHeaders)
+		return
+	}
+	pr.current.models.observeStream(req.Body)
 }
 func completeRequest(c requestCompletion) {
 	state.mu.Lock()
@@ -232,6 +236,10 @@ func finalizeLocked(attempt *pendingAttempt) {
 		return
 	}
 	attempt.persisted = true
+	attempt.models.flushStream()
+	attempt.UpstreamModel = attempt.models.model()
+	attempt.ModelMismatch = modelMismatch(sentModel(attempt.Model, attempt.RequestedModel), attempt.UpstreamModel)
+	attempt.ModelConflict = attempt.models.conflicted()
 	rec := attempt.historyRecord
 	rec.BeforeHeaders = redactHeaders(rec.BeforeHeaders)
 	rec.AfterHeaders = redactHeaders(rec.AfterHeaders)
