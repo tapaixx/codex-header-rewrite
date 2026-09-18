@@ -1,0 +1,9 @@
+dist/
+*.so
+*.dylib
+*.dll
+*.h
+*.db
+*.db.lock
+*.tmp
+.DS_Store
