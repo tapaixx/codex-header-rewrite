@@ -1,61 +1,89 @@
 name: Release
 
+# Verification lives in CI, which runs against this same commit on the same
+# push. Repeating the suite here only re-ran the same gate for no extra signal.
+# This workflow builds, packages, checks the artifacts it produced, and
+# publishes.
 on:
   push:
-    tags: ['v*']
+    tags:
+      - v*
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - arch: amd64
-            cc: gcc
-          - arch: arm64
-            cc: aarch64-linux-gnu-gcc
+    timeout-minutes: 30
+    env:
+      RELEASE_DIR: ${{ github.workspace }}/.release
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
           go-version: '1.23.12'
-          cache: true
-      - name: Install arm64 cross compiler
-        if: matrix.arch == 'arm64'
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-      - run: go mod tidy
-      - run: go test ./...
-      - run: go test -tags localtest -modfile=go.localtest.mod ./...
-      - name: Build
-        env:
-          CGO_ENABLED: '1'
-          GOOS: linux
-          GOARCH: ${{ matrix.arch }}
-          CC: ${{ matrix.cc }}
-        run: |
-          mkdir -p dist
-          go build -trimpath -buildmode=c-shared -o dist/codex-header-rewrite-linux-${GOARCH}.so .
-          rm -f dist/*.h
-          cd dist
-          sha256sum *.so > SHA256SUMS-${GOARCH}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ matrix.arch }}
-          path: dist/*
+          cache: false
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
+      - name: Resolve semantic version from tag
+        id: version
+        shell: bash
+        run: |
+          case "$GITHUB_REF_NAME" in
+            v*) ;;
+            *) printf 'release workflow requires a v-prefixed tag\n' >&2; exit 1 ;;
+          esac
+          printf 'version=%s\n' "${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install release toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross unzip zip
+
+      - name: Resolve module dependencies
+        run: go mod tidy
+
+      - name: Prepare release directory
+        run: mkdir -p "$RELEASE_DIR"
+
+      - name: Build Linux amd64 plugin
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.pluginVersion=${VERSION}" -buildmode=c-shared -o "$RELEASE_DIR/codex-header-rewrite-linux-amd64.so" .
+
+      - name: Build Linux arm64 plugin
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w -X main.pluginVersion=${VERSION}" -buildmode=c-shared -o "$RELEASE_DIR/codex-header-rewrite-linux-arm64.so" .
+
+      - name: Discard generated C headers
+        run: rm -f "$RELEASE_DIR"/*.h
+
+      - name: Package release assets
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/package-release.sh "$VERSION" "$RELEASE_DIR"
+
+      - name: Smoke-test release layout
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/package_release_test.sh "$RELEASE_DIR" "$VERSION"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          pattern: release-*
-          merge-multiple: true
-          path: dist
-      - run: cat dist/SHA256SUMS-* > dist/SHA256SUMS
-      - env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/*.so dist/SHA256SUMS --generate-notes --title "${GITHUB_REF_NAME}"
+          tag_name: ${{ github.ref_name }}
+          name: Codex Header Rewrite ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            ${{ github.workspace }}/.release/codex-header-rewrite_${{ steps.version.outputs.version }}_linux_amd64.zip
+            ${{ github.workspace }}/.release/codex-header-rewrite_${{ steps.version.outputs.version }}_linux_arm64.zip
+            ${{ github.workspace }}/.release/checksums.txt
+            ${{ github.workspace }}/.release/codex-header-rewrite-linux-amd64.so
+            ${{ github.workspace }}/.release/codex-header-rewrite-linux-arm64.so
+            ${{ github.workspace }}/.release/codex-header-rewrite-linux-amd64.so.sha256
+            ${{ github.workspace }}/.release/codex-header-rewrite-linux-arm64.so.sha256

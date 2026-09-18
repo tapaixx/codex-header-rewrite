@@ -1,0 +1,13 @@
+{
+  "id": "codex-header-rewrite",
+  "name": "codex-header-rewrite",
+  "version": "0.1.0",
+  "repository": "https://github.com/tapaixx/codex-header-rewrite",
+  "license": "MIT",
+  "platforms": {
+    "linux": [
+      "amd64",
+      "arm64"
+    ]
+  }
+}

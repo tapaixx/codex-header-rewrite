@@ -10,7 +10,6 @@ import (
 const (
 	pluginID        = "codex-header-rewrite"
 	pluginName      = "Codex Header Rewrite"
-	pluginVersion   = "0.1.0"
 	defaultDataPath = "plugins/data/codex-header-rewrite.db"
 	historyLimit    = 50
 	pageSize        = 10

@@ -7,3 +7,9 @@ dist/
 *.db.lock
 *.tmp
 .DS_Store
+
+# Local release output
+/.release/
+/release/
+/checksums.txt
+/codex-header-rewrite_*.zip

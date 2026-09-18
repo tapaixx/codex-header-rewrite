@@ -23,6 +23,16 @@ jobs:
       - run: go vet ./...
       - run: go vet -tags localtest -modfile=go.localtest.mod ./...
       - run: CGO_ENABLED=1 go build -buildmode=c-shared -o /tmp/codex-header-rewrite.so .
+      # Release only builds, packages, and publishes; the packaging rules
+      # themselves are gated here, on stub libraries so no cross toolchain is
+      # needed.
+      - name: Check release packaging rules
+        run: |
+          stub_dir=$(mktemp -d)
+          : > "$stub_dir/codex-header-rewrite-linux-amd64.so"
+          : > "$stub_dir/codex-header-rewrite-linux-arm64.so"
+          scripts/package-release.sh 0.0.0-ci "$stub_dir"
+          scripts/package_release_test.sh "$stub_dir" 0.0.0-ci
 
   build-linux:
     runs-on: ubuntu-latest
