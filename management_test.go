@@ -88,6 +88,28 @@ func TestTurnStatePoolAPIExposesCredentialAndValue(t *testing.T) {
 	}
 }
 
+func TestTurnStatePoolAPIFiltersByCredential(t *testing.T) {
+	resetState(t)
+	resetTurnStates(t)
+	state.mu.Lock()
+	noteTurnStateMintLocked(fernetToken(0x80, time.Now(), 1), "idx-a", "A", "gpt-5.6-luna", "team")
+	noteTurnStateMintLocked(fernetToken(0x80, time.Now().Add(time.Second), 1), "idx-b", "B", "gpt-5.6-luna", "team")
+	state.mu.Unlock()
+
+	resp, _ := handleManagementAPI(managementRequest{Method: "GET", Path: "/v0/management" + apiTurnStatesPath, Query: url.Values{"auth_index": {"idx-a"}}})
+	var payload struct {
+		TurnStates []struct {
+			AuthIndex string `json:"auth_index"`
+		} `json:"turn_states"`
+	}
+	if err := json.Unmarshal(resp.Body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.TurnStates) != 1 || payload.TurnStates[0].AuthIndex != "idx-a" {
+		t.Fatalf("filtered states=%#v", payload.TurnStates)
+	}
+}
+
 func TestCredentialRefreshInvalidatesPlanWhenIdentityChanges(t *testing.T) {
 	resetState(t)
 	state.mu.Lock()

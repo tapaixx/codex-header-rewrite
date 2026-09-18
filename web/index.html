@@ -360,6 +360,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
         <div class="sub">回合状态守卫</div>
         <label class="switch"><input type="checkbox" id="ruleStripTurnState"><span>不可复用时移除 X-Codex-Turn-State</span></label>
         <div class="muted" style="margin-top:5px">跨号、跨模型的 blob 上游都无法复用。开启后，确认来源不是当前「凭证 + 模型」时摘掉它；过期只提示不摘除（窗口是经验值）。</div>
+        <div class="notice info" id="injectNotice" style="margin-top:10px"><svg class="i"><use href="#i-info"/></svg><span>自动注入也归「启用改写」这个开关管：只有开着的凭证才会从不降智池里补 <code class="mono">X-Codex-Turn-State</code>；关掉就按客户端原样透传。你在上面手工写了这个 Header（设置或移除）时，以你写的为准，不再注入。</span></div>
         <div class="notice warn" id="ruleWarn" hidden style="margin-top:14px"><svg class="i"><use href="#i-alert"/></svg><span id="ruleWarnText"></span></div>
         <div class="actions">
           <button class="destructive" id="deleteRule"><svg class="i"><use href="#i-trash"/></svg>删除规则</button>
@@ -868,6 +869,7 @@ function turnStateTags(record) {
     tags.push(`<span class="tag warn" title="超过复用窗口（经验值 1 小时）">已过期${record.turn_state_age_seconds ? ` ${Math.round(record.turn_state_age_seconds / 60)} 分钟` : ""}</span>`);
   }
   if (record.turn_state_stripped) tags.push('<span class="tag warn">已摘除</span>');
+  if (record.turn_state_injected) tags.push('<span class="tag ok" title="本次请求的 X-Codex-Turn-State 由插件从不降智池注入">已注入</span>');
   if (record.turn_state_minted?.pooled) tags.push('<span class="tag ok">不降智 · 已入池</span>');
   else if (record.turn_state_minted?.non_degraded === false) tags.push('<span class="tag bad">疑似降智 · 未入池</span>');
   else if (record.turn_state_minted) tags.push('<span class="tag warn">套餐未知 · 未入池</span>');

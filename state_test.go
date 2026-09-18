@@ -365,6 +365,68 @@ func TestOwnTurnStateEchoIsNotFlagged(t *testing.T) {
 	}
 }
 
+func TestStatePoolInjectsOnlyForMatchingCredentialAndModel(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.credentials["idx-b"] = credentialSnapshot{AuthIndex: "idx-b", AuthID: "auth-b", Provider: "codex", Name: "b.json"}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true}
+	state.rules["idx-b"] = headerRule{AuthIndex: "idx-b", Enabled: true}
+	state.mu.Unlock()
+	blob := fernetToken(0x80, time.Now(), 1)
+	state.mu.Lock()
+	if !noteTurnStateMintLocked(blob, "idx-a", "A", "gpt-5.6-luna", "team") {
+		state.mu.Unlock()
+		t.Fatal("fixture state did not enter the pool")
+	}
+	state.mu.Unlock()
+
+	hit, err := interceptAfter(requestInterceptRequest{RequestID: "hit", Model: "gpt-5.6-luna", Metadata: map[string]any{"selected_auth_index": "idx-a", "selected_auth_id": "auth-a"}})
+	if err != nil || hit.Headers.Get(turnStateHeader) != blob {
+		t.Fatalf("matching request headers=%#v err=%v", hit.Headers, err)
+	}
+	wrongCredential, err := interceptAfter(requestInterceptRequest{RequestID: "wrong-credential", Model: "gpt-5.6-luna", Metadata: map[string]any{"selected_auth_index": "idx-b", "selected_auth_id": "auth-b"}})
+	if err != nil || wrongCredential.Headers.Get(turnStateHeader) != "" {
+		t.Fatalf("other credential received state: headers=%#v err=%v", wrongCredential.Headers, err)
+	}
+	wrongModel, err := interceptAfter(requestInterceptRequest{RequestID: "wrong-model", Model: "gpt-5.6-sol", Metadata: map[string]any{"selected_auth_index": "idx-a", "selected_auth_id": "auth-a"}})
+	if err != nil || wrongModel.Headers.Get(turnStateHeader) != "" {
+		t.Fatalf("other model received state: headers=%#v err=%v", wrongModel.Headers, err)
+	}
+}
+
+func TestStatePoolInjectionReplacesAConflictingClientState(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true}
+	state.mu.Unlock()
+	pooled := fernetToken(0x80, time.Now(), 1)
+	client := fernetToken(0x80, time.Now().Add(-time.Minute), 1)
+	state.mu.Lock()
+	noteTurnStateMintLocked(pooled, "idx-a", "A", "gpt-5.6-luna", "team")
+	state.mu.Unlock()
+
+	response, err := interceptAfter(requestInterceptRequest{
+		RequestID: "replace", Model: "gpt-5.6-luna",
+		Headers:  http.Header{turnStateHeader: {client}},
+		Metadata: map[string]any{"selected_auth_index": "idx-a", "selected_auth_id": "auth-a"},
+	})
+	if err != nil || response.Headers.Get(turnStateHeader) != pooled {
+		t.Fatalf("pooled state did not replace client state: response=%#v err=%v", response, err)
+	}
+	state.mu.Lock()
+	attempt := state.pending["replace"].current
+	state.mu.Unlock()
+	if attempt.BeforeHeaders.Get(turnStateHeader) != client || attempt.AfterHeaders.Get(turnStateHeader) != pooled {
+		t.Fatalf("history did not preserve replacement: before=%q after=%q", attempt.BeforeHeaders.Get(turnStateHeader), attempt.AfterHeaders.Get(turnStateHeader))
+	}
+}
+
 func TestNonCodexIgnored(t *testing.T) {
 	resetState(t)
 	state.mu.Lock()
@@ -379,5 +441,149 @@ func TestNonCodexIgnored(t *testing.T) {
 	state.mu.Unlock()
 	if pr == nil || pr.current != nil {
 		t.Fatalf("non-codex current=%#v", pr)
+	}
+}
+
+// poolFixture arms the pool for one credential and model, and returns the blob.
+func poolFixture(t *testing.T, rule headerRule) string {
+	t.Helper()
+	blob := fernetToken(0x80, time.Now(), 1)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	if rule.AuthIndex != "" {
+		state.rules["idx-a"] = rule
+	}
+	ok := noteTurnStateMintLocked(blob, "idx-a", "A", "gpt-5.6-luna", "team")
+	state.mu.Unlock()
+	if !ok {
+		t.Fatal("fixture state did not enter the pool")
+	}
+	return blob
+}
+
+func injectTestRequest(t *testing.T, id string, headers http.Header) requestInterceptResponse {
+	t.Helper()
+	response, err := interceptAfter(requestInterceptRequest{RequestID: id, Model: "gpt-5.6-luna", Headers: headers,
+		Metadata: map[string]any{"selected_auth_index": "idx-a", "selected_auth_id": "auth-a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return response
+}
+
+// Injection is part of rewriting, so a credential whose rule switch is off is
+// passed through untouched even when the pool has a qualified state for it.
+func TestPoolDoesNotInjectWhileTheRuleIsOff(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: false})
+	if got := injectTestRequest(t, "rule-off", nil).Headers.Get(turnStateHeader); got != "" {
+		t.Fatalf("a disabled rule must not inject: %q", got)
+	}
+	state.mu.Lock()
+	attempt := state.pending["rule-off"].current
+	state.mu.Unlock()
+	if attempt.TurnStateInjected {
+		t.Fatal("history claimed an injection that did not happen")
+	}
+}
+
+func TestPoolDoesNotInjectWithoutAnyRule(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	poolFixture(t, headerRule{})
+	if got := injectTestRequest(t, "no-rule", nil).Headers.Get(turnStateHeader); got != "" {
+		t.Fatalf("a credential with no rule must not inject: %q", got)
+	}
+}
+
+func TestEnabledRuleInjectsAndRecordsIt(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	blob := poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true})
+	if got := injectTestRequest(t, "rule-on", nil).Headers.Get(turnStateHeader); got != blob {
+		t.Fatalf("headers=%q want the pooled state", got)
+	}
+	state.mu.Lock()
+	attempt := state.pending["rule-on"].current
+	state.mu.Unlock()
+	if !attempt.TurnStateInjected {
+		t.Fatal("an injection has to be visible in history")
+	}
+	if attempt.AfterHeaders.Get(turnStateHeader) != blob {
+		t.Fatalf("after view=%q", attempt.AfterHeaders.Get(turnStateHeader))
+	}
+}
+
+// An operator who pinned this header by hand outranks the pool.
+func TestRuleSetOfTheStateHeaderWinsOverInjection(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true, Set: map[string]string{"x-codex-turn-state": "operator-pinned"}})
+	response := injectTestRequest(t, "pinned", nil)
+	if got := response.Headers.Get(turnStateHeader); got != "operator-pinned" {
+		t.Fatalf("the operator's own value must survive: %q", got)
+	}
+	state.mu.Lock()
+	attempt := state.pending["pinned"].current
+	state.mu.Unlock()
+	if attempt.TurnStateInjected {
+		t.Fatal("a pinned value is not an injection")
+	}
+}
+
+// And an operator who removed it wants it gone, not refilled from the pool.
+func TestRuleRemovalOfTheStateHeaderIsNotRefilled(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	client := fernetToken(0x80, time.Now().Add(-time.Minute), 1)
+	poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true, Remove: []string{"X-Codex-Turn-State"}})
+	response := injectTestRequest(t, "removed", http.Header{turnStateHeader: {client}})
+	if got := response.Headers.Get(turnStateHeader); got != "" {
+		t.Fatalf("a removed header must not be refilled: %q", got)
+	}
+	cleared := false
+	for _, name := range response.ClearHeaders {
+		if strings.EqualFold(name, turnStateHeader) {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Fatalf("the removal must still reach the host: %#v", response.ClearHeaders)
+	}
+	state.mu.Lock()
+	attempt := state.pending["removed"].current
+	state.mu.Unlock()
+	if attempt.AfterHeaders.Get(turnStateHeader) != "" || attempt.TurnStateInjected {
+		t.Fatalf("after view=%q injected=%v", attempt.AfterHeaders.Get(turnStateHeader), attempt.TurnStateInjected)
+	}
+}
+
+// The guard and the pool work together: an unusable echo is replaced rather
+// than merely dropped, and the response never both sets and clears one header.
+func TestGuardStripAndInjectionDoNotContradictEachOther(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	foreign := fernetToken(0x80, time.Now(), 2)
+	state.mu.Lock()
+	state.credentials["idx-b"] = credentialSnapshot{AuthIndex: "idx-b", AuthID: "auth-b", Provider: "codex", Name: "b.json"}
+	noteTurnStateMintLocked(foreign, "idx-b", "B", "gpt-5.6-luna", "team")
+	state.mu.Unlock()
+	pooled := poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true, StripForeignTurnState: true})
+
+	response := injectTestRequest(t, "replace-foreign", http.Header{turnStateHeader: {foreign}})
+	if got := response.Headers.Get(turnStateHeader); got != pooled {
+		t.Fatalf("the foreign echo should be replaced by the pooled state: %q", got)
+	}
+	for _, name := range response.ClearHeaders {
+		if strings.EqualFold(name, turnStateHeader) {
+			t.Fatal("one response must not both set and clear the same header")
+		}
 	}
 }

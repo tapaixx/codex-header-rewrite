@@ -45,7 +45,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.7.0.so` | `codex-header-rewrite` | `0.7.0` |
+| `codex-header-rewrite-v0.7.1.so` | `codex-header-rewrite` | `0.7.1` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -58,7 +58,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.7.0.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.7.1.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -194,6 +194,17 @@ curl -s -H "Authorization: Bearer <management-key>" \
 每个新收到的 state 都先按凭证套餐分类：Team 长度 **≤ 332** 字符、Pro 长度 **≤ 292** 字符是不降智；超限值只留在历史并标为疑似降智，套餐未知也不入池。合格 state 每拿到一次就铸造一次，同一「凭证 + 模型」只保留时间最新的一条；乱序到达不会让旧值覆盖新值。
 
 数据来自 `GET /codex-header-rewrite/turn-states`。面板同时显示凭证名称、稳定的 `auth_index`、模型、长度/阈值，并可在原行展开 state 具体值。池把原始 state 持久化在配置的 bbolt `data_path`（CPA 工作目录为 `/CLIProxyAPI` 时，默认落在 `/CLIProxyAPI/plugins/data/codex-header-rewrite.db`），因此 CPA 重建、重启或插件更新后会恢复；插件目录随容器更新被整体替换时，应把 `/CLIProxyAPI/plugins/data` 挂到持久卷。
+
+### 自动注入
+
+池里有合格 state 时，插件可以直接把它写进出站请求的 `X-Codex-Turn-State`，这样这一轮就走在一个已知不降智的回合状态上。注入有四道门，缺一不注入：
+
+1. **该凭证的「启用改写」开关是开着的** —— 注入属于改写的一部分，开关关着的凭证按客户端原样透传，插件一个字节都不动。
+2. **凭证与模型都对得上** —— 只用同一「凭证 + 模型」池里的那条，跨号或跨模型的一律不用。
+3. **套餐已知且该 state 合格** —— 套餐读不到、或长度超过该套餐阈值（疑似降智）都不注入。
+4. **你没有在规则里手工写过这个 Header** —— 规则里「设置/覆盖」里钉了值，以你钉的为准；规则里「移除」了它，就保持移除，不会被池悄悄填回去。
+
+命中注入的记录在历史里标「已注入」，差异视图里也能看到该 Header 是被新增或替换的。客户端本来带了一个不可复用的回带值时，注入会直接替换它 —— 一次响应里不会同时出现"设置"和"移除"同一个 Header 这种自相矛盾的指令。
 
 ### 信封解码
 

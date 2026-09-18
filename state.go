@@ -226,6 +226,27 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 		deleteHeaderFold(after, turnStateHeader)
 		stripped = true
 	}
+	// Injection is part of rewriting, so it follows the same switch: a credential
+	// whose rule is off is left exactly as the client sent it. And within an
+	// enabled rule, anything the operator said about this header by hand
+	// outranks the pool -- a pinned value stays pinned, and a removal stays
+	// removed rather than being quietly refilled.
+	injected := false
+	if hasRule && rule.Enabled && !ruleMentionsHeader(rule, turnStateHeader) {
+		if pooled, ok := turnStateForInjectionLocked(authIndex, sentModel(req.Model, req.RequestedModel), cred.PlanType); ok {
+			if updates == nil {
+				updates = make(http.Header)
+			}
+			updates.Set(turnStateHeader, pooled.blob)
+			deleteHeaderFold(after, turnStateHeader)
+			after.Set(turnStateHeader, pooled.blob)
+			// The guard may have queued this header for removal a moment ago.
+			// Clearing and setting the same header in one response is undefined,
+			// so the removal is withdrawn in favour of the replacement.
+			clears = removeHeaderNameFold(clears, turnStateHeader)
+			injected = true
+		}
+	}
 	pr.current = &pendingAttempt{historyRecord: historyRecord{ID: fmt.Sprintf("%s#%d", req.RequestID, pr.attempts), RequestID: req.RequestID, Attempt: pr.attempts, AuthIndex: authIndex, AuthID: authID, CredentialName: cred.Name, CredentialLabel: cred.Label, CredentialPlan: cred.PlanType, Model: req.Model, RequestedModel: req.RequestedModel, SourceFormat: req.SourceFormat, Stream: req.Stream, StartedAt: time.Now().UTC(), BeforeHeaders: redactHeaders(before), AfterHeaders: redactHeaders(after), Outcome: "in_flight", Origin: originLive}}
 	if echoed {
 		info := echo.info
@@ -243,9 +264,36 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 			pr.current.TurnStateOriginModel = echo.originModel
 		}
 	}
+	pr.current.TurnStateInjected = injected
 	pr.current.TurnStateSessionID = clientSessionID(req.Headers)
 	state.mu.Unlock()
 	return requestInterceptResponse{Headers: updates, ClearHeaders: clears}, nil
+}
+
+// ruleMentionsHeader reports whether the operator named this header in the
+// rule, either by pinning a value or by removing it.
+func ruleMentionsHeader(rule headerRule, target string) bool {
+	for name := range rule.Set {
+		if strings.EqualFold(strings.TrimSpace(name), target) {
+			return true
+		}
+	}
+	for _, name := range rule.Remove {
+		if strings.EqualFold(strings.TrimSpace(name), target) {
+			return true
+		}
+	}
+	return false
+}
+
+func removeHeaderNameFold(names []string, target string) []string {
+	out := names[:0]
+	for _, name := range names {
+		if !strings.EqualFold(name, target) {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 func observeResponse(req responseInterceptRequest) {

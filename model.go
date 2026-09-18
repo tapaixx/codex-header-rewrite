@@ -87,7 +87,10 @@ type historyRecord struct {
 	TurnStateExpired      bool           `json:"turn_state_expired,omitempty"`
 	TurnStateAgeSeconds   int64          `json:"turn_state_age_seconds,omitempty"`
 	TurnStateStripped     bool           `json:"turn_state_stripped,omitempty"`
-	TurnStateSessionID    string         `json:"turn_state_session_id,omitempty"`
+	// TurnStateInjected reports that the plugin supplied the header from the
+	// pool rather than passing through whatever the client sent.
+	TurnStateInjected  bool   `json:"turn_state_injected,omitempty"`
+	TurnStateSessionID string `json:"turn_state_session_id,omitempty"`
 }
 
 const (

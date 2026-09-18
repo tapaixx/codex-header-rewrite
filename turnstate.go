@@ -467,3 +467,17 @@ func recentTurnStatesLocked() []turnStateOrigin {
 	sort.Slice(out, func(i, j int) bool { return out[i].mintedAt.After(out[j].mintedAt) })
 	return out
 }
+
+// turnStateForInjectionLocked returns the qualified state scoped to the exact
+// selected credential and after-auth model. Callers hold state.mu.
+func turnStateForInjectionLocked(authIndex, model, plan string) (turnStateOrigin, bool) {
+	origin, ok := state.turnStateLatest[turnStateLatestKey(authIndex, model)]
+	if !ok || origin.blob == "" {
+		return turnStateOrigin{}, false
+	}
+	qualified, _, knownPlan := nonDegradedTurnState(origin.blob, plan)
+	if !knownPlan || !qualified {
+		return turnStateOrigin{}, false
+	}
+	return origin, true
+}

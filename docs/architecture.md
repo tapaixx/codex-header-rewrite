@@ -62,6 +62,20 @@ request.intercept_after
 
 blob 本身是 Fernet token：`1 字节版本 + 8 字节大端时间戳 + 16 字节 IV + 16n 字节密文 + 32 字节 HMAC`。插件只读前 9 字节与总长度，不持有密钥、不解密密文。
 
+## 出站注入
+
+```text
+request.intercept_after
+ -> 规则开关关闭或无规则 -> 不注入（按客户端原样透传）
+ -> 规则开关开启
+    -> 规则里手工写过 X-Codex-Turn-State（设置或移除） -> 不注入（operator 优先）
+    -> 否则查池 (auth_index + model)
+       -> 套餐已知且 state 合格 -> 写入 updates，并从 ClearHeaders 撤回同名移除
+       -> 否则不注入
+```
+
+注入与守卫摘除共享同一个 Header：守卫刚把不可复用的回带值排入 ClearHeaders 时，注入会撤回那条移除再写入新值，避免一次响应里同时下发"设置"和"清除"同一 Header 的矛盾指令。命中注入会在 attempt 上记 `turn_state_injected`。
+
 ## 测试请求
 
 测试请求不走 CPA 的 provider executor 转发链路，而是插件调用 CPA 宿主的 `host.http.do`：

@@ -170,8 +170,12 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 		state.mu.Lock()
 		recent := recentTurnStatesLocked()
 		state.mu.Unlock()
+		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
 		items := make([]map[string]any, 0, len(recent))
 		for _, origin := range recent {
+			if authIndex != "" && origin.authIndex != authIndex {
+				continue
+			}
 			age := int64(time.Since(origin.mintedAt).Seconds())
 			items = append(items, map[string]any{
 				"state":       origin.blob,
