@@ -1212,15 +1212,20 @@ function renderTestResult(result, dryRun) {
     if (result.recorded) tags.push('<span class="tag flat">已记入历史</span>');
   }
   tags.push(`<span class="tag ${result.rule_applied ? "ok" : "flat"}">${result.rule_applied ? "规则已套用" : "未套用规则"}</span>`);
+  if (result.lite_mode) {
+    tags.push(`<span class="tag ${result.lite_adjusted ? "ok" : "warn"}">Lite 模式${result.lite_adjusted ? "已适配" : "未适配"}</span>`);
+  }
   if (!result.codex_backend) {
     tags.push(`<span class="tag ${result.credential_attached ? "warn" : "flat"}">${result.credential_attached ? "自定义端点，已附带凭证" : "自定义端点，未附带凭证"}</span>`);
   } else if (!result.credential_attached) {
     tags.push('<span class="tag flat">未附带凭证</span>');
   }
   const chain = dryRun ? "" : `<div style="margin-top:10px">${modelChain({ model: result.sent_model, upstream_model: result.upstream_model, model_mismatch: result.model_mismatch, model_conflict: result.model_conflict })}</div>`;
+  const notes = (result.notes || [])
+    .map((text) => `<div class="notice info" style="margin-top:10px"><svg class="i"><use href="#i-info"/></svg><span>${esc(text)}</span></div>`).join("");
   const errors = [result.error, result.error_preview].filter(Boolean)
     .map((text) => `<div class="notice warn" style="margin-top:10px"><svg class="i"><use href="#i-alert"/></svg><span class="mono">${esc(text)}</span></div>`).join("");
-  $("testOutcome").innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${tags.join("")}</div>${chain}${errors}
+  $("testOutcome").innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${tags.join("")}</div>${chain}${notes}${errors}
     <div class="muted" style="margin-top:9px">${esc(result.method || "POST")} ${esc(result.endpoint || "")}</div>`;
   renderResponseHeaders(dryRun ? null : result.response_headers);
   $("diffPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });

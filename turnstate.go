@@ -83,11 +83,28 @@ func turnStateLatestKey(authIndex, model string) string {
 	return authIndex + "\x00" + strings.TrimSpace(model)
 }
 
-func headerTurnState(h http.Header) string {
+// headerValueFold reads a header without trusting the map's key casing.
+// http.Header.Get canonicalizes the key it looks up but not the keys already in
+// the map, and canonicalization is not identity for every name: X-OpenAI-... is
+// stored canonically as X-Openai-..., so a map built with the literal spelling
+// is invisible to Get. Any header map that did not come from Set is suspect.
+func headerValueFold(h http.Header, name string) string {
 	if h == nil {
 		return ""
 	}
-	return strings.TrimSpace(h.Get(turnStateHeader))
+	if value := strings.TrimSpace(h.Get(name)); value != "" {
+		return value
+	}
+	for key, values := range h {
+		if strings.EqualFold(key, name) && len(values) > 0 {
+			return strings.TrimSpace(values[0])
+		}
+	}
+	return ""
+}
+
+func headerTurnState(h http.Header) string {
+	return headerValueFold(h, turnStateHeader)
 }
 
 // clientSessionID matches the header the Codex client uses to identify a
@@ -97,7 +114,7 @@ func clientSessionID(h http.Header) string {
 		return ""
 	}
 	for _, name := range []string{"Session-Id", "Session_id"} {
-		if value := strings.TrimSpace(h.Get(name)); value != "" {
+		if value := headerValueFold(h, name); value != "" {
 			return value
 		}
 	}

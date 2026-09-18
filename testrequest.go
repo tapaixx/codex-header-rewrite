@@ -64,8 +64,14 @@ type testResult struct {
 	Outcome         string      `json:"outcome"`
 	Error           string      `json:"error,omitempty"`
 	ErrorPreview    string      `json:"error_preview,omitempty"`
-	Recorded        bool        `json:"recorded"`
-	HistoryID       string      `json:"history_id,omitempty"`
+	// LiteMode reports that the outgoing headers select Codex responses lite,
+	// which constrains the body; LiteAdjusted reports that this plugin brought a
+	// generated body in line with it.
+	LiteMode     bool     `json:"lite_mode,omitempty"`
+	LiteAdjusted bool     `json:"lite_adjusted,omitempty"`
+	Notes        []string `json:"notes,omitempty"`
+	Recorded     bool     `json:"recorded"`
+	HistoryID    string   `json:"history_id,omitempty"`
 }
 
 type testRequestError struct {
@@ -101,7 +107,7 @@ func runTestRequest(req testRequest) (testResult, error) {
 		return testResult{}, err
 	}
 	carriesCredential := attachCredential(req, codexBackend)
-	body, model, err := resolveTestBody(req)
+	body, model, rawBody, err := resolveTestBody(req)
 	if err != nil {
 		return testResult{}, err
 	}
@@ -133,6 +139,19 @@ func runTestRequest(req testRequest) (testResult, error) {
 	}
 	result.BeforeHeaders = redactHeaders(base)
 	result.AfterHeaders = redactHeaders(outgoing)
+
+	if isLiteRequest(outgoing, body) {
+		result.LiteMode = true
+		if rawBody {
+			// The operator typed this body, so it is sent as written. Saying so
+			// beats a 400 from the upstream naming a field they did not set.
+			result.Notes = append(result.Notes, "Lite 模式：原始请求体按原样发送，未自动调整。上游要求 reasoning.context=all_turns 且 parallel_tool_calls=false。")
+		} else if adjusted, changed := applyLiteBody(body); changed {
+			body = adjusted
+			result.LiteAdjusted = true
+			result.Notes = append(result.Notes, "Lite 模式：已把 reasoning.context 设为 all_turns 并将 parallel_tool_calls 设为 false。")
+		}
+	}
 
 	if req.DryRun {
 		result.Outcome = "dry_run"
@@ -420,19 +439,19 @@ func testWireProfile(headers http.Header, codexBackend bool) *hostWireProfile {
 // resolveTestBody returns the request body and the model that body sends. A
 // raw body override wins, and its own model field is what the mismatch check
 // compares against.
-func resolveTestBody(req testRequest) ([]byte, string, error) {
-	model := strings.TrimSpace(req.Model)
+func resolveTestBody(req testRequest) (body []byte, model string, rawBody bool, err error) {
+	model = strings.TrimSpace(req.Model)
 	if raw := strings.TrimSpace(req.Body); raw != "" {
 		var declared struct {
 			Model string `json:"model"`
 		}
-		if err := json.Unmarshal([]byte(raw), &declared); err != nil {
-			return nil, "", badTestRequest("body is not valid JSON")
+		if errDecode := json.Unmarshal([]byte(raw), &declared); errDecode != nil {
+			return nil, "", false, badTestRequest("body is not valid JSON")
 		}
 		if declared.Model != "" {
 			model = strings.TrimSpace(declared.Model)
 		}
-		return []byte(raw), model, nil
+		return []byte(raw), model, true, nil
 	}
 	if model == "" {
 		model = defaultTestModel
@@ -451,7 +470,7 @@ func resolveTestBody(req testRequest) ([]byte, string, error) {
 		effort = "low"
 	case "minimal", "low", "medium", "high":
 	default:
-		return nil, "", badTestRequest("reasoning_effort must be minimal, low, medium, or high")
+		return nil, "", false, badTestRequest("reasoning_effort must be minimal, low, medium, or high")
 	}
 	payload := map[string]any{
 		"model":        model,
@@ -465,11 +484,72 @@ func resolveTestBody(req testRequest) ([]byte, string, error) {
 		"parallel_tool_calls": true,
 		"reasoning":           map[string]any{"effort": effort},
 	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, "", err
+	encoded, errEncode := json.Marshal(payload)
+	if errEncode != nil {
+		return nil, "", false, errEncode
 	}
-	return body, model, nil
+	return encoded, model, false, nil
+}
+
+// Codex "responses lite" is selected by a request header, and the upstream then
+// requires the body to match it: reasoning.context must be all_turns and
+// parallel_tool_calls must be false. A header template copied from real Codex
+// traffic carries that header, so a generated body that ignores it is rejected
+// with an unsupported_value error that names the body, not the header.
+const (
+	liteHeader      = "X-OpenAI-Internal-Codex-Responses-Lite"
+	liteMetadataKey = "ws_request_header_x_openai_internal_codex_responses_lite"
+)
+
+func isLiteRequest(headers http.Header, body []byte) bool {
+	if strings.EqualFold(headerValueFold(headers, liteHeader), "true") {
+		return true
+	}
+	var envelope struct {
+		ClientMetadata map[string]any `json:"client_metadata"`
+	}
+	if json.Unmarshal(body, &envelope) != nil {
+		return false
+	}
+	switch value := envelope.ClientMetadata[liteMetadataKey].(type) {
+	case bool:
+		return value
+	case string:
+		return strings.EqualFold(strings.TrimSpace(value), "true")
+	}
+	return false
+}
+
+// applyLiteBody brings a generated body in line with lite mode. It reports
+// whether anything changed so the panel can say the request was adapted rather
+// than silently differing from what the form showed.
+func applyLiteBody(body []byte) ([]byte, bool) {
+	var payload map[string]any
+	if json.Unmarshal(body, &payload) != nil || payload == nil {
+		return body, false
+	}
+	changed := false
+	reasoning, _ := payload["reasoning"].(map[string]any)
+	if reasoning == nil {
+		reasoning = map[string]any{}
+	}
+	if context, _ := reasoning["context"].(string); context != "all_turns" {
+		reasoning["context"] = "all_turns"
+		payload["reasoning"] = reasoning
+		changed = true
+	}
+	if parallel, ok := payload["parallel_tool_calls"].(bool); !ok || parallel {
+		payload["parallel_tool_calls"] = false
+		changed = true
+	}
+	if !changed {
+		return body, false
+	}
+	adjusted, err := json.Marshal(payload)
+	if err != nil {
+		return body, false
+	}
+	return adjusted, true
 }
 
 // recordTestAttempt files a test request in the same history the live path

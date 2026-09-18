@@ -45,7 +45,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.6.0.so` | `codex-header-rewrite` | `0.6.0` |
+| `codex-header-rewrite-v0.6.1.so` | `codex-header-rewrite` | `0.6.1` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -58,7 +58,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.6.0.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.6.1.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -133,6 +133,24 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 - 插件调用 CPA 的 `host.http.do`，所以 socket、代理配置与请求观测都由 CPA 宿主负责；但它**不经过 Codex Provider Executor**。Codex 端点额外使用稳定的 HTTP/1.1 Header 顺序并关闭自动压缩注入，这改善 HTTP 线级一致性，但不等于完整复刻 Codex CLI 的 TLS 指纹。
 - 端点可使用任意 `https` 地址，明文 `http` 仅允许 loopback。Codex 后端默认附带所选凭证；其他端点默认不读也不带凭证，只有操作者明确勾选后才发送 access token 与账号 ID。
+
+## Codex Responses Lite
+
+`X-OpenAI-Internal-Codex-Responses-Lite: true` 不只是一个 Header —— 它选中了一种模式，上游会据此**校验请求体**：
+
+- `reasoning.context` 必须是 `all_turns`
+- `parallel_tool_calls` 必须是 `false`
+
+从历史载入 Header 模板时会把真实 Codex 请求里的这个 Header 一起带上，而插件自动生成的请求体原本不满足上面两条，于是上游返回：
+
+```json
+{"error":{"message":"X-OpenAI-Internal-Codex-Responses-Lite requires `reasoning.context` to be `all_turns`.",
+ "type":"invalid_request_error","param":"reasoning.context","code":"unsupported_value"}}
+```
+
+现在插件在**最终出站 Header**（含规则改写后新增的）里检测到 Lite 模式时，会把自动生成的请求体调整为 `reasoning.context=all_turns` 且 `parallel_tool_calls=false`，并在结果里标出「Lite 模式已适配」。`reasoning.effort` 等你设置的值保持不变。
+
+**原始 JSON 请求体不会被改写** —— 那是你手写的内容，插件只提示「Lite 模式：原始请求体按原样发送」，由你决定怎么改。Lite 模式也可以由请求体里的 `client_metadata.ws_request_header_x_openai_internal_codex_responses_lite` 选中，这种写法同样能被识别。
 
 ## 模型一致性核对
 

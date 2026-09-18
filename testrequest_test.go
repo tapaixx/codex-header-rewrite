@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -361,5 +362,135 @@ func TestManagementTestRouteReturnsAResult(t *testing.T) {
 	resp, _ = handleManagementAPI(managementRequest{Method: "POST", Path: "/v0/management" + apiTestPath, Body: bad})
 	if resp.StatusCode != 400 {
 		t.Fatalf("missing auth_index should be a 400, got %d %s", resp.StatusCode, resp.Body)
+	}
+}
+
+// The lite header selects a mode the upstream enforces on the body. A header
+// template copied from real Codex traffic carries it, so a generated body that
+// ignores it is rejected with an error naming a field the operator never set.
+func TestLiteHeaderAdaptsTheGeneratedBody(t *testing.T) {
+	resetState(t)
+	testStubCredential(t, stubCredentialDocument)
+	var sent hostHTTPRequest
+	hostHTTPDoFunc = func(request hostHTTPRequest) (hostHTTPResponse, error) {
+		sent = request
+		return hostHTTPResponse{StatusCode: 200, Body: []byte(`{"model":"gpt-5.6-luna"}`)}, nil
+	}
+	result, err := runTestRequest(testRequest{AuthIndex: "idx-a", Model: "gpt-5.6-luna",
+		Headers: map[string]string{liteHeader: "true"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.LiteMode || !result.LiteAdjusted || len(result.Notes) == 0 {
+		t.Fatalf("adaptation not reported: %#v", result)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(sent.Body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	reasoning, _ := payload["reasoning"].(map[string]any)
+	if reasoning["context"] != "all_turns" {
+		t.Fatalf("reasoning=%#v", reasoning)
+	}
+	if reasoning["effort"] != "low" {
+		t.Fatalf("the operator's effort must survive the adaptation: %#v", reasoning)
+	}
+	if parallel, _ := payload["parallel_tool_calls"].(bool); parallel {
+		t.Fatalf("lite requires parallel_tool_calls false: %#v", payload["parallel_tool_calls"])
+	}
+}
+
+func TestWithoutTheLiteHeaderTheBodyIsUntouched(t *testing.T) {
+	resetState(t)
+	testStubCredential(t, stubCredentialDocument)
+	var sent hostHTTPRequest
+	hostHTTPDoFunc = func(request hostHTTPRequest) (hostHTTPResponse, error) {
+		sent = request
+		return hostHTTPResponse{StatusCode: 200, Body: []byte(`{"model":"m"}`)}, nil
+	}
+	result, err := runTestRequest(testRequest{AuthIndex: "idx-a", Model: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.LiteMode || result.LiteAdjusted {
+		t.Fatalf("a normal request is not lite: %#v", result)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(sent.Body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if reasoning, _ := payload["reasoning"].(map[string]any); reasoning["context"] != nil {
+		t.Fatalf("reasoning.context must not be invented: %#v", reasoning)
+	}
+	if parallel, _ := payload["parallel_tool_calls"].(bool); !parallel {
+		t.Fatal("parallel_tool_calls should keep its normal value outside lite mode")
+	}
+}
+
+// The rule itself can add the header, so the decision has to read the final
+// outgoing headers rather than the operator's ad-hoc ones.
+func TestLiteHeaderAddedByTheRuleStillAdaptsTheBody(t *testing.T) {
+	resetState(t)
+	testStubCredential(t, stubCredentialDocument)
+	if _, err := saveRule(headerRule{AuthIndex: "idx-a", Enabled: true, Set: map[string]string{liteHeader: "true"}}); err != nil {
+		t.Fatal(err)
+	}
+	var sent hostHTTPRequest
+	hostHTTPDoFunc = func(request hostHTTPRequest) (hostHTTPResponse, error) {
+		sent = request
+		return hostHTTPResponse{StatusCode: 200, Body: []byte(`{"model":"m"}`)}, nil
+	}
+	result, err := runTestRequest(testRequest{AuthIndex: "idx-a", Model: "m", ApplyRule: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.LiteAdjusted {
+		t.Fatalf("result=%#v", result)
+	}
+	var payload map[string]any
+	_ = json.Unmarshal(sent.Body, &payload)
+	if reasoning, _ := payload["reasoning"].(map[string]any); reasoning["context"] != "all_turns" {
+		t.Fatalf("payload=%#v", payload)
+	}
+}
+
+func TestLiteModeIsAlsoDetectedFromBodyMetadata(t *testing.T) {
+	headers := http.Header{}
+	body := []byte(`{"client_metadata":{"ws_request_header_x_openai_internal_codex_responses_lite":"true"}}`)
+	if !isLiteRequest(headers, body) {
+		t.Fatal("the websocket metadata mirror selects lite mode too")
+	}
+	if isLiteRequest(headers, []byte(`{"client_metadata":{}}`)) {
+		t.Fatal("absent metadata is not lite mode")
+	}
+	if !isLiteRequest(http.Header{liteHeader: {"TRUE"}}, nil) {
+		t.Fatal("the header comparison is case-insensitive")
+	}
+	if isLiteRequest(http.Header{liteHeader: {"false"}}, nil) {
+		t.Fatal("an explicit false is not lite mode")
+	}
+}
+
+// A body the operator typed is sent as written; the mismatch is reported
+// instead of being silently rewritten.
+func TestRawBodyIsNotRewrittenForLiteMode(t *testing.T) {
+	resetState(t)
+	testStubCredential(t, stubCredentialDocument)
+	var sent hostHTTPRequest
+	hostHTTPDoFunc = func(request hostHTTPRequest) (hostHTTPResponse, error) {
+		sent = request
+		return hostHTTPResponse{StatusCode: 200, Body: []byte(`{"model":"m"}`)}, nil
+	}
+	raw := `{"model":"m","parallel_tool_calls":true}`
+	result, err := runTestRequest(testRequest{AuthIndex: "idx-a", Body: raw,
+		Headers: map[string]string{liteHeader: "true"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(sent.Body) != raw {
+		t.Fatalf("raw body was rewritten: %s", sent.Body)
+	}
+	if !result.LiteMode || result.LiteAdjusted || len(result.Notes) == 0 {
+		t.Fatalf("the mismatch should be reported, not fixed: %#v", result)
 	}
 }
