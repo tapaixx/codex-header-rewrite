@@ -39,18 +39,28 @@ checksums.txt
 
 每个 zip 根目录只有一个 `codex-header-rewrite.so`，由宿主安装器解压并校验。
 
-**手动安装**：下载对应架构的 `.so`，重命名放入插件目录：
+**手动安装**：下载对应架构的 `.so`，**必须重命名**后放入插件目录。文件名不是随便起的
+—— CLIProxyAPI 直接从文件名解析插件 ID 和已安装版本：
 
-```text
-plugins/codex-header-rewrite.so
-```
+| 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
+|---|---|---|
+| `codex-header-rewrite-v0.3.0.so` | `codex-header-rewrite` | `0.3.0` |
+| `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
+| `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
-直接下载时用同一 Release 的 `codex-header-rewrite-linux-<arch>.so.sha256`
-校验，例如：
+第三行是个陷阱：Release 里的 `.so` 资产就叫这个名字，**原样丢进插件目录，ID 会变成
+`codex-header-rewrite-linux-amd64`**，和商店 `registry.json` 里的 `codex-header-rewrite`
+对不上，商店就会一直认为这个插件没装，也不会提示更新。
+
+推荐带版本号安装，宿主不加载插件时也能读到版本：
 
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
+sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.3.0.so
 ```
+
+升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
 
 CPA 配置：
 
@@ -66,6 +76,33 @@ plugins:
 ```
 
 面板优先复用宿主管理面板已保存的管理密钥，读不到时才会提示填写；手工填写的 Key 只保存在当前标签页的 `sessionStorage`，不写入插件数据库。
+
+## 商店为什么可能看不到更新
+
+CLIProxyAPI 判断「有更新」要同时满足三件事，任何一条不成立都不会提示：
+
+1. **插件 ID 对得上**。ID 来自插件目录里的文件名（见上表），必须等于 registry 里的
+   `codex-header-rewrite`。
+2. **已安装版本非空且低于 Release 版本**。已安装版本取自文件名的 `-v<version>` 后缀；
+   插件被成功加载时，改用插件注册上报的版本。版本为空时宿主**一律不提示更新**。
+3. **安装来源可确认**。手动安装且只有一个商店提供该 ID 时按「假定同源」放行；如果配置里
+   记录的来源和当前商店不一致，更新会被禁用。
+
+另外宿主会把「最新 Release 版本」缓存 **1 小时**（GitHub 接口失败时还有退避重试），
+所以刚发完版的一段时间内商店仍可能显示旧版本，这是缓存不是故障。
+
+自检命令：
+
+```bash
+curl -s -H "Authorization: Bearer <management-key>" \
+  http://<cpa-host>/v0/management/plugin-store \
+  | jq '.plugins[] | select(.id=="codex-header-rewrite")
+        | {installed, installed_version, install_source_status, version, update_available}'
+```
+
+`installed=false` 说明文件名导致 ID 对不上；`installed_version` 为空说明文件名没带版本
+且插件未成功加载；`install_source_status` 是 `different` 或 `unknown` 说明来源不匹配，
+需要先卸载再从商店安装。
 
 ## 测试请求
 
