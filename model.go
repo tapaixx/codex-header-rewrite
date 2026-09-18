@@ -23,22 +23,24 @@ type headerRule struct {
 	Set       map[string]string `json:"set"`
 	Remove    []string          `json:"remove"`
 	// StripForeignTurnState removes an echoed X-Codex-Turn-State when this
-	// plugin knows a different credential minted it. Detection alone only
+	// plugin knows it came from a different credential. Detection alone only
 	// reports the contradiction; this is what stops it reaching the upstream.
 	StripForeignTurnState bool      `json:"strip_foreign_turn_state"`
 	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 type credentialSnapshot struct {
-	AuthIndex   string `json:"auth_index"`
-	AuthID      string `json:"auth_id,omitempty"`
-	Name        string `json:"name,omitempty"`
-	Label       string `json:"label,omitempty"`
-	Provider    string `json:"provider,omitempty"`
-	Type        string `json:"type,omitempty"`
-	Status      string `json:"status,omitempty"`
-	Disabled    bool   `json:"disabled,omitempty"`
-	Unavailable bool   `json:"unavailable,omitempty"`
+	AuthIndex    string `json:"auth_index"`
+	AuthID       string `json:"auth_id,omitempty"`
+	Name         string `json:"name,omitempty"`
+	Label        string `json:"label,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	Type         string `json:"type,omitempty"`
+	Status       string `json:"status,omitempty"`
+	Disabled     bool   `json:"disabled,omitempty"`
+	Unavailable  bool   `json:"unavailable,omitempty"`
+	PlanType     string `json:"plan_type,omitempty"`
+	PlanResolved bool   `json:"-"`
 }
 
 type historyRecord struct {
@@ -49,6 +51,7 @@ type historyRecord struct {
 	AuthID          string      `json:"auth_id,omitempty"`
 	CredentialName  string      `json:"credential_name,omitempty"`
 	CredentialLabel string      `json:"credential_label,omitempty"`
+	CredentialPlan  string      `json:"credential_plan,omitempty"`
 	Model           string      `json:"model,omitempty"`
 	RequestedModel  string      `json:"requested_model,omitempty"`
 	SourceFormat    string      `json:"source_format,omitempty"`
@@ -70,8 +73,9 @@ type historyRecord struct {
 	Origin string `json:"origin,omitempty"`
 
 	// TurnStateEcho is the blob this request echoed, TurnStateMinted the blob
-	// the response minted. TurnStateCrossAccount is set only when the echoed
-	// blob is known to have been minted under a different credential; a blob
+	// the response returned (the JSON name is retained for compatibility).
+	// TurnStateCrossAccount is set only when the echoed blob is known to have
+	// come from a different credential; a blob
 	// whose origin is no longer remembered stays unset rather than guessed.
 	TurnStateEcho         *turnStateInfo `json:"turn_state_echo,omitempty"`
 	TurnStateMinted       *turnStateInfo `json:"turn_state_minted,omitempty"`
@@ -112,16 +116,24 @@ type historyPage struct {
 }
 
 func cloneHeader(h http.Header) http.Header {
-	if h == nil { return nil }
+	if h == nil {
+		return nil
+	}
 	out := make(http.Header, len(h))
-	for k, values := range h { out[k] = append([]string(nil), values...) }
+	for k, values := range h {
+		out[k] = append([]string(nil), values...)
+	}
 	return out
 }
 
 func applyRuleToHeaders(base http.Header, rule headerRule) http.Header {
 	out := cloneHeader(base)
-	if out == nil { out = make(http.Header) }
-	for _, key := range rule.Remove { deleteHeaderFold(out, key) }
+	if out == nil {
+		out = make(http.Header)
+	}
+	for _, key := range rule.Remove {
+		deleteHeaderFold(out, key)
+	}
 	for key, value := range rule.Set {
 		deleteHeaderFold(out, key)
 		out.Set(http.CanonicalHeaderKey(key), value)
@@ -131,7 +143,9 @@ func applyRuleToHeaders(base http.Header, rule headerRule) http.Header {
 
 func deleteHeaderFold(h http.Header, key string) {
 	for existing := range h {
-		if strings.EqualFold(existing, key) { delete(h, existing) }
+		if strings.EqualFold(existing, key) {
+			delete(h, existing)
+		}
 	}
 }
 
@@ -139,10 +153,14 @@ func normalizedRemove(in []string) []string {
 	seen := map[string]string{}
 	for _, raw := range in {
 		key := http.CanonicalHeaderKey(strings.TrimSpace(raw))
-		if key != "" { seen[strings.ToLower(key)] = key }
+		if key != "" {
+			seen[strings.ToLower(key)] = key
+		}
 	}
 	out := make([]string, 0, len(seen))
-	for _, key := range seen { out = append(out, key) }
+	for _, key := range seen {
+		out = append(out, key)
+	}
 	sort.Strings(out)
 	return out
 }

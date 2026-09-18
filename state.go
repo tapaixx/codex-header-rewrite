@@ -16,9 +16,8 @@ type pluginState struct {
 	rules       map[string]headerRule
 	pending     map[string]*pendingRequest
 	credentials map[string]credentialSnapshot
-	// turnStates maps a blob digest to the credential that minted it. It is a
-	// correlation aid held in memory only: losing it on restart costs a warning,
-	// never correctness.
+	// turnStates maps a blob digest to the credential that returned it. It is a
+	// short-lived correlation index rebuilt from the durable state pool.
 	turnStates map[string]turnStateOrigin
 	// turnStateLatest holds the newest blob per credential and model, which is
 	// the one a client could still legitimately be echoing.
@@ -61,19 +60,31 @@ func configurePlugin(raw []byte) error {
 		_ = backend.Close()
 		return fmt.Errorf("load rules: %w", err)
 	}
+	storedTurnStates, err := backend.ListTurnStates()
+	if err != nil {
+		_ = backend.Close()
+		return fmt.Errorf("load turn states: %w", err)
+	}
 	state.store = backend
 	state.writer = newQueuedPersistence(backend)
 	state.dataPath = cfg.DataPath
 	state.rules = make(map[string]headerRule, len(rules))
 	state.pending = map[string]*pendingRequest{}
-	if state.turnStates == nil {
-		state.turnStates = map[string]turnStateOrigin{}
-	}
-	if state.turnStateLatest == nil {
-		state.turnStateLatest = map[string]turnStateOrigin{}
-	}
+	state.turnStates = map[string]turnStateOrigin{}
+	state.turnStateLatest = map[string]turnStateOrigin{}
 	for _, r := range rules {
 		state.rules[r.AuthIndex] = r
+	}
+	for _, stored := range storedTurnStates {
+		origin, ok := restoreTurnState(stored)
+		if !ok {
+			continue
+		}
+		state.turnStates[origin.digest] = origin
+		key := turnStateLatestKey(origin.authIndex, origin.model)
+		if previous, exists := state.turnStateLatest[key]; !exists || !previous.mintedAt.After(origin.mintedAt) {
+			state.turnStateLatest[key] = origin
+		}
 	}
 	return nil
 }
@@ -208,14 +219,14 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 	echo, echoed := evaluateTurnStateEchoLocked(req.Headers, authIndex, sentModel(req.Model, req.RequestedModel))
 	stripped := false
 	if echoed && echo.unusable() && hasRule && rule.Enabled && rule.StripForeignTurnState {
-		// The blob was minted under another credential or for another model, so
+		// The blob came from another credential or model, so
 		// no upstream turn chain can accept it here. It is dropped from this
 		// request and the recorded "after" view shows it gone.
 		clears = append(clears, turnStateHeader)
 		deleteHeaderFold(after, turnStateHeader)
 		stripped = true
 	}
-	pr.current = &pendingAttempt{historyRecord: historyRecord{ID: fmt.Sprintf("%s#%d", req.RequestID, pr.attempts), RequestID: req.RequestID, Attempt: pr.attempts, AuthIndex: authIndex, AuthID: authID, CredentialName: cred.Name, CredentialLabel: cred.Label, Model: req.Model, RequestedModel: req.RequestedModel, SourceFormat: req.SourceFormat, Stream: req.Stream, StartedAt: time.Now().UTC(), BeforeHeaders: redactHeaders(before), AfterHeaders: redactHeaders(after), Outcome: "in_flight", Origin: originLive}}
+	pr.current = &pendingAttempt{historyRecord: historyRecord{ID: fmt.Sprintf("%s#%d", req.RequestID, pr.attempts), RequestID: req.RequestID, Attempt: pr.attempts, AuthIndex: authIndex, AuthID: authID, CredentialName: cred.Name, CredentialLabel: cred.Label, CredentialPlan: cred.PlanType, Model: req.Model, RequestedModel: req.RequestedModel, SourceFormat: req.SourceFormat, Stream: req.Stream, StartedAt: time.Now().UTC(), BeforeHeaders: redactHeaders(before), AfterHeaders: redactHeaders(after), Outcome: "in_flight", Origin: originLive}}
 	if echoed {
 		info := echo.info
 		pr.current.TurnStateEcho = &info
@@ -252,20 +263,20 @@ func observeResponse(req responseInterceptRequest) {
 	pr.current.models.observeBody(req.Body)
 }
 
-// noteTurnStateMintLocked2 records a blob the upstream minted in this response
-// and binds it to the credential that served the attempt.
+// noteTurnStateMintLocked2 classifies an upstream response state, mints it into
+// the pool only when qualified, and attaches the result to history.
 func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Header) {
 	blob := headerTurnState(responseHeaders)
 	if blob == "" {
 		return
 	}
-	info := decodeTurnState(blob)
-	attempt.TurnStateMinted = &info
+	info := classifyTurnState(decodeTurnState(blob), blob, attempt.CredentialPlan)
 	label := attempt.CredentialLabel
 	if label == "" {
 		label = attempt.CredentialName
 	}
-	noteTurnStateMintLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel))
+	info.Pooled = noteTurnStateMintLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel), attempt.CredentialPlan)
+	attempt.TurnStateMinted = &info
 }
 func observeStreamHeaders(req streamChunkInterceptRequest) {
 	state.mu.Lock()
@@ -325,18 +336,25 @@ func finalizeLocked(attempt *pendingAttempt) {
 
 func resolveCodexCredential(authIndex, authID string) (credentialSnapshot, bool) {
 	state.mu.Lock()
-	if cred, ok := state.credentials[authIndex]; ok {
-		state.mu.Unlock()
-		return cred, isCodexCredential(cred.Provider, cred.Type)
-	}
+	cred, ok := state.credentials[authIndex]
 	state.mu.Unlock()
-	entry, err := hostAuthGetRuntimeFunc(authIndex)
-	if err != nil {
-		return credentialSnapshot{AuthIndex: authIndex, AuthID: authID}, false
+	if !ok {
+		entry, err := hostAuthGetRuntimeFunc(authIndex)
+		if err != nil {
+			return credentialSnapshot{AuthIndex: authIndex, AuthID: authID}, false
+		}
+		cred = snapshotFromEntry(entry.Auth)
+		if cred.AuthID == "" {
+			cred.AuthID = authID
+		}
 	}
-	cred := snapshotFromEntry(entry.Auth)
-	if cred.AuthID == "" {
-		cred.AuthID = authID
+	document, err := hostAuthGetFunc(authIndex)
+	if err == nil {
+		cred.PlanType = credentialPlanType(document)
+		cred.PlanResolved = true
+	} else {
+		cred.PlanType = ""
+		cred.PlanResolved = false
 	}
 	state.mu.Lock()
 	state.credentials[authIndex] = cred

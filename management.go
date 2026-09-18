@@ -164,7 +164,7 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"cleared": strings.TrimSpace(body.AuthIndex)}), nil
 	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiTurnStatesPath):
-		// One row per credential and model: a newer mint for the same pair
+		// One row per credential and model: a newer pooled state for the same pair
 		// replaces the older one, so this is exactly the set a client could
 		// still be echoing.
 		state.mu.Lock()
@@ -174,10 +174,14 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 		for _, origin := range recent {
 			age := int64(time.Since(origin.mintedAt).Seconds())
 			items = append(items, map[string]any{
+				"state":       origin.blob,
 				"digest":      origin.digest,
 				"auth_index":  origin.authIndex,
 				"label":       origin.label,
 				"model":       origin.model,
+				"plan_type":   origin.planType,
+				"chars":       origin.chars,
+				"max_chars":   origin.maxChars,
 				"minted_at":   origin.mintedAt,
 				"age_seconds": age,
 				"expired":     time.Since(origin.mintedAt) > turnStateReuseWindow,
@@ -199,9 +203,9 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusBadRequest, "token is required"), nil
 		}
 		info := decodeTurnState(token)
-		payload := map[string]any{"info": info, "chars": len([]rune(token))}
+		payload := map[string]any{"info": info, "chars": len(token)}
 		// The provenance table is the only thing that can say which credential
-		// minted a pasted blob, so the answer is included when it is known.
+		// supplied a pasted blob, so the answer is included when it is known.
 		state.mu.Lock()
 		origin, known := lookupTurnStateOriginLocked(token)
 		state.mu.Unlock()
@@ -269,6 +273,10 @@ func listCredentialViews() ([]credentialView, error) {
 	}
 	state.mu.Lock()
 	for k, v := range updates {
+		if existing, ok := state.credentials[k]; ok && existing.PlanResolved && sameCredentialIdentity(existing, v) {
+			v.PlanType = existing.PlanType
+			v.PlanResolved = true
+		}
 		state.credentials[k] = v
 	}
 	state.mu.Unlock()
@@ -284,6 +292,13 @@ func listCredentialViews() ([]credentialView, error) {
 		return strings.ToLower(li) < strings.ToLower(lj)
 	})
 	return items, nil
+}
+
+func sameCredentialIdentity(existing, current credentialSnapshot) bool {
+	if existing.AuthID != "" || current.AuthID != "" {
+		return existing.AuthID == current.AuthID
+	}
+	return existing.Name == current.Name
 }
 
 func cleanupOrphans() ([]string, error) {
@@ -318,6 +333,16 @@ func cleanupOrphans() ([]string, error) {
 		state.mu.Lock()
 		delete(state.rules, key)
 		delete(state.credentials, key)
+		for latestKey, origin := range state.turnStateLatest {
+			if origin.authIndex == key {
+				delete(state.turnStateLatest, latestKey)
+			}
+		}
+		for digest, origin := range state.turnStates {
+			if origin.authIndex == key {
+				delete(state.turnStates, digest)
+			}
+		}
 		state.mu.Unlock()
 		deleted = append(deleted, key)
 	}

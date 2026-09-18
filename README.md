@@ -20,7 +20,7 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - 不保存 request / response body。
 - 自定义测试请求：从凭证可用模型中选择模型、发送默认 `hi` 或自定义 JSON、预览改写结果，或向自定义端点发一次真实请求。
 - 模型一致性核对：记录上游实际声明的模型，与发出的模型比对，不一致时标红。
-- 回合状态（X-Codex-Turn-State）溯源：记录 blob 的铸造凭证，发现跨账号回带并可按规则摘除；内置 Fernet 信封解码。
+- 回合状态（X-Codex-Turn-State）溯源：按套餐判定是否降智，合格值按「凭证 + 模型」持久化入池，发现跨账号回带并可按规则摘除；内置 Fernet 信封解码。
 - 中文内嵌 UI，单文档零外部依赖；敏感数据接口走 CPA Management API。
 - Linux amd64 / arm64 CI 与 tag Release。
 
@@ -45,7 +45,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.6.2.so` | `codex-header-rewrite` | `0.6.2` |
+| `codex-header-rewrite-v0.7.0.so` | `codex-header-rewrite` | `0.7.0` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -58,7 +58,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.6.2.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.7.0.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -170,9 +170,9 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 ## 回合状态守卫（X-Codex-Turn-State）
 
-上游在响应头里铸造 `X-Codex-Turn-State`，客户端在同一回合的下一次请求原样回带。一个 blob 能被复用要同时满足三件事：
+上游在响应头里返回 `X-Codex-Turn-State`，客户端在同一回合的下一次请求原样回带。插件先观察、分类；只有不降智的 state 才“铸造”（写入 State 池）。一个 blob 能被复用要同时满足三件事：
 
-1. **同一个凭证** —— 换号之后回带旧号铸造的 blob，是只有代理链才会出现的矛盾。
+1. **同一个凭证** —— 换号之后回带旧号返回的 blob，是只有代理链才会出现的矛盾。
 2. **同一个模型** —— 同号但换了模型，blob 属于另一条回合链，上游同样用不了。
 3. **还在有效期内** —— 经验窗口约 1 小时（不保证，上游未公开）。
 
@@ -181,25 +181,25 @@ curl -s -H "Authorization: Bearer <management-key>" \
 | 显示 | 含义 |
 |---|---|
 | 回带一致 | 同凭证、同模型，可以复用 |
-| 跨账号回带 | 该 blob 由另一个凭证铸造，详情显示是哪一个 |
-| 跨模型回带 | 同凭证但由另一个模型铸造，详情显示是哪个模型 |
-| 回带来源未知 | 没记到铸造方（重启、超出记录窗口或铸造发生在装插件之前）—— 是「未知」，不是「一致」 |
+| 跨账号回带 | 该 blob 来自另一个凭证，详情显示是哪一个 |
+| 跨模型回带 | 同凭证但来自另一个模型，详情显示是哪个模型 |
+| 回带来源未知 | 没记到来源（超出溯源窗口、未入池或发生在装插件之前）—— 是「未知」，不是「一致」 |
 | 已过期 N 分钟 | 信封里的签发时间已超过复用窗口 |
 | 已摘除 | 规则开启守卫，本次回带已被摘掉 |
 
 **摘除的边界**：规则里的「不可复用时移除 X-Codex-Turn-State」只摘**跨号**和**跨模型**这两种确定不可复用的情况；**过期只提示、不摘除** —— 那个窗口是经验值不是文档约定，猜错会把本来还能用的回合链打断。来源未知时也不动它。
 
-### 最近回合状态
+### 不降智 State 池
 
-面板的「最近回合状态」列出每个「凭证 + 模型」最新的一条 blob：摘要、铸造时间、已过多久、是否超出复用窗口。同一对凭证与模型再次铸造时**自动覆盖**旧记录 —— 旧的那条上游已经翻篇了。时间乱序到达时不会用旧的覆盖新的。
+每个新收到的 state 都先按凭证套餐分类：Team 长度 **≤ 332** 字符、Pro 长度 **≤ 292** 字符是不降智；超限值只留在历史并标为疑似降智，套餐未知也不入池。合格 state 每拿到一次就铸造一次，同一「凭证 + 模型」只保留时间最新的一条；乱序到达不会让旧值覆盖新值。
 
-数据来自 `GET /codex-header-rewrite/turn-states`，是内存态：只存摘要不存 blob，2 小时过期、512 条上限，CPA 重启即清空。
+数据来自 `GET /codex-header-rewrite/turn-states`。面板同时显示凭证名称、稳定的 `auth_index`、模型、长度/阈值，并可在原行展开 state 具体值。池把原始 state 持久化在配置的 bbolt `data_path`（CPA 工作目录为 `/CLIProxyAPI` 时，默认落在 `/CLIProxyAPI/plugins/data/codex-header-rewrite.db`），因此 CPA 重建、重启或插件更新后会恢复；插件目录随容器更新被整体替换时，应把 `/CLIProxyAPI/plugins/data` 挂到持久卷。
 
 ### 信封解码
 
-blob 是 Fernet token，版本号与铸造时间在信封里明文可读，**不需要密钥、也不解密密文**。历史详情与解码面板显示同一组字段：摘要、铸造模型、Base64 字符数、解码后总字节数、版本号、时间戳（Unix）、签发时间（本地与 UTC）、以及结构是否符合 Fernet（`1+8+16+16n+32`）。两个长度都保留 —— 字符数是线上传输的长度，字节数是信封真正的内容长度，被截断或重新编码过的 blob 只有在两者并排时才看得出来。「Turn-State 解码」面板可以粘贴任意 blob 单独解码，历史详情里点「解码」会把该条的原始 blob 带过去。
+blob 是 Fernet token，版本号与签发时间在信封里明文可读，**不需要密钥、也不解密密文**。历史详情与解码面板显示同一组字段：摘要、对应模型、Base64 字符数、解码后总字节数、版本号、时间戳（Unix）、签发时间（本地与 UTC）、以及结构是否符合 Fernet（`1+8+16+16n+32`）。两个长度都保留 —— 字符数是线上传输的长度，字节数是信封真正的内容长度，被截断或重新编码过的 blob 只有在两者并排时才看得出来。「Turn-State 解码」面板可以粘贴任意 blob 单独解码，历史详情或 State 池里点「解码」会把原始 blob 带过去。
 
-> 参考实现说明：sub2api / xy2api 按（下游会话 → 最近铸造账号）记录，出站时剥离已知异账号的回带值。本插件改为**按 blob 摘要索引铸造方与模型**，因此不依赖客户端是否带 `session-id`，能指出具体是哪个凭证、哪个模型铸造的，也能识别同号跨模型这种它们不区分的情况。
+> 参考实现说明：sub2api / xy2api 按（下游会话 → 最近返回账号）记录，出站时剥离已知异账号的回带值。本插件改为**按 blob 摘要索引来源凭证与模型**，因此不依赖客户端是否带 `session-id`，能指出具体来自哪个凭证、哪个模型，也能识别同号跨模型这种它们不区分的情况。
 
 ## 重要限制
 

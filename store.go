@@ -14,6 +14,8 @@ type persistence interface {
 	HistoryCount(authIndex string) (int, error)
 	DeleteCredentialData(authIndex string) error
 	KnownAuthIndexes() ([]string, error)
+	SaveTurnState(record persistedTurnState) error
+	ListTurnStates() ([]persistedTurnState, error)
 	Flush() error
 }
 

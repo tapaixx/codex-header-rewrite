@@ -3,10 +3,93 @@ package main
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
+
+func credentialDocumentWithPlan(t *testing.T, plan string) json.RawMessage {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{
+		"https://api.openai.com/auth": map[string]any{"chatgpt_plan_type": plan},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := "header." + base64.RawURLEncoding.EncodeToString(payload) + ".signature"
+	document, err := json.Marshal(map[string]any{"id_token": token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return document
+}
+
+func TestCredentialPlanComesFromTheIDToken(t *testing.T) {
+	for _, plan := range []string{"team", "pro"} {
+		if got := credentialPlanType(credentialDocumentWithPlan(t, plan)); got != plan {
+			t.Fatalf("plan=%q, want %q", got, plan)
+		}
+	}
+}
+
+func TestCredentialPlanSupportsObjectAndNestedTokenShapes(t *testing.T) {
+	tests := map[string]json.RawMessage{
+		"object id token": json.RawMessage(`{"id_token":{"https://api.openai.com/auth":{"chatgpt_plan_type":"team"}}}`),
+		"nested JWT":      json.RawMessage(`{"tokens":{"idToken":"header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9wbGFuX3R5cGUiOiJwcm8ifX0.signature"}}`),
+	}
+	for name, document := range tests {
+		want := "team"
+		if name == "nested JWT" {
+			want = "pro"
+		}
+		if got := credentialPlanType(document); got != want {
+			t.Fatalf("%s: plan=%q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestNonDegradedStateLimitsAreInclusivePerPlan(t *testing.T) {
+	tests := []struct {
+		plan  string
+		chars int
+		want  bool
+		max   int
+		known bool
+	}{
+		{plan: "team", chars: 332, want: true, max: 332, known: true},
+		{plan: "team", chars: 333, want: false, max: 332, known: true},
+		{plan: "pro", chars: 292, want: true, max: 292, known: true},
+		{plan: "pro", chars: 293, want: false, max: 292, known: true},
+		{plan: "unknown", chars: 1, want: false, max: 0, known: false},
+	}
+	for _, tt := range tests {
+		got, max, known := nonDegradedTurnState(strings.Repeat("x", tt.chars), tt.plan)
+		if got != tt.want || max != tt.max || known != tt.known {
+			t.Fatalf("plan=%s chars=%d: got (%v,%d,%v), want (%v,%d,%v)", tt.plan, tt.chars, got, max, known, tt.want, tt.max, tt.known)
+		}
+	}
+}
+
+func TestOnlyNonDegradedStatesEnterThePool(t *testing.T) {
+	resetTurnStates(t)
+	teamGood := strings.Repeat("a", teamStateMaxChars)
+	teamDegraded := strings.Repeat("b", teamStateMaxChars+1)
+	state.mu.Lock()
+	goodPooled := noteTurnStateMintLocked(teamGood, "idx-a", "team-a", "m", "team")
+	degradedPooled := noteTurnStateMintLocked(teamDegraded, "idx-a", "team-a", "m", "team")
+	unknownPooled := noteTurnStateMintLocked("x", "idx-b", "unknown", "m", "")
+	recent := recentTurnStatesLocked()
+	state.mu.Unlock()
+
+	if !goodPooled || degradedPooled || unknownPooled {
+		t.Fatalf("pooled good=%v degraded=%v unknown=%v", goodPooled, degradedPooled, unknownPooled)
+	}
+	if len(recent) != 1 || recent[0].digest != turnStateDigest(teamGood) {
+		t.Fatalf("state pool=%#v", recent)
+	}
+}
 
 // fernetToken builds an envelope shaped like the real blob: version byte,
 // big-endian mint timestamp, IV, ciphertext blocks, HMAC.
@@ -115,7 +198,7 @@ func TestEchoUnderAnotherCredentialIsFlaggedAndOwnCredentialIsNot(t *testing.T) 
 	resetTurnStates(t)
 	blob := fernetToken(0x80, time.Now(), 2)
 	state.mu.Lock()
-	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna")
+	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna", "team")
 	sameEcho, echoed := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a", "gpt-5.6-luna")
 	crossEcho, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-b", "gpt-5.6-luna")
 	state.mu.Unlock()
@@ -148,7 +231,7 @@ func TestExpiredProvenanceIsForgotten(t *testing.T) {
 	resetTurnStates(t)
 	blob := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
-	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna")
+	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna", "team")
 	origin := state.turnStates[turnStateDigest(blob)]
 	origin.seen = time.Now().UTC().Add(-turnStateTTL - time.Minute)
 	state.turnStates[turnStateDigest(blob)] = origin
@@ -163,7 +246,7 @@ func TestProvenanceTableStaysBounded(t *testing.T) {
 	resetTurnStates(t)
 	state.mu.Lock()
 	for i := 0; i < turnStateMaxEntries*2; i++ {
-		noteTurnStateMintLocked(fernetToken(0x80, time.Now().Add(time.Duration(i)*time.Second), 1), "idx-a", "team-a", "gpt-5.6-luna")
+		noteTurnStateMintLocked(fernetToken(0x80, time.Now().Add(time.Duration(i)*time.Second), 1), "idx-a", "team-a", "gpt-5.6-luna", "team")
 	}
 	size := len(state.turnStates)
 	state.mu.Unlock()
@@ -190,7 +273,7 @@ func TestSameCredentialDifferentModelCannotReuse(t *testing.T) {
 	resetTurnStates(t)
 	blob := fernetToken(0x80, time.Now(), 2)
 	state.mu.Lock()
-	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna")
+	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna", "team")
 	same, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a", "gpt-5.6-luna")
 	other, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a", "gpt-5.1-codex")
 	unknownModel, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a", "")
@@ -216,7 +299,7 @@ func TestCrossAccountOutranksModelComparison(t *testing.T) {
 	resetTurnStates(t)
 	blob := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
-	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna")
+	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna", "team")
 	echo, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-b", "gpt-5.1-codex")
 	state.mu.Unlock()
 	if !echo.crossAccount || echo.crossModel {
@@ -232,8 +315,8 @@ func TestStaleBlobIsReportedExpiredButStaysUsableForStripping(t *testing.T) {
 	fresh := fernetToken(0x80, time.Now().Add(-5*time.Minute), 1)
 	stale := fernetToken(0x80, time.Now().Add(-turnStateReuseWindow-10*time.Minute), 1)
 	state.mu.Lock()
-	noteTurnStateMintLocked(fresh, "idx-a", "team-a", "m")
-	noteTurnStateMintLocked(stale, "idx-a", "team-a", "m")
+	noteTurnStateMintLocked(fresh, "idx-a", "team-a", "m", "team")
+	noteTurnStateMintLocked(stale, "idx-a", "team-a", "m", "team")
 	freshEcho, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {fresh}}, "idx-a", "m")
 	staleEcho, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {stale}}, "idx-a", "m")
 	state.mu.Unlock()
@@ -273,10 +356,10 @@ func TestNewerMintReplacesTheRecentEntryPerCredentialAndModel(t *testing.T) {
 	older := fernetToken(0x80, time.Now().Add(-20*time.Minute), 1)
 	newer := fernetToken(0x80, time.Now().Add(-1*time.Minute), 1)
 	state.mu.Lock()
-	noteTurnStateMintLocked(older, "idx-a", "team-a", "gpt-5.6-luna")
-	noteTurnStateMintLocked(newer, "idx-a", "team-a", "gpt-5.6-luna")
-	noteTurnStateMintLocked(older, "idx-a", "team-a", "gpt-5.1-codex")
-	noteTurnStateMintLocked(newer, "idx-b", "team-b", "gpt-5.6-luna")
+	noteTurnStateMintLocked(older, "idx-a", "team-a", "gpt-5.6-luna", "team")
+	noteTurnStateMintLocked(newer, "idx-a", "team-a", "gpt-5.6-luna", "team")
+	noteTurnStateMintLocked(older, "idx-a", "team-a", "gpt-5.1-codex", "team")
+	noteTurnStateMintLocked(newer, "idx-b", "team-b", "gpt-5.6-luna", "team")
 	recent := recentTurnStatesLocked()
 	state.mu.Unlock()
 
@@ -298,10 +381,13 @@ func TestOlderMintDoesNotReplaceANewerOne(t *testing.T) {
 	older := fernetToken(0x80, time.Now().Add(-30*time.Minute), 1)
 	newer := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
-	noteTurnStateMintLocked(newer, "idx-a", "team-a", "m")
-	noteTurnStateMintLocked(older, "idx-a", "team-a", "m")
+	newerPooled := noteTurnStateMintLocked(newer, "idx-a", "team-a", "m", "team")
+	olderPooled := noteTurnStateMintLocked(older, "idx-a", "team-a", "m", "team")
 	recent := recentTurnStatesLocked()
 	state.mu.Unlock()
+	if !newerPooled || olderPooled {
+		t.Fatalf("newer pooled=%v, out-of-order older pooled=%v", newerPooled, olderPooled)
+	}
 	if len(recent) != 1 || recent[0].digest != turnStateDigest(newer) {
 		t.Fatalf("out of order mints must not rewind the latest entry: %#v", recent)
 	}

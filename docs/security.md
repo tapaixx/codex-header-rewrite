@@ -29,7 +29,8 @@ Plugin Resource 路由只提供静态 HTML；credential、rule、history、test�
 
 ## 回合状态 blob
 
-- 溯源表只存 blob 摘要（SHA-256 前 16 位）与铸造凭证，不存 blob 原文，且只在内存里，进程退出即消失。
+- 短期溯源索引只在内存中保存 blob 摘要与来源凭证；不降智 State 池则会把每个「凭证 + 模型」最新的原始 blob 写入配置的 bbolt `data_path`（默认在 `plugins/data`），以便 CPA 重启和插件更新后恢复。数据库权限为 `0600`，目录为 `0700`；备份和持久卷应按敏感运行数据保护。
+- 原始池值只通过需要 CPA 管理密钥的 Management API `GET /codex-header-rewrite/turn-states` 返回；响应带 `Cache-Control: no-store`，普通代理流量端点不暴露该值。
 - blob 原文本身仍会随 Request / Response Header 一起进入历史 —— 它是本插件要检查的对象，与 Authorization 不同，遮掉就失去意义。它是不透明的回合状态，不是长期凭证。
 - 解码只读 Fernet 信封的版本、时间戳与长度结构；插件不持有、也不需要 Fernet 密钥，不会尝试解密密文。
-- 摘除守卫只在确认铸造方是另一个凭证时生效；来源未知时不动客户端回带的值。
+- 摘除守卫只在确认来源是另一个凭证或模型时生效；来源未知时不动客户端回带的值。

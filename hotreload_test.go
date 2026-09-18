@@ -30,6 +30,13 @@ func TestPluginQuiesceFlushesHistoryAndReleasesTheStoreLock(t *testing.T) {
 		StartedAt: time.Now().UTC(),
 		Outcome:   "succeeded",
 	})
+	blob := fernetToken(0x80, time.Now(), 1)
+	state.mu.Lock()
+	if !noteTurnStateMintLocked(blob, "idx-a", "Team A", "gpt-5.6-luna", "team") {
+		state.mu.Unlock()
+		t.Fatal("qualified state did not enter the pool")
+	}
+	state.mu.Unlock()
 
 	response, err := handleMethod("plugin.quiesce", nil)
 	if err != nil {
@@ -66,6 +73,13 @@ func TestPluginQuiesceFlushesHistoryAndReleasesTheStoreLock(t *testing.T) {
 		}
 		if len(page.Items) != 1 || page.Items[0].ID != "before-reload#1" {
 			t.Fatalf("quiesce did not flush queued history: %#v", page.Items)
+		}
+		states, err := opened.store.ListTurnStates()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(states) != 1 || states[0].State != blob || states[0].AuthIndex != "idx-a" {
+			t.Fatalf("turn-state pool was not durable: %#v", states)
 		}
 		if err := opened.store.Close(); err != nil {
 			t.Fatal(err)

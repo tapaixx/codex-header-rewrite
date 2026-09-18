@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestManagementCredentialFilterAndRule(t *testing.T) {
@@ -53,5 +54,83 @@ func TestManagementCredentialFilterAndRule(t *testing.T) {
 	_ = json.Unmarshal(resp.Body, &got)
 	if got.Rule.Set["X-Test"] != "v" {
 		t.Fatalf("rule=%#v", got.Rule)
+	}
+}
+
+func TestTurnStatePoolAPIExposesCredentialAndValue(t *testing.T) {
+	resetState(t)
+	resetTurnStates(t)
+	blob := fernetToken(0x80, time.Now(), 1)
+	state.mu.Lock()
+	pooled := noteTurnStateMintLocked(blob, "idx-team-a", "Team A", "gpt-5.6-luna", "team")
+	state.mu.Unlock()
+	if !pooled {
+		t.Fatal("fixture state did not enter the pool")
+	}
+
+	resp, _ := handleManagementAPI(managementRequest{Method: "GET", Path: "/v0/management" + apiTurnStatesPath})
+	var payload struct {
+		TurnStates []struct {
+			AuthIndex string `json:"auth_index"`
+			Label     string `json:"label"`
+			State     string `json:"state"`
+		} `json:"turn_states"`
+	}
+	if err := json.Unmarshal(resp.Body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.TurnStates) != 1 {
+		t.Fatalf("turn states=%#v", payload.TurnStates)
+	}
+	got := payload.TurnStates[0]
+	if got.AuthIndex != "idx-team-a" || got.Label != "Team A" || got.State != blob {
+		t.Fatalf("pool row=%#v", got)
+	}
+}
+
+func TestCredentialRefreshInvalidatesPlanWhenIdentityChanges(t *testing.T) {
+	resetState(t)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "old-id", Name: "old.json", Provider: "codex", PlanType: "team", PlanResolved: true}
+	state.mu.Unlock()
+	oldList := hostAuthListFunc
+	hostAuthListFunc = func() (hostAuthListResponse, error) {
+		return hostAuthListResponse{Files: []hostAuthFileEntry{{ID: "new-id", AuthIndex: "idx-a", Name: "new.json", Provider: "codex"}}}, nil
+	}
+	t.Cleanup(func() { hostAuthListFunc = oldList })
+	if _, err := listCredentialViews(); err != nil {
+		t.Fatal(err)
+	}
+	state.mu.Lock()
+	got := state.credentials["idx-a"]
+	state.mu.Unlock()
+	if got.PlanResolved || got.PlanType != "" {
+		t.Fatalf("changed credential kept stale plan: %#v", got)
+	}
+}
+
+func TestOrphanCleanupEvictsDurableAndInMemoryTurnState(t *testing.T) {
+	resetState(t)
+	resetTurnStates(t)
+	blob := fernetToken(0x80, time.Now(), 1)
+	state.mu.Lock()
+	if !noteTurnStateMintLocked(blob, "idx-gone", "Gone", "gpt-5.6-luna", "team") {
+		state.mu.Unlock()
+		t.Fatal("fixture state did not enter the pool")
+	}
+	state.mu.Unlock()
+	oldList := hostAuthListFunc
+	hostAuthListFunc = func() (hostAuthListResponse, error) { return hostAuthListResponse{}, nil }
+	t.Cleanup(func() { hostAuthListFunc = oldList })
+	deleted, err := cleanupOrphans()
+	if err != nil || len(deleted) != 1 || deleted[0] != "idx-gone" {
+		t.Fatalf("deleted=%v err=%v", deleted, err)
+	}
+	state.mu.Lock()
+	recent := recentTurnStatesLocked()
+	_, known := lookupTurnStateOriginLocked(blob)
+	state.mu.Unlock()
+	if len(recent) != 0 || known {
+		t.Fatalf("orphan remained in memory: recent=%#v known=%v", recent, known)
 	}
 }

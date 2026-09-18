@@ -174,7 +174,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
 .tag.warn{background:var(--over-weak);color:var(--over);border-color:color-mix(in srgb,var(--over) 26%,transparent)}
 .tag.flat{background:var(--sunk);color:var(--text-soft);border-color:var(--line)}
 /* Turn-state blocks: the echo only means something next to what the response
-   minted, so the two envelopes sit side by side when there is room. */
+   returned, so the two envelopes sit side by side when there is room. */
 .ts-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
 .ts-block{border:1px solid var(--line);border-radius:var(--r-control);padding:9px 11px;background:var(--sunk);min-width:0}
 .ts-title{font-size:12px;font-weight:600;color:var(--text-soft);margin-bottom:7px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
@@ -182,6 +182,18 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
 .ts-grid dt{color:var(--text-mute)}
 .ts-grid dd{margin:0;overflow-wrap:anywhere}
 .btn-xs{padding:1px 8px;font-size:11.5px;gap:4px;border-color:var(--line-strong);background:var(--surface)}
+.state-pool{display:grid;gap:10px}
+.state-card{display:grid;gap:9px;padding:11px;border:1px solid var(--line);border-radius:var(--r-control);background:var(--surface)}
+.state-card-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:10px}
+.state-card-title{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;min-width:0}
+.pool-credential{display:grid;gap:2px;min-width:120px}
+.pool-model{overflow-wrap:anywhere;line-height:1.4;padding-top:1px}
+.state-card-meta{display:flex;align-items:center;gap:7px 10px;flex-wrap:wrap;color:var(--text-mute);font-size:12px}
+.pool-state summary{cursor:pointer;color:var(--accent);white-space:nowrap;list-style:none}
+.pool-state summary::-webkit-details-marker{display:none}
+.pool-state[open]{min-width:min(360px,40vw)}
+.pool-state-value{margin-top:7px;padding:8px;border:1px solid var(--line);border-radius:var(--r-control);background:var(--sunk);overflow-wrap:anywhere;user-select:all;line-height:1.45}
+.pool-state-actions{display:flex;gap:6px;margin-top:7px;flex-wrap:wrap}
 .chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:13px}
 .chain .arrow{color:var(--text-mute)}
 .metaline{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;color:var(--text-mute);font-size:12px}
@@ -285,6 +297,10 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
   #historyMeta{margin-left:auto}
   #clearHistory{min-height:40px}
   .pager{justify-content:center}
+  .state-card{padding:11px 10px}
+  .state-card-head{grid-template-columns:minmax(0,1fr) auto}
+  .state-card-title{display:grid;gap:6px}
+  .pool-state[open]{min-width:0}
 }
 </style>
 </head>
@@ -343,7 +359,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
         <button class="quiet" id="addRemove"><svg class="i"><use href="#i-plus"/></svg>添加 Header</button>
         <div class="sub">回合状态守卫</div>
         <label class="switch"><input type="checkbox" id="ruleStripTurnState"><span>不可复用时移除 X-Codex-Turn-State</span></label>
-        <div class="muted" style="margin-top:5px">跨号、跨模型的 blob 上游都无法复用。开启后，确认铸造方不是当前「凭证 + 模型」时摘掉它；过期只提示不摘除（窗口是经验值）。</div>
+        <div class="muted" style="margin-top:5px">跨号、跨模型的 blob 上游都无法复用。开启后，确认来源不是当前「凭证 + 模型」时摘掉它；过期只提示不摘除（窗口是经验值）。</div>
         <div class="notice warn" id="ruleWarn" hidden style="margin-top:14px"><svg class="i"><use href="#i-alert"/></svg><span id="ruleWarnText"></span></div>
         <div class="actions">
           <button class="destructive" id="deleteRule"><svg class="i"><use href="#i-trash"/></svg>删除规则</button>
@@ -408,7 +424,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
           <textarea id="decodeInput" spellcheck="false" placeholder="粘贴 blob，或在历史详情里点「解码」直接带入"></textarea>
         </div>
         <div class="actions" style="margin-top:0">
-          <span class="muted">Fernet 信封：版本、铸造时间与结构；密文不解密，也不需要密钥。</span>
+          <span class="muted">Fernet 信封：版本、签发时间与结构；密文不解密，也不需要密钥。</span>
           <div class="spacer"></div>
           <button class="primary" id="decodeBtn"><svg class="i"><use href="#i-eye"/></svg>解码</button>
         </div>
@@ -431,16 +447,13 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
     </section>
 
     <section class="panel" id="turnStatePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><h3>最近回合状态</h3>
+      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><h3>不降智 State 池</h3>
         <div class="spacer"></div><span class="muted" id="turnStateMeta"></span>
         <button class="quiet icon" id="turnStateRefresh" title="刷新" aria-label="刷新回合状态"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
       <div class="panel-body">
-        <table class="history-table">
-          <thead><tr><th>凭证</th><th>模型</th><th>摘要</th><th>铸造时间</th><th style="text-align:right">状态</th></tr></thead>
-          <tbody id="turnStateBody"></tbody>
-        </table>
-        <div class="muted" style="margin-top:8px">每个「凭证 + 模型」只保留最新的一条，新请求铸造出新 blob 时自动覆盖。跨号、跨模型都不能复用；超过 <span id="turnStateWindow">1 小时</span>视为过期（经验值，不一定）。</div>
+        <div id="turnStateBody" class="state-pool"></div>
+        <div class="muted" style="margin-top:8px">只有不降智 state 才入池：Team ≤ 332 字符，Pro ≤ 292 字符。每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">1 小时</span>只标记过期。</div>
       </div>
     </section>
 
@@ -838,24 +851,26 @@ function renderResponseHeaders(headers, prefixHTML = "") {
 /* ---------- status vocabulary ----------------------------------------- */
 /* ---------- turn state -------------------------------------------------
    The blob itself means nothing to a reader, so the panel shows what can be
-   read: who minted it, when, and whether this request is echoing someone
+   read: which credential returned it, when, and whether this request is echoing someone
    else's. */
 function turnStateTags(record) {
   const tags = [];
   if (record.turn_state_cross_account === true) {
-    tags.push(`<span class="tag bad" title="该 blob 由 ${esc(record.turn_state_origin_label || record.turn_state_origin_index || "另一个凭证")} 铸造">跨账号回带</span>`);
+    tags.push(`<span class="tag bad" title="该 state 来自 ${esc(record.turn_state_origin_label || record.turn_state_origin_index || "另一个凭证")}">跨账号回带</span>`);
   } else if (record.turn_state_cross_model === true) {
-    tags.push(`<span class="tag bad" title="该 blob 为模型 ${esc(record.turn_state_origin_model || "另一个模型")} 铸造">跨模型回带</span>`);
+    tags.push(`<span class="tag bad" title="该 state 对应模型 ${esc(record.turn_state_origin_model || "另一个模型")}">跨模型回带</span>`);
   } else if (record.turn_state_cross_account === false) {
     tags.push('<span class="tag ok">回带一致</span>');
   } else if (record.turn_state_echo) {
-    tags.push('<span class="tag flat" title="没有记录到这个 blob 的铸造方">回带来源未知</span>');
+    tags.push('<span class="tag flat" title="没有记录到这个 blob 的来源凭证">回带来源未知</span>');
   }
   if (record.turn_state_expired) {
     tags.push(`<span class="tag warn" title="超过复用窗口（经验值 1 小时）">已过期${record.turn_state_age_seconds ? ` ${Math.round(record.turn_state_age_seconds / 60)} 分钟` : ""}</span>`);
   }
   if (record.turn_state_stripped) tags.push('<span class="tag warn">已摘除</span>');
-  if (record.turn_state_minted) tags.push('<span class="tag flat">已铸造</span>');
+  if (record.turn_state_minted?.pooled) tags.push('<span class="tag ok">不降智 · 已入池</span>');
+  else if (record.turn_state_minted?.non_degraded === false) tags.push('<span class="tag bad">疑似降智 · 未入池</span>');
+  else if (record.turn_state_minted) tags.push('<span class="tag warn">套餐未知 · 未入池</span>');
   return tags.join("");
 }
 function turnStateAge(info) {
@@ -885,8 +900,13 @@ function turnStateRows(label, info, extra = "", blob = "", model = "") {
     <div class="ts-title">${esc(label)}${extra}<span style="flex:1"></span>${decode}</div>
     <dl class="ts-grid">
       <dt>摘要</dt><dd class="mono">${esc(info.digest || "-")}</dd>
-      ${model ? `<dt>铸造模型</dt><dd class="mono">${esc(model)}</dd>` : ""}
+      ${model ? `<dt>对应模型</dt><dd class="mono">${esc(model)}</dd>` : ""}
+      ${info.plan_type ? `<dt>套餐</dt><dd>${esc(info.plan_type)}</dd>` : ""}
       <dt>Base64 字符数</dt><dd class="num">${info.chars ? `${info.chars} 个字符` : "-"}</dd>
+      ${info.max_chars ? `<dt>不降智阈值</dt><dd class="num">≤ ${info.max_chars} 个字符</dd>` : ""}
+      ${info.non_degraded === true ? '<dt>质量判定</dt><dd><span class="tag ok">不降智</span></dd>' : ""}
+      ${info.non_degraded === false ? '<dt>质量判定</dt><dd><span class="tag bad">疑似降智</span></dd>' : ""}
+      ${info.non_degraded !== undefined ? `<dt>State 池</dt><dd>${info.pooled ? '<span class="tag ok">已入池</span>' : '<span class="tag flat">未入池</span>'}</dd>` : ""}
       <dt>解码后总字节数</dt><dd class="num">${info.decodable ? `${info.bytes} 字节` : "-"}</dd>
       <dt>版本号</dt><dd class="num">${info.decodable ? `0x${Number(info.version).toString(16).padStart(2, "0")} (${info.version})` : "-"}</dd>
       <dt>时间戳 (Unix)</dt><dd class="num">${unix !== null ? unix : "-"}</dd>
@@ -902,14 +922,14 @@ function turnStateDetail(record) {
   if (!record.turn_state_echo && !record.turn_state_minted && !echoBlob && !mintedBlob) return "";
   const origin = record.turn_state_origin_label || record.turn_state_origin_index;
   const echoExtra = record.turn_state_cross_account === true
-    ? ` <span class="tag bad">由 ${esc(origin || "其他凭证")} 铸造</span>`
-    : (origin ? ` <span class="tag ok">由本凭证铸造</span>` : "");
+    ? ` <span class="tag bad">来自 ${esc(origin || "其他凭证")}</span>`
+    : (origin ? ` <span class="tag ok">来自本凭证</span>` : "");
   const session = record.turn_state_session_id ? `<div class="metaline"><span>会话 ${esc(record.turn_state_session_id)}</span></div>` : "";
   return `<div class="history-detail-section">
     <div class="history-detail-label"><span>X-Codex-Turn-State</span><span>${turnStateTags(record)}</span></div>
     <div class="ts-pair">
       ${turnStateRows("客户端回带", record.turn_state_echo, echoExtra, echoBlob, record.turn_state_origin_model || "")}
-      ${turnStateRows("上游铸造", record.turn_state_minted, "", mintedBlob, record.model || "")}
+      ${turnStateRows("上游返回", record.turn_state_minted, "", mintedBlob, record.model || "")}
     </div>
     ${session}
   </div>`;
@@ -1043,9 +1063,7 @@ function showRecord(record, summaryRow) {
 }
 
 
-/* Recent turn states: one row per credential and model, newest first. A new
-   mint for the same pair overwrites the old row, which is exactly the set a
-   client could still be echoing. */
+/* State pool: one non-degraded state per credential and model, newest first. */
 async function loadTurnStates() {
   const body = $("turnStateBody");
   try {
@@ -1056,22 +1074,30 @@ async function loadTurnStates() {
     $("turnStateMeta").textContent = items.length ? `${items.length} 条` : "";
     body.replaceChildren();
     if (!items.length) {
-      body.innerHTML = '<tr><td colspan="5" class="empty">本次运行还没有观察到上游铸造的 blob</td></tr>';
+      body.innerHTML = '<div class="empty">还没有不降智 state 入池</div>';
       return;
     }
     for (const item of items) {
-      const row = document.createElement("tr");
+      const row = document.createElement("article");
+      row.className = "state-card";
       const minted = new Date(item.minted_at);
       const age = Math.max(0, Math.round((item.age_seconds || 0) / 60));
-      row.innerHTML = `<td>${esc(item.label || item.auth_index)}</td>
-        <td class="mono">${esc(item.model || "未记录")}</td>
-        <td class="mono">${esc(item.digest)}</td>
-        <td class="num">${esc(minted.toLocaleString())}<span class="muted"> · ${age} 分钟前</span></td>
-        <td style="text-align:right">${item.expired ? '<span class="tag warn">已过期</span>' : '<span class="tag ok">可复用</span>'}</td>`;
+      row.innerHTML = `<div class="state-card-head"><div class="state-card-title">
+          <div class="pool-credential"><b>${esc(item.label || item.auth_index)}</b><span class="mono muted">${esc(item.auth_index)}</span></div>
+          <div data-label="模型" class="pool-model mono">${esc(item.model || "未记录")}</div>
+        </div>${item.expired ? '<span class="tag warn">已过期</span>' : '<span class="tag ok">不降智</span>'}</div>
+        <div class="state-card-meta"><span class="tag flat">${esc(item.plan_type || "未知套餐")}</span>
+          <span class="num">${item.chars || "-"} / ≤ ${item.max_chars || "-"} 字符</span>
+          <span class="num">${esc(minted.toLocaleString())} · ${age} 分钟前</span>
+        </div>
+        <details class="pool-state"><summary>查看具体值</summary>
+          <div class="pool-state-value mono">${esc(item.state || "未保存原值")}</div>
+          ${item.state ? `<div class="pool-state-actions"><button class="btn-xs" data-copy-state="${esc(item.state)}">复制</button><button class="btn-xs" data-blob="${esc(item.state)}"><svg class="i" style="width:12px;height:12px"><use href="#i-eye"/></svg>解码</button></div>` : ""}
+        </details>`;
       body.append(row);
     }
   } catch (error) {
-    body.innerHTML = `<tr><td colspan="5" class="empty">${esc(error.message || String(error))}</td></tr>`;
+    body.innerHTML = `<div class="empty">${esc(error.message || String(error))}</div>`;
   }
 }
 /* ---------- turn-state decoder ----------------------------------------
@@ -1087,10 +1113,10 @@ async function decodeTurnState() {
     const info = payload.info || {};
     const origin = payload.origin_label || payload.origin_auth_index;
     // Both lengths now live inside the envelope itself, so this only adds what
-    // the envelope cannot know: who minted the blob.
+    // the envelope cannot know: which credential returned the blob.
     $("decodeOutput").innerHTML = `${turnStateRows("解码结果", info)}
       <dl class="ts-grid" style="margin-top:8px">
-        <dt>铸造方</dt><dd>${origin ? esc(origin) : '<span class="muted">本次运行未记录到铸造方</span>'}</dd>
+        <dt>入池来源</dt><dd>${origin ? esc(origin) : '<span class="muted">未记录到来源</span>'}</dd>
       </dl>`;
   } catch (error) {
     fail(error);
@@ -1248,6 +1274,23 @@ $("cleanupBtn").addEventListener("click", async () => {
 });
 $("decodeBtn").addEventListener("click", () => decodeTurnState());
 $("turnStateRefresh").addEventListener("click", () => loadTurnStates());
+$("turnStateBody").addEventListener("click", async (event) => {
+  const copy = event.target.closest?.("[data-copy-state]");
+  if (copy) {
+    try {
+      await navigator.clipboard.writeText(copy.dataset.copyState);
+      toast("State 已复制");
+    } catch {
+      toast("浏览器不允许自动复制，请直接选中具体值", true);
+    }
+    return;
+  }
+  const decode = event.target.closest?.("[data-blob]");
+  if (!decode) return;
+  $("decodeInput").value = decode.dataset.blob;
+  $("decoderPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  decodeTurnState();
+});
 $("historyBody").addEventListener("click", (event) => {
   const trigger = event.target.closest?.("[data-blob]");
   if (!trigger) return;
