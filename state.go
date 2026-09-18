@@ -16,9 +16,14 @@ type pluginState struct {
 	rules       map[string]headerRule
 	pending     map[string]*pendingRequest
 	credentials map[string]credentialSnapshot
+	// turnStates maps a blob digest to the credential that minted it. It is a
+	// correlation aid held in memory only: losing it on restart costs a warning,
+	// never correctness.
+	turnStates      map[string]turnStateOrigin
+	turnStateWrites uint64
 }
 
-var state = &pluginState{rules: map[string]headerRule{}, pending: map[string]*pendingRequest{}, credentials: map[string]credentialSnapshot{}}
+var state = &pluginState{rules: map[string]headerRule{}, pending: map[string]*pendingRequest{}, credentials: map[string]credentialSnapshot{}, turnStates: map[string]turnStateOrigin{}}
 
 func configurePlugin(raw []byte) error {
 	var req lifecycleRequest
@@ -58,6 +63,9 @@ func configurePlugin(raw []byte) error {
 	state.dataPath = cfg.DataPath
 	state.rules = make(map[string]headerRule, len(rules))
 	state.pending = map[string]*pendingRequest{}
+	if state.turnStates == nil {
+		state.turnStates = map[string]turnStateOrigin{}
+	}
 	for _, r := range rules {
 		state.rules[r.AuthIndex] = r
 	}
@@ -191,7 +199,29 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 		}
 		clears = append([]string(nil), rule.Remove...)
 	}
+	echo, echoed := evaluateTurnStateEchoLocked(req.Headers, authIndex)
+	stripped := false
+	if echoed && echo.crossAccount && hasRule && rule.Enabled && rule.StripForeignTurnState {
+		// The blob was minted under another credential. Echoing it here is the
+		// contradiction the guard exists for, so it is dropped from this request
+		// and the recorded "after" view shows it gone.
+		clears = append(clears, turnStateHeader)
+		deleteHeaderFold(after, turnStateHeader)
+		stripped = true
+	}
 	pr.current = &pendingAttempt{historyRecord: historyRecord{ID: fmt.Sprintf("%s#%d", req.RequestID, pr.attempts), RequestID: req.RequestID, Attempt: pr.attempts, AuthIndex: authIndex, AuthID: authID, CredentialName: cred.Name, CredentialLabel: cred.Label, Model: req.Model, RequestedModel: req.RequestedModel, SourceFormat: req.SourceFormat, Stream: req.Stream, StartedAt: time.Now().UTC(), BeforeHeaders: redactHeaders(before), AfterHeaders: redactHeaders(after), Outcome: "in_flight", Origin: originLive}}
+	if echoed {
+		info := echo.info
+		pr.current.TurnStateEcho = &info
+		pr.current.TurnStateOriginIndex = echo.originIndex
+		pr.current.TurnStateOriginLabel = echo.originLabel
+		pr.current.TurnStateStripped = stripped
+		if echo.known {
+			cross := echo.crossAccount
+			pr.current.TurnStateCrossAccount = &cross
+		}
+	}
+	pr.current.TurnStateSessionID = clientSessionID(req.Headers)
 	state.mu.Unlock()
 	return requestInterceptResponse{Headers: updates, ClearHeaders: clears}, nil
 }
@@ -205,9 +235,26 @@ func observeResponse(req responseInterceptRequest) {
 	}
 	pr.current.ResponseHeaders = redactHeaders(req.ResponseHeaders)
 	pr.current.StatusCode = req.StatusCode
+	noteTurnStateMintLocked2(pr.current, req.ResponseHeaders)
 	// The body is read here only to learn which model the upstream served. The
 	// model name is kept; the body itself is not stored anywhere.
 	pr.current.models.observeBody(req.Body)
+}
+
+// noteTurnStateMintLocked2 records a blob the upstream minted in this response
+// and binds it to the credential that served the attempt.
+func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Header) {
+	blob := headerTurnState(responseHeaders)
+	if blob == "" {
+		return
+	}
+	info := decodeTurnState(blob)
+	attempt.TurnStateMinted = &info
+	label := attempt.CredentialLabel
+	if label == "" {
+		label = attempt.CredentialName
+	}
+	noteTurnStateMintLocked(blob, attempt.AuthIndex, label)
 }
 func observeStreamHeaders(req streamChunkInterceptRequest) {
 	state.mu.Lock()
@@ -218,6 +265,7 @@ func observeStreamHeaders(req streamChunkInterceptRequest) {
 	}
 	if req.ChunkIndex == streamChunkHeaderInitIndex {
 		pr.current.ResponseHeaders = redactHeaders(req.ResponseHeaders)
+		noteTurnStateMintLocked2(pr.current, req.ResponseHeaders)
 		return
 	}
 	pr.current.models.observeStream(req.Body)

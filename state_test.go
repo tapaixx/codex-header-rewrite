@@ -95,6 +95,116 @@ func TestNonStreamingResponseBodyIsReadForTheModelOnly(t *testing.T) {
 	if strings.Contains(string(raw), "private answer") { t.Fatalf("response body reached persistence: %s", raw) }
 }
 
+// A turn chain across a credential switch: the upstream mints the blob under
+// idx-a, then the next request goes out under idx-b still echoing it.
+func TestForeignTurnStateEchoIsFlaggedAndOptionallyStripped(t *testing.T) {
+	for _, strip := range []bool{false, true} {
+		p := resetState(t)
+		resetTurnStates(t)
+		state.mu.Lock()
+		state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", Provider: "codex", Name: "a.json", Label: "team-a"}
+		state.credentials["idx-b"] = credentialSnapshot{AuthIndex: "idx-b", Provider: "codex", Name: "b.json", Label: "team-b"}
+		state.rules["idx-b"] = headerRule{AuthIndex: "idx-b", Enabled: true, StripForeignTurnState: strip}
+		state.mu.Unlock()
+
+		blob := fernetToken(0x80, time.Now(), 2)
+		if _, err := interceptAfter(requestInterceptRequest{RequestID: "turn-1", Model: "gpt-5.6-luna", Headers: http.Header{"Session-Id": {"sess-9"}}, Metadata: map[string]any{"selected_auth_index": "idx-a"}}); err != nil {
+			t.Fatal(err)
+		}
+		observeResponse(responseInterceptRequest{RequestID: "turn-1", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {blob}}})
+		completeRequest(requestCompletion{RequestID: "turn-1", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+
+		resp, err := interceptAfter(requestInterceptRequest{RequestID: "turn-2", Model: "gpt-5.6-luna",
+			Headers:  http.Header{"Session-Id": {"sess-9"}, turnStateHeader: {blob}},
+			Metadata: map[string]any{"selected_auth_index": "idx-b"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		completeRequest(requestCompletion{RequestID: "turn-2", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+
+		cleared := false
+		for _, name := range resp.ClearHeaders {
+			if strings.EqualFold(name, turnStateHeader) {
+				cleared = true
+			}
+		}
+		if cleared != strip {
+			t.Fatalf("strip=%v cleared=%v", strip, cleared)
+		}
+
+		state.mu.Lock(); writer := state.writer; state.writer = nil; state.store = nil; state.mu.Unlock()
+		if err := writer.Close(); err != nil { t.Fatal(err) }
+
+		minted, _ := p.History("idx-a", 1)
+		if len(minted.Items) != 1 || minted.Items[0].TurnStateMinted == nil {
+			t.Fatalf("mint not recorded: %#v", minted.Items)
+		}
+		if !minted.Items[0].TurnStateMinted.FernetLike {
+			t.Fatalf("minted envelope not decoded: %#v", minted.Items[0].TurnStateMinted)
+		}
+
+		echoed, _ := p.History("idx-b", 1)
+		if len(echoed.Items) != 1 {
+			t.Fatalf("echo not recorded: %#v", echoed.Items)
+		}
+		record := echoed.Items[0]
+		if record.TurnStateEcho == nil || record.TurnStateCrossAccount == nil || !*record.TurnStateCrossAccount {
+			t.Fatalf("cross-account echo not flagged: %#v", record)
+		}
+		if record.TurnStateOriginIndex != "idx-a" || record.TurnStateOriginLabel != "team-a" {
+			t.Fatalf("minting credential not reported: %#v", record)
+		}
+		if record.TurnStateSessionID != "sess-9" {
+			t.Fatalf("session=%q", record.TurnStateSessionID)
+		}
+		if record.TurnStateStripped != strip {
+			t.Fatalf("strip=%v recorded=%v", strip, record.TurnStateStripped)
+		}
+		if got := record.AfterHeaders.Get(turnStateHeader); (got == "") != strip {
+			t.Fatalf("strip=%v after-header=%q", strip, got)
+		}
+	}
+}
+
+func TestOwnTurnStateEchoIsNotFlagged(t *testing.T) {
+	p := resetState(t)
+	resetTurnStates(t)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", Provider: "codex", Name: "a.json"}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, StripForeignTurnState: true}
+	state.mu.Unlock()
+	blob := fernetToken(0x80, time.Now(), 1)
+	if _, err := interceptAfter(requestInterceptRequest{RequestID: "t1", Metadata: map[string]any{"selected_auth_index": "idx-a"}}); err != nil {
+		t.Fatal(err)
+	}
+	observeStreamHeaders(streamChunkInterceptRequest{RequestID: "t1", ChunkIndex: streamChunkHeaderInitIndex, ResponseHeaders: http.Header{turnStateHeader: {blob}}})
+	completeRequest(requestCompletion{RequestID: "t1", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+
+	resp, err := interceptAfter(requestInterceptRequest{RequestID: "t2", Headers: http.Header{turnStateHeader: {blob}}, Metadata: map[string]any{"selected_auth_index": "idx-a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range resp.ClearHeaders {
+		if strings.EqualFold(name, turnStateHeader) {
+			t.Fatal("a credential echoing its own blob must not have it stripped")
+		}
+	}
+	completeRequest(requestCompletion{RequestID: "t2", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+	state.mu.Lock(); writer := state.writer; state.writer = nil; state.store = nil; state.mu.Unlock()
+	if err := writer.Close(); err != nil { t.Fatal(err) }
+	page, _ := p.History("idx-a", 1)
+	if len(page.Items) != 2 {
+		t.Fatalf("history=%#v", page.Items)
+	}
+	latest := page.Items[0]
+	if latest.TurnStateCrossAccount == nil || *latest.TurnStateCrossAccount {
+		t.Fatalf("own echo should be an explicit match: %#v", latest.TurnStateCrossAccount)
+	}
+	if latest.TurnStateStripped {
+		t.Fatal("nothing should have been stripped")
+	}
+}
+
 func TestNonCodexIgnored(t *testing.T) {
 	resetState(t)
 	state.mu.Lock(); state.credentials["idx-x"] = credentialSnapshot{AuthIndex: "idx-x", Provider: "xai", Type: "codex"}; state.mu.Unlock()

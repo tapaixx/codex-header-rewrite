@@ -23,6 +23,7 @@ const (
 	apiHistoryClearPath   = "/codex-header-rewrite/history/clear"
 	apiOrphansCleanupPath = "/codex-header-rewrite/orphans/cleanup"
 	apiTestPath           = "/codex-header-rewrite/test"
+	apiTurnStateDecodePath = "/codex-header-rewrite/turn-state/decode"
 )
 
 type credentialView struct {
@@ -69,6 +70,7 @@ func registerManagement() managementRegistration {
 		{Method: http.MethodPost, Path: apiHistoryClearPath, Description: "Clear credential history"},
 		{Method: http.MethodPost, Path: apiOrphansCleanupPath, Description: "Remove orphaned credential data"},
 		{Method: http.MethodPost, Path: apiTestPath, Description: "Run a header rewrite test request"},
+		{Method: http.MethodPost, Path: apiTurnStateDecodePath, Description: "Decode an X-Codex-Turn-State envelope"},
 	}, Resources: []resourceRoute{{Path: resourceIndexPath, Menu: pluginName, Description: "Codex credential header rewrite and history"}}}
 }
 
@@ -186,6 +188,32 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"cleared": strings.TrimSpace(body.AuthIndex)}), nil
+	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiTurnStateDecodePath):
+		var body struct {
+			Token string `json:"token"`
+		}
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return jsonError(http.StatusBadRequest, "invalid JSON body"), nil
+		}
+		token := strings.TrimSpace(body.Token)
+		if token == "" {
+			return jsonError(http.StatusBadRequest, "token is required"), nil
+		}
+		info := decodeTurnState(token)
+		payload := map[string]any{"info": info, "chars": len([]rune(token))}
+		// The provenance table is the only thing that can say which credential
+		// minted a pasted blob, so the answer is included when it is known.
+		state.mu.Lock()
+		origin, known := lookupTurnStateOriginLocked(token)
+		state.mu.Unlock()
+		if known {
+			payload["origin_auth_index"] = origin.authIndex
+			payload["origin_label"] = origin.label
+		}
+		if !info.IssuedAt.IsZero() {
+			payload["age_seconds"] = int64(time.Since(info.IssuedAt).Seconds())
+		}
+		return jsonResponse(http.StatusOK, payload), nil
 	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiTestPath):
 		var body testRequest
 		if err := json.Unmarshal(req.Body, &body); err != nil {

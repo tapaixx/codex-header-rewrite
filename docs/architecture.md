@@ -40,6 +40,26 @@ CPA 替换版本化 `.so` 时先对旧实例调用 `plugin.quiesce`，再注册�
 
 载荷只在内存里解析，取出模型名后即丢弃；请求体和响应体都不进入持久化。
 
+## 回合状态溯源
+
+`X-Codex-Turn-State` 由上游在响应头铸造，客户端在同一回合的下一次请求原样回带。插件按 blob 的 SHA-256 摘要前 16 位建立（摘要 → 铸造凭证）内存表：
+
+```text
+response.intercept_after / stream header-init
+ -> 响应头里有 blob -> 记 (摘要 -> auth_index, label, mintedAt)
+
+request.intercept_after
+ -> 请求头里有 blob -> 查摘要
+    -> 命中且铸造方 != 当前 auth_index -> 标记 turn_state_cross_account
+       -> 规则开启守卫 -> 把该 Header 加入 ClearHeaders，并从"改写后"视图中移除
+    -> 命中且铸造方 == 当前 auth_index -> 标记回带一致
+    -> 未命中 -> 不判定（未知不是一致）
+```
+
+表有 2 小时 TTL 与 512 条上限，超出时按最早观测时间淘汰；进程重启即清空，代价只是把后续回带判为「来源未知」，不会误判为跨账号。
+
+blob 本身是 Fernet token：`1 字节版本 + 8 字节大端时间戳 + 16 字节 IV + 16n 字节密文 + 32 字节 HMAC`。插件只读前 9 字节与总长度，不持有密钥、不解密密文。
+
 ## 测试请求
 
 测试请求不走 CPA 的 provider executor 转发链路，而是插件调用 CPA 宿主的 `host.http.do`：

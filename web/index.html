@@ -60,7 +60,7 @@ button.quiet:hover:not(:disabled){background:var(--sunk);color:var(--text)}
 button.destructive{color:var(--gone)}
 button.icon{padding:6px}
 
-input,textarea,select{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-control);padding:7px 10px;width:100%;
+input,textarea,select{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-control);padding:6px 9px;width:100%;
   transition:border-color .16s var(--ease),box-shadow .16s var(--ease)}
 input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
 input::placeholder,textarea::placeholder{color:var(--text-mute)}
@@ -79,7 +79,15 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
 .chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--text-soft);background:var(--surface)}
 
 /* Shell */
-.shell{display:grid;grid-template-columns:270px minmax(0,1fr);gap:20px;padding:20px;max-width:1280px;margin:0 auto;align-items:start}
+/* Wide screens get three columns: credentials, the forms that stay narrow by
+   nature, and the observation surfaces that actually want width. Stacking all
+   four panels in one column made the page long for no reason. */
+.shell{display:grid;grid-template-columns:250px minmax(0,1fr);gap:16px;padding:16px 18px;max-width:1720px;margin:0 auto;align-items:start}
+main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start;min-width:0}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+@media (min-width:1200px){
+  main{grid-template-columns:minmax(380px,430px) minmax(0,1fr)}
+}
 .rail{position:sticky;top:76px;display:flex;flex-direction:column;gap:6px}
 .rail-head{display:flex;align-items:center;justify-content:space-between;height:28px;padding-left:2px}
 .rail-head h2{margin:0;font-size:12px;font-weight:600;color:var(--text-mute)}
@@ -91,21 +99,21 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
 .cred-meta{display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--text-mute);font-size:12px}
 
 /* Panels */
-.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);margin-bottom:18px;scroll-margin-top:76px}
-.panel-head{display:flex;align-items:center;gap:10px;min-height:48px;padding:10px 16px;border-bottom:1px solid var(--line)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);scroll-margin-top:72px}
+.panel-head{display:flex;align-items:center;gap:9px;min-height:42px;padding:8px 14px;border-bottom:1px solid var(--line)}
 .panel-head h3{margin:0;font-size:14px;font-weight:600}
-.panel-body{padding:16px}
-.field{display:grid;gap:6px;margin-bottom:14px}
+.panel-body{padding:13px 14px}
+.field{display:grid;gap:5px;margin-bottom:10px}
 .field label{font-size:12px;font-weight:500;color:var(--text-soft)}
-.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
 .switch{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-size:14px}
 .switch input{appearance:none;width:34px;height:20px;margin:0;border-radius:999px;background:var(--line-strong);border:none;position:relative;cursor:pointer;transition:background .18s var(--ease)}
 .switch input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .18s var(--ease)}
 .switch input:checked{background:var(--accent)}
 .switch input:checked::after{transform:translateX(14px)}
-.sub{margin:20px 0 9px;font-size:12px;font-weight:600;color:var(--text-mute)}
+.sub{margin:14px 0 7px;font-size:12px;font-weight:600;color:var(--text-mute)}
 .sub:first-child{margin-top:0}
-.hrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr) 32px;gap:8px;margin-bottom:8px}
+.hrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr) 30px;gap:6px;margin-bottom:6px}
 /* Removal rows keep the name field in the same column as the set rows above,
    so both lists read down one edge instead of two. */
 .hrow.single{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr) 32px}
@@ -114,7 +122,7 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
 .notice.warn{background:var(--over-weak);color:var(--over)}
 .notice.info{background:var(--sunk);color:var(--text-soft);border:1px solid var(--line)}
 .notice svg{margin-top:2px}
-.actions{display:flex;align-items:center;gap:9px;margin-top:18px;flex-wrap:wrap}
+.actions{display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap}
 
 /* Header diff: one row per header, name once, value inline.
    Changed rows lead; unchanged rows collapse so the changes stay readable. */
@@ -122,7 +130,7 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
 .diff-row{display:grid;grid-template-columns:30px minmax(120px,210px) minmax(0,1fr);align-items:baseline;
   font-family:var(--mono);font-size:13px;line-height:1.6;border-top:1px solid var(--line)}
 .diff-row:first-child{border-top:none}
-.diff-row>*{padding:8px 10px;min-width:0;overflow-wrap:anywhere}
+.diff-row>*{padding:5px 9px;min-width:0;overflow-wrap:anywhere}
 .diff-mark{text-align:center;color:var(--text-mute);background:var(--sunk);border-right:1px solid var(--line);user-select:none;align-self:stretch}
 .diff-name{color:var(--text-soft)}
 .diff-value{color:var(--text)}
@@ -152,15 +160,23 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
 .tag.bad{background:var(--gone-weak);color:var(--gone);border-color:color-mix(in srgb,var(--gone) 26%,transparent)}
 .tag.warn{background:var(--over-weak);color:var(--over);border-color:color-mix(in srgb,var(--over) 26%,transparent)}
 .tag.flat{background:var(--sunk);color:var(--text-soft);border-color:var(--line)}
+/* Turn-state blocks: the echo only means something next to what the response
+   minted, so the two envelopes sit side by side when there is room. */
+.ts-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.ts-block{border:1px solid var(--line);border-radius:var(--r-control);padding:9px 11px;background:var(--sunk);min-width:0}
+.ts-title{font-size:12px;font-weight:600;color:var(--text-soft);margin-bottom:7px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ts-grid{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0;font-size:12px}
+.ts-grid dt{color:var(--text-mute)}
+.ts-grid dd{margin:0;overflow-wrap:anywhere}
 .chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:13px}
 .chain .arrow{color:var(--text-mute)}
 .metaline{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;color:var(--text-mute);font-size:12px}
 
 /* History */
 .history-table{width:100%;border-collapse:collapse;font-size:13px}
-.history-table th{text-align:left;font-weight:600;font-size:12px;color:var(--text-mute);padding:0 10px 9px}
+.history-table th{text-align:left;font-weight:600;font-size:11.5px;color:var(--text-mute);padding:0 9px 7px}
 .history-summary{cursor:pointer;transition:background .14s var(--ease)}
-.history-summary td{padding:10px;border-top:1px solid var(--line);vertical-align:middle}
+.history-summary td{padding:7px 9px;border-top:1px solid var(--line);vertical-align:middle}
 .history-summary:hover{background:var(--sunk)}
 .history-summary[aria-selected=true]{background:var(--accent-weak);box-shadow:inset 2px 0 0 var(--accent)}
 .history-summary:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
@@ -300,6 +316,7 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
   </aside>
 
   <main>
+   <div class="col" id="colWork">
     <section class="panel" id="rulePanel">
       <div class="panel-head"><h3 id="ruleTitle">Header 规则</h3><div class="spacer"></div><span class="muted" id="ruleUpdated"></span></div>
       <div class="panel-body">
@@ -310,6 +327,9 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
         <div class="sub">移除</div>
         <div id="removeRows"></div>
         <button class="quiet" id="addRemove"><svg class="i"><use href="#i-plus"/></svg>添加 Header</button>
+        <div class="sub">回合状态守卫</div>
+        <label class="switch"><input type="checkbox" id="ruleStripTurnState"><span>跨账号回带时移除 X-Codex-Turn-State</span></label>
+        <div class="muted" style="margin-top:5px">换凭证后仍回带上一个凭证铸造的 blob，是只有代理链才会出现的矛盾。开启后，确认铸造方不是当前凭证时摘掉它。</div>
         <div class="notice warn" id="ruleWarn" hidden style="margin-top:14px"><svg class="i"><use href="#i-alert"/></svg><span id="ruleWarnText"></span></div>
         <div class="actions">
           <button class="destructive" id="deleteRule"><svg class="i"><use href="#i-trash"/></svg>删除规则</button>
@@ -320,17 +340,6 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
       </div>
     </section>
 
-    <section class="panel" id="diffPanel">
-      <div class="panel-head">
-        <svg class="i"><use href="#i-swap"/></svg><h3>Header 差异</h3>
-        <span class="tag flat" id="diffCount">无改动</span>
-        <div class="spacer"></div><span class="muted" id="diffSource"></span>
-      </div>
-      <div class="panel-body">
-        <div id="diffBox"></div>
-        <div id="diffExtra"></div>
-      </div>
-    </section>
 
     <section class="panel">
       <div class="panel-head"><svg class="i"><use href="#i-flask"/></svg><h3>测试请求</h3></div>
@@ -382,6 +391,36 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
       </div>
     </section>
 
+    <section class="panel" id="decoderPanel">
+      <div class="panel-head"><svg class="i"><use href="#i-key"/></svg><h3>Turn-State 解码</h3><div class="spacer"></div><span class="muted">只读信封，不解密</span></div>
+      <div class="panel-body">
+        <div class="field">
+          <label for="decodeInput">X-Codex-Turn-State</label>
+          <textarea id="decodeInput" spellcheck="false" placeholder="粘贴 blob，或在历史详情里点「解码」直接带入"></textarea>
+        </div>
+        <div class="actions" style="margin-top:0">
+          <span class="muted">Fernet 信封：版本、铸造时间与结构；密文不解密，也不需要密钥。</span>
+          <div class="spacer"></div>
+          <button class="primary" id="decodeBtn"><svg class="i"><use href="#i-eye"/></svg>解码</button>
+        </div>
+        <div id="decodeOutput" style="margin-top:12px"></div>
+      </div>
+    </section>
+   </div>
+
+   <div class="col" id="colObserve">
+    <section class="panel" id="diffPanel">
+      <div class="panel-head">
+        <svg class="i"><use href="#i-swap"/></svg><h3>Header 差异</h3>
+        <span class="tag flat" id="diffCount">无改动</span>
+        <div class="spacer"></div><span class="muted" id="diffSource"></span>
+      </div>
+      <div class="panel-body">
+        <div id="diffBox"></div>
+        <div id="diffExtra"></div>
+      </div>
+    </section>
+
     <section class="panel" id="historyPanel">
       <div class="panel-head"><h3>请求历史</h3><div class="spacer"></div><span class="muted" id="historyMeta"></span><button class="quiet destructive" id="clearHistory"><svg class="i"><use href="#i-trash"/></svg>清空</button></div>
       <div class="panel-body">
@@ -392,6 +431,7 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
         <div class="pager" id="pager"></div>
       </div>
     </section>
+   </div>
   </main>
 </div>
 
@@ -680,6 +720,7 @@ async function loadRule() {
   const payload = await api(`/rule?auth_index=${encodeURIComponent(store.selected)}`);
   store.rule = payload.rule;
   $("ruleEnabled").checked = !!store.rule.enabled;
+  $("ruleStripTurnState").checked = !!store.rule.strip_foreign_turn_state;
   $("setRows").replaceChildren();
   for (const [name, value] of Object.entries(store.rule.set || {})) headerRow($("setRows"), name, value);
   $("removeRows").replaceChildren();
@@ -694,7 +735,7 @@ function renderWarnings(warnings) {
     $("ruleWarnText").innerHTML = `${warnings.map((name) => `<code class="mono">${esc(name)}</code>`).join("、")} 属于 Codex executor 的特殊字段，改写可能在 interceptor 之后被覆盖。`;
   }
 }
-const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")) });
+const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), strip_foreign_turn_state: $("ruleStripTurnState").checked });
 
 /* ---------- the header diff -------------------------------------------
    One row per header. The name is written once and the value change is shown
@@ -757,6 +798,9 @@ function renderDiff(before, after, sourceLabel) {
   const rendered = diffHTML(before, after, "预览规则或发送测试请求后在这里查看差异", true);
   $("diffCount").textContent = rendered.count ? `${rendered.count} 处改动` : (rendered.hasRows ? "无改动" : "暂无数据");
   $("diffBox").innerHTML = rendered.html;
+  // History carries its own inline detail, so an empty preview panel is just a
+  // box taking the top of the column. It appears when it has something to say.
+  $("diffPanel").hidden = !rendered.hasRows;
 }
 function responseHeadersHTML(headers) {
   const entries = Object.entries(headers || {}).sort((a, b) => a[0].localeCompare(b[0]));
@@ -771,6 +815,65 @@ function renderResponseHeaders(headers, prefixHTML = "") {
 }
 
 /* ---------- status vocabulary ----------------------------------------- */
+/* ---------- turn state -------------------------------------------------
+   The blob itself means nothing to a reader, so the panel shows what can be
+   read: who minted it, when, and whether this request is echoing someone
+   else's. */
+function turnStateTags(record) {
+  const tags = [];
+  if (record.turn_state_cross_account === true) {
+    tags.push(`<span class="tag bad" title="该 blob 由 ${esc(record.turn_state_origin_label || record.turn_state_origin_index || "另一个凭证")} 铸造">跨账号回带</span>`);
+  } else if (record.turn_state_cross_account === false) {
+    tags.push('<span class="tag ok">回带一致</span>');
+  } else if (record.turn_state_echo) {
+    tags.push('<span class="tag flat" title="没有记录到这个 blob 的铸造方">回带来源未知</span>');
+  }
+  if (record.turn_state_stripped) tags.push('<span class="tag warn">已摘除</span>');
+  if (record.turn_state_minted) tags.push('<span class="tag flat">已铸造</span>');
+  return tags.join("");
+}
+function turnStateAge(info) {
+  if (!info?.issued_at || info.issued_at.startsWith("0001")) return "";
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(info.issued_at).getTime()) / 1000));
+  if (seconds < 90) return `${seconds} 秒前`;
+  if (seconds < 5400) return `${Math.round(seconds / 60)} 分钟前`;
+  return `${Math.round(seconds / 3600)} 小时前`;
+}
+function turnStateRows(label, info, extra = "", blob = "") {
+  if (!info) return "";
+  const decode = blob ? `<button class="quiet" data-blob="${esc(blob)}" style="padding:1px 7px;font-size:11.5px">解码</button>` : "";
+  const issued = info.issued_at && !info.issued_at.startsWith("0001")
+    ? `${new Date(info.issued_at).toLocaleString()}<span class="muted"> · ${turnStateAge(info)}</span>` : "未能读出";
+  const shape = info.decodable
+    ? (info.fernet_like ? '<span class="tag ok">Fernet 结构</span>' : '<span class="tag warn">结构不符</span>')
+    : '<span class="tag bad">无法解码</span>';
+  return `<div class="ts-block">
+    <div class="ts-title">${esc(label)}${extra}<span style="flex:1"></span>${decode}</div>
+    <dl class="ts-grid">
+      <dt>摘要</dt><dd class="mono">${esc(info.digest || "-")}</dd>
+      <dt>铸造时间</dt><dd>${issued}</dd>
+      <dt>版本 / 字节</dt><dd class="num">${info.decodable ? `0x${Number(info.version).toString(16).padStart(2, "0")} · ${info.bytes} B` : "-"}</dd>
+      <dt>结构</dt><dd>${shape}</dd>
+    </dl>
+  </div>`;
+}
+function turnStateDetail(record) {
+  if (!record.turn_state_echo && !record.turn_state_minted) return "";
+  const origin = record.turn_state_origin_label || record.turn_state_origin_index;
+  const echoExtra = record.turn_state_cross_account === true
+    ? ` <span class="tag bad">由 ${esc(origin || "其他凭证")} 铸造</span>`
+    : (origin ? ` <span class="tag ok">由本凭证铸造</span>` : "");
+  const session = record.turn_state_session_id ? `<div class="metaline"><span>会话 ${esc(record.turn_state_session_id)}</span></div>` : "";
+  return `<div class="history-detail-section">
+    <div class="history-detail-label"><span>X-Codex-Turn-State</span><span>${turnStateTags(record)}</span></div>
+    <div class="ts-pair">
+      ${turnStateRows("客户端回带", record.turn_state_echo, echoExtra, pickHeader(record.before_headers, "x-codex-turn-state") || "")}
+      ${turnStateRows("上游铸造", record.turn_state_minted, "", pickHeader(record.response_headers, "x-codex-turn-state") || "")}
+    </div>
+    ${session}
+  </div>`;
+}
+
 function modelChain(record) {
   const sent = record.model || record.sent_model || "";
   const upstream = record.upstream_model || "";
@@ -828,7 +931,7 @@ async function loadHistory(page = 1) {
     row.innerHTML = `<td class="history-time num">${esc(new Date(record.started_at).toLocaleString())}</td>
       <td class="history-origin">${record.origin === "test" ? '<span class="tag flat">测试</span>' : '<span class="muted">线上</span>'}</td>
       <td class="history-model">${modelChain(record)}</td>
-      <td class="history-outcome">${outcomeTag(record.outcome)}${record.error ? ` <span class="muted">${esc(record.error)}</span>` : ""}</td>
+      <td class="history-outcome">${outcomeTag(record.outcome)}${turnStateTags(record)}${record.error ? ` <span class="muted">${esc(record.error)}</span>` : ""}</td>
       <td class="history-status num" style="text-align:right">${record.status_code || "-"}</td>`;
     row.addEventListener("click", () => showRecord(record, row));
     row.addEventListener("keydown", (event) => {
@@ -925,6 +1028,7 @@ function showRecord(record, summaryRow) {
       <div class="history-detail-label"><span>Request Header 差异</span><span>${requestDiff.count ? `${requestDiff.count} 处改动` : (requestDiff.hasRows ? "无改动" : "无数据")}</span></div>
       ${requestDiff.html}
     </div>
+    ${turnStateDetail(record)}
     <div class="history-detail-section">
       <div class="history-detail-label"><span>上游 Response Header</span></div>
       ${responseHeadersHTML(record.response_headers)}
@@ -932,6 +1036,30 @@ function showRecord(record, summaryRow) {
   </div>`;
   detail.append(cell);
   summaryRow.after(detail);
+}
+
+/* ---------- turn-state decoder ----------------------------------------
+   Decoding happens on the server so the panel and the recorded history can
+   never disagree about what a blob says. */
+async function decodeTurnState() {
+  const token = $("decodeInput").value.trim();
+  if (!token) { toast("先粘贴一个 blob", true); return; }
+  const button = $("decodeBtn");
+  button.disabled = true;
+  try {
+    const payload = await api("/turn-state/decode", { method: "POST", body: { token } });
+    const info = payload.info || {};
+    const origin = payload.origin_label || payload.origin_auth_index;
+    $("decodeOutput").innerHTML = `${turnStateRows("解码结果", info)}
+      <dl class="ts-grid" style="margin-top:8px">
+        <dt>输入长度</dt><dd class="num">${payload.chars} 字符</dd>
+        <dt>铸造方</dt><dd>${origin ? esc(origin) : '<span class="muted">本次运行未记录到铸造方</span>'}</dd>
+      </dl>`;
+  } catch (error) {
+    fail(error);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 /* ---------- test request ---------------------------------------------- */
@@ -1076,6 +1204,15 @@ $("cleanupBtn").addEventListener("click", async () => {
     await loadCredentials();
     toast(`已清理 ${(payload.deleted || []).length} 个遗留凭证`);
   } catch (error) { fail(error); }
+});
+$("decodeBtn").addEventListener("click", () => decodeTurnState());
+$("historyBody").addEventListener("click", (event) => {
+  const trigger = event.target.closest?.("[data-blob]");
+  if (!trigger) return;
+  event.stopPropagation();
+  $("decodeInput").value = trigger.dataset.blob;
+  $("decoderPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  decodeTurnState();
 });
 $("previewBtn").addEventListener("click", () => runTest(true));
 $("sendBtn").addEventListener("click", () => runTest(false));

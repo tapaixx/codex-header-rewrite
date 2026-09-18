@@ -20,6 +20,7 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - 不保存 request / response body。
 - 自定义测试请求：从凭证可用模型中选择模型、复用安全的历史 Header 模板、预览改写结果，或向自定义端点发一次真实请求。
 - 模型一致性核对：记录上游实际声明的模型，与发出的模型比对，不一致时标红。
+- 回合状态（X-Codex-Turn-State）溯源：记录 blob 的铸造凭证，发现跨账号回带并可按规则摘除；内置 Fernet 信封解码。
 - 中文内嵌 UI，单文档零外部依赖；敏感数据接口走 CPA Management API。
 - Linux amd64 / arm64 CI 与 tag Release。
 
@@ -44,7 +45,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.4.1.so` | `codex-header-rewrite` | `0.4.1` |
+| `codex-header-rewrite-v0.5.0.so` | `codex-header-rewrite` | `0.5.0` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -57,7 +58,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.4.1.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.5.0.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -147,6 +148,29 @@ curl -s -H "Authorization: Bearer <management-key>" \
 终局事件（`response.completed` 等）的声明优先于过程中的声明。载荷只在内存里解析，请求体与响应体都不入库。
 
 > 参考实现说明：sub2api 的 `upstream_model_mismatch` 同样是读响应载荷声明的模型（`response.model` / `message.model` / `modelVersion`）后与发出的模型比对，不是按 Header 判断 —— Header 里没有这个信息。
+
+## 回合状态守卫（X-Codex-Turn-State）
+
+上游在响应头里铸造 `X-Codex-Turn-State`，客户端在同一回合的下一次请求原样回带。这个 blob 是在某个账号的出站身份下铸造的：**换凭证之后仍回带旧凭证铸造的 blob，是只有代理链才会产生的矛盾**，真实 Codex 客户端不会出现。
+
+插件做两件事：
+
+**溯源与判定**。响应里出现 blob 时，按摘要记下是哪个凭证铸造的（内存表，2 小时过期、512 条上限，重启即失效）。之后某次请求回带该 blob 时比对：
+
+| 显示 | 含义 |
+|---|---|
+| 回带一致 | 回带的 blob 正是当前凭证铸造的 |
+| 跨账号回带 | 该 blob 由另一个凭证铸造，详情里显示是哪一个 |
+| 回带来源未知 | 没记到铸造方（重启、过期或铸造发生在装插件之前）—— 是「未知」，不是「一致」 |
+| 已摘除 | 规则开启守卫，本次回带已被摘掉 |
+
+**摘除**。规则里的「跨账号回带时移除 X-Codex-Turn-State」打开后，确认铸造方不是当前凭证时，插件把该 Header 从这次请求里摘掉；来源未知时不动它。只报告不摘除是默认行为。
+
+### 信封解码
+
+blob 是 Fernet token，版本号与铸造时间在信封里明文可读，**不需要密钥、也不解密密文**。历史详情直接显示摘要、铸造时间、版本、字节数与结构是否符合 Fernet（`1+8+16+16n+32`）；「Turn-State 解码」面板可以粘贴任意 blob 单独解码，历史详情里点「解码」会把该条的原始 blob 带过去。
+
+> 参考实现说明：sub2api / xy2api 的做法是按（下游会话 → 最近铸造账号）记录，出站时剥离已知异账号的回带值。本插件改为**按 blob 摘要索引铸造方**，因此不依赖客户端是否带 `session-id`，也能指出具体是哪个凭证铸造的。
 
 ## 重要限制
 

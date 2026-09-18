@@ -26,3 +26,10 @@ Plugin Resource 路由只提供静态 HTML；credential、rule、history、test�
 - 账号标识只从 `id_token.chatgpt_account_id` 及其显式别名读取。同级的 `account` / `id` 字段装的是操作者邮箱，不是账号标识，取不到标识时如实报错，不拿地址顶替。
 - 凭证材料在发出请求前即时读取，用完不保留、不记录、不返回面板。
 - 历史 Header 模板在服务端生成，剔除凭证、账号 ID、Host、Content-Length、hop-by-hop 字段以及任何带 `[REDACTED]` 标记的值，避免把脱敏占位符或身份信息重新发出。
+
+## 回合状态 blob
+
+- 溯源表只存 blob 摘要（SHA-256 前 16 位）与铸造凭证，不存 blob 原文，且只在内存里，进程退出即消失。
+- blob 原文本身仍会随 Request / Response Header 一起进入历史 —— 它是本插件要检查的对象，与 Authorization 不同，遮掉就失去意义。它是不透明的回合状态，不是长期凭证。
+- 解码只读 Fernet 信封的版本、时间戳与长度结构；插件不持有、也不需要 Fernet 密钥，不会尝试解密密文。
+- 摘除守卫只在确认铸造方是另一个凭证时生效；来源未知时不动客户端回带的值。

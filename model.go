@@ -22,7 +22,11 @@ type headerRule struct {
 	Enabled   bool              `json:"enabled"`
 	Set       map[string]string `json:"set"`
 	Remove    []string          `json:"remove"`
-	UpdatedAt time.Time         `json:"updated_at"`
+	// StripForeignTurnState removes an echoed X-Codex-Turn-State when this
+	// plugin knows a different credential minted it. Detection alone only
+	// reports the contradiction; this is what stops it reaching the upstream.
+	StripForeignTurnState bool      `json:"strip_foreign_turn_state"`
+	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 type credentialSnapshot struct {
@@ -64,6 +68,18 @@ type historyRecord struct {
 	ModelConflict bool   `json:"model_conflict,omitempty"`
 	// Origin separates live proxy traffic from operator-issued test requests.
 	Origin string `json:"origin,omitempty"`
+
+	// TurnStateEcho is the blob this request echoed, TurnStateMinted the blob
+	// the response minted. TurnStateCrossAccount is set only when the echoed
+	// blob is known to have been minted under a different credential; a blob
+	// whose origin is no longer remembered stays unset rather than guessed.
+	TurnStateEcho         *turnStateInfo `json:"turn_state_echo,omitempty"`
+	TurnStateMinted       *turnStateInfo `json:"turn_state_minted,omitempty"`
+	TurnStateOriginIndex  string         `json:"turn_state_origin_index,omitempty"`
+	TurnStateOriginLabel  string         `json:"turn_state_origin_label,omitempty"`
+	TurnStateCrossAccount *bool          `json:"turn_state_cross_account,omitempty"`
+	TurnStateStripped     bool           `json:"turn_state_stripped,omitempty"`
+	TurnStateSessionID    string         `json:"turn_state_session_id,omitempty"`
 }
 
 const (
