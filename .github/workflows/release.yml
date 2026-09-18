@@ -26,7 +26,7 @@ jobs:
       - name: Install arm64 cross compiler
         if: matrix.arch == 'arm64'
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-      - run: go mod download
+      - run: go mod tidy
       - run: go test ./...
       - run: go test -tags localtest -modfile=go.localtest.mod ./...
       - name: Build
