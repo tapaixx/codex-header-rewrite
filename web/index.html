@@ -198,7 +198,17 @@ tbody tr[aria-selected=true]{background:var(--accent-weak);box-shadow:inset 2px 
   .diff-row{grid-template-columns:26px minmax(0,1fr)}
   .diff-row .diff-value{grid-column:2;padding-top:0}
   .topbar{padding:0 14px}
-  .lockup span{display:none}
+  .lockup>span:last-child{display:none}
+}
+@media (max-width:600px){
+  .topbar{height:52px;gap:5px;padding:0 10px}
+  .lockup{margin-right:auto}
+  .lockup .mark{display:grid}
+  #keyChip{display:none!important}
+  #versionChip{height:26px;padding:0 8px}
+  .topbar button{width:32px;height:32px;padding:6px;justify-content:center}
+  .topbar button>span{display:none}
+  .panel{scroll-margin-top:64px}
 }
 </style>
 </head>
@@ -228,9 +238,10 @@ tbody tr[aria-selected=true]{background:var(--accent-weak);box-shadow:inset 2px 
     <span><b>Codex Header Rewrite</b><span>按凭证改写请求 Header，核对上游实际模型</span></span>
   </div>
   <div class="spacer"></div>
+  <span class="chip num" id="versionChip" hidden title="当前实际响应此页面的插件版本"></span>
   <span class="chip" id="keyChip" hidden><svg class="i"><use href="#i-key"/></svg><span id="keyChipText"></span></span>
-  <button class="quiet" id="cleanupBtn" title="清理宿主中已不存在凭证的遗留数据"><svg class="i"><use href="#i-eraser"/></svg>清理遗留</button>
-  <button class="quiet" id="keyBtn"><svg class="i"><use href="#i-key"/></svg>管理密钥</button>
+  <button class="quiet" id="cleanupBtn" title="清理宿主中已不存在凭证的遗留数据" aria-label="清理遗留"><svg class="i"><use href="#i-eraser"/></svg><span>清理遗留</span></button>
+  <button class="quiet" id="keyBtn" title="管理密钥" aria-label="管理密钥"><svg class="i"><use href="#i-key"/></svg><span>管理密钥</span></button>
 </header>
 
 <div class="shell">
@@ -279,10 +290,20 @@ tbody tr[aria-selected=true]{background:var(--accent-weak);box-shadow:inset 2px 
       <div class="panel-head"><svg class="i"><use href="#i-flask"/></svg><h3>测试请求</h3></div>
       <div class="panel-body">
         <div class="grid2">
-          <div class="field"><label for="testModel">模型</label><input id="testModel" spellcheck="false"></div>
+          <div class="field">
+            <label for="testModelSelect">模型</label>
+            <select id="testModelSelect"></select>
+            <input id="testModel" spellcheck="false" placeholder="模型 ID" hidden>
+            <span class="muted" id="modelHint"></span>
+          </div>
           <div class="field"><label for="testEffort">推理强度</label><select id="testEffort"><option value="low">low</option><option value="minimal">minimal</option><option value="medium">medium</option><option value="high">high</option></select></div>
         </div>
         <div class="field"><label for="testPrompt">提示词</label><input id="testPrompt" spellcheck="false"></div>
+        <div class="field">
+          <label for="testTemplate">Header 模板</label>
+          <select id="testTemplate"><option value="">Codex 默认 Header（自动生成）</option></select>
+          <span class="muted" id="templateHint">自动生成 Accept、Content-Type、Originator、User-Agent 与凭证 Header；也可载入当前历史页里规则生效前的安全 Header。</span>
+        </div>
         <div class="grid2" style="margin-bottom:6px">
           <label class="switch"><input type="checkbox" id="testStream" checked><span>流式（SSE）</span></label>
           <label class="switch"><input type="checkbox" id="testApplyRule" checked><span>套用已保存规则</span></label>
@@ -296,10 +317,16 @@ tbody tr[aria-selected=true]{background:var(--accent-weak);box-shadow:inset 2px 
         <button class="quiet" id="addTestRemove"><svg class="i"><use href="#i-plus"/></svg>添加 Header</button>
         <details style="margin-top:18px">
           <summary class="muted" style="cursor:pointer">高级：端点与原始请求体</summary>
-          <div class="field" style="margin-top:14px"><label for="testEndpoint">端点（仅限 Codex 后端路径）</label><input id="testEndpoint" class="mono" spellcheck="false"></div>
-          <div class="field"><label for="testBody">原始 JSON 请求体（填写后覆盖上面的模型与提示词）</label><textarea id="testBody" spellcheck="false" placeholder='{"model":"…","input":[],"stream":true}'></textarea></div>
+          <div class="field" style="margin-top:14px">
+            <label for="testEndpoint">端点</label>
+            <input id="testEndpoint" class="mono" spellcheck="false">
+            <span class="muted">留空即用 Codex 后端。可填任意 https 地址；http 仅限 localhost。</span>
+          </div>
+          <label class="switch"><input type="checkbox" id="testAttach" checked><span>附带该凭证（access token 与账号 ID）</span></label>
+          <div class="notice warn" id="attachWarn" hidden style="margin-top:10px"><svg class="i"><use href="#i-alert"/></svg><span>该地址不是 Codex 后端。勾选后，这个凭证的 access token 与账号 ID 会发送到该地址。</span></div>
+          <div class="field" style="margin-top:14px"><label for="testBody">原始 JSON 请求体（填写后覆盖上面的模型与提示词）</label><textarea id="testBody" spellcheck="false" placeholder='{"model":"…","input":[],"stream":true}'></textarea></div>
         </details>
-        <div class="notice info" style="margin-top:16px"><svg class="i"><use href="#i-info"/></svg><span>预览只在本地解析 Header，不发请求。发送会用该凭证向 Codex 发一次<b>真实请求</b>，消耗真实额度。测试请求由插件直接发往上游，不经过 Codex executor，因此看到的是规则生效后的 Header，线上请求仍可能被 executor 覆盖。</span></div>
+        <div class="notice info" style="margin-top:16px"><svg class="i"><use href="#i-info"/></svg><span>预览只在插件内解析 Header，不发请求。发送时插件调用 CPA 的 <code class="mono">host.http.do</code>，请求从 CPA 的代理感知传输层发出；Codex 端点还会使用稳定的 HTTP/1.1 Header 线级配置。它不经过 Codex executor，因此线上请求仍可能被 executor 覆盖特殊字段。</span></div>
         <div class="actions">
           <div class="spacer"></div>
           <button id="previewBtn"><svg class="i"><use href="#i-eye"/></svg>预览 Header</button>
@@ -339,9 +366,10 @@ const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&
 const PLUGIN_SEGMENT = "/codex-header-rewrite";
 const SESSION_KEY = "chr.key";
 
+const CUSTOM_MODEL = "__custom__";
 const store = {
-  creds: [], selected: "", rule: null, defaults: {},
-  history: [], page: 1, totalPages: 0, selectedRecord: "",
+  creds: [], selected: "", rule: null, defaults: {}, models: [], version: "",
+  history: [], templates: [], page: 1, totalPages: 0, selectedRecord: "", attachTouched: false,
 };
 
 /* ---------- management key ----------------------------------------------
@@ -398,19 +426,27 @@ function renderKeyChip() {
 /* Routes are declared by the plugin, so the plugin segment is fixed; only the
    host prefix is derived, which keeps the panel working when the host mounts a
    different prefix or registers an architecture-suffixed plugin id. */
-function managementBase() {
+function hostManagementBase() {
   const path = String(globalThis.location?.pathname || "").split(/[?#]/u, 1)[0];
   const index = path.indexOf("/resource/plugins/");
-  if (index >= 0) return `${path.slice(0, index)}/management${PLUGIN_SEGMENT}`;
-  return `/v0/management${PLUGIN_SEGMENT}`;
+  if (index >= 0) return `${path.slice(0, index)}/management`;
+  return "/v0/management";
 }
+const managementBase = () => hostManagementBase() + PLUGIN_SEGMENT;
 
 async function api(path, options = {}) {
+  return request(managementBase() + path, options);
+}
+// Host-owned routes (the model list lives on the host, not in this plugin).
+async function hostApi(path, options = {}) {
+  return request(hostManagementBase() + path, options);
+}
+async function request(url, options = {}) {
   const key = currentKey();
   if (!key) { openKeyDialog(); throw new Error("需要 CLIProxyAPI 管理密钥"); }
   const headers = { Accept: "application/json", Authorization: `Bearer ${key}` };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
-  const response = await fetch(managementBase() + path, {
+  const response = await fetch(url, {
     ...options, credentials: "same-origin", headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
@@ -495,6 +531,9 @@ async function loadCredentials() {
     const payload = await api("/credentials");
     store.creds = payload.credentials || [];
     store.defaults = payload.test_defaults || {};
+    store.version = String(payload.plugin_version || "");
+    $("versionChip").hidden = !store.version;
+    $("versionChip").textContent = store.version ? `运行 v${store.version}` : "";
     applyTestDefaults();
     renderCredentials();
     if (!store.selected && store.creds[0]) await selectCredential(store.creds[0].auth_index);
@@ -524,11 +563,69 @@ function renderCredentials() {
 async function selectCredential(authIndex) {
   store.selected = authIndex;
   store.selectedRecord = "";
+  store.templates = [];
+  store.attachTouched = false;
+  $("testHeaderRows").replaceChildren();
+  renderHeaderTemplates();
+  syncAttachSwitch();
   renderCredentials();
   const cred = store.creds.find((item) => item.auth_index === authIndex);
   $("ruleTitle").textContent = `Header 规则 · ${cred?.label || cred?.name || authIndex}`;
   renderDiff(null, null, "");
-  await Promise.all([loadRule(), loadHistory(1)]);
+  await Promise.all([loadRule(), loadHistory(1), loadModels(cred)]);
+}
+
+/* The model list belongs to the host: it knows which models this credential can
+   actually serve. A failure here is not fatal, it just falls back to typing the
+   model by hand. */
+async function loadModels(cred) {
+  const select = $("testModelSelect");
+  const input = $("testModel");
+  const hint = $("modelHint");
+  const lookup = cred?.name || cred?.auth_id || "";
+  let models = [];
+  if (lookup) {
+    try {
+      const payload = await hostApi(`/auth-files/models?name=${encodeURIComponent(lookup)}`);
+      models = (payload.models || []).map((model) => String(model.id || "")).filter(Boolean);
+    } catch { models = []; }
+  }
+  store.models = models;
+  if (!models.length) {
+    select.hidden = true;
+    input.hidden = false;
+    hint.textContent = "宿主没有返回该凭证的可用模型，手动填写模型 ID。";
+    if (!input.value) input.value = store.defaults.model || "";
+    return;
+  }
+  const previous = currentModel();
+  select.replaceChildren();
+  for (const model of models) {
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
+    select.append(option);
+  }
+  const custom = document.createElement("option");
+  custom.value = CUSTOM_MODEL;
+  custom.textContent = "自定义…";
+  select.append(custom);
+  const preferred = [previous, store.defaults.model].find((value) => value && models.includes(value));
+  select.value = preferred || models[0];
+  select.hidden = false;
+  input.hidden = true;
+  hint.textContent = `该凭证可用 ${models.length} 个模型`;
+  syncModelInput();
+}
+function syncModelInput() {
+  const custom = $("testModelSelect").value === CUSTOM_MODEL;
+  $("testModel").hidden = !custom;
+  if (custom && !$("testModel").value) $("testModel").focus();
+}
+function currentModel() {
+  const select = $("testModelSelect");
+  if (select.hidden || select.value === CUSTOM_MODEL) return $("testModel").value.trim();
+  return select.value;
 }
 
 /* ---------- rule ------------------------------------------------------ */
@@ -653,6 +750,8 @@ async function loadHistory(page = 1) {
   if (!store.history.length) historySkeleton();
   const payload = await api(`/history?auth_index=${encodeURIComponent(store.selected)}&page=${page}`);
   store.history = payload.items || [];
+  store.templates = payload.templates || [];
+  renderHeaderTemplates();
   store.page = payload.page || 1;
   store.totalPages = payload.total_pages || 0;
   $("historyMeta").textContent = payload.total ? `${payload.total} 条，第 ${store.page}/${store.totalPages} 页` : "";
@@ -676,6 +775,42 @@ async function loadHistory(page = 1) {
     body.append(row);
   }
   renderPager();
+}
+
+function renderHeaderTemplates() {
+  const select = $("testTemplate");
+  const selected = select.value;
+  select.replaceChildren();
+  const builtIn = document.createElement("option");
+  builtIn.value = "";
+  builtIn.textContent = "Codex 默认 Header（自动生成）";
+  select.append(builtIn);
+  for (const template of store.templates) {
+    const option = document.createElement("option");
+    option.value = template.id;
+    const when = new Date(template.started_at).toLocaleString();
+    const count = Object.keys(template.headers || {}).length;
+    option.textContent = `${when} · ${template.model || "未知模型"} · ${count} 个 Header`;
+    select.append(option);
+  }
+  select.value = store.templates.some((template) => template.id === selected) ? selected : "";
+  $("templateHint").textContent = store.templates.length
+    ? `可载入当前历史页的 ${store.templates.length} 个安全模板；凭证、账号 ID 与传输控制 Header 已过滤。`
+    : "自动生成 Accept、Content-Type、Originator、User-Agent 与凭证 Header；有请求历史后可在这里复用安全 Header。";
+}
+
+function applyHeaderTemplate() {
+  const selected = $("testTemplate").value;
+  const template = store.templates.find((item) => item.id === selected);
+  const rows = $("testHeaderRows");
+  rows.replaceChildren();
+  if (!template) {
+    toast("已恢复 Codex 默认 Header");
+    return;
+  }
+  const headers = Object.entries(template.headers || {}).sort((a, b) => a[0].localeCompare(b[0]));
+  for (const [name, value] of headers) headerRow(rows, name, value);
+  toast(`已载入 ${headers.length} 个历史 Header，凭证字段未复制`);
 }
 function renderPager() {
   const pager = $("pager");
@@ -712,14 +847,26 @@ function showRecord(record) {
 
 /* ---------- test request ---------------------------------------------- */
 function applyTestDefaults() {
-  if (!$("testModel").value) $("testModel").value = store.defaults.model || "";
   if (!$("testPrompt").value) $("testPrompt").value = store.defaults.prompt || "";
   $("testEndpoint").placeholder = store.defaults.endpoint || "";
+}
+// The endpoint decides where the credential may go, so the switch follows the
+// endpoint until the operator takes it over.
+function endpointIsCodexBackend() {
+  const raw = $("testEndpoint").value.trim();
+  if (!raw) return true;
+  try { return new URL(raw).hostname.toLowerCase() === "chatgpt.com"; } catch { return false; }
+}
+function syncAttachSwitch() {
+  const codex = endpointIsCodexBackend();
+  if (!store.attachTouched) $("testAttach").checked = codex;
+  $("attachWarn").hidden = codex || !$("testAttach").checked;
 }
 function collectTest(dryRun) {
   const request = {
     auth_index: store.selected,
-    model: $("testModel").value.trim(),
+    model: currentModel(),
+    attach_credential: $("testAttach").checked,
     prompt: $("testPrompt").value,
     reasoning_effort: $("testEffort").value,
     stream: $("testStream").checked,
@@ -740,7 +887,9 @@ async function runTest(dryRun) {
   if (!dryRun) {
     const cred = store.creds.find((item) => item.auth_index === store.selected);
     const name = cred?.label || cred?.name || store.selected;
-    if (!confirm(`将使用「${name}」向 Codex 发送一次真实请求，会消耗该凭证的真实额度。继续？`)) return;
+    const target = $("testEndpoint").value.trim() || store.defaults.endpoint || "Codex 默认端点";
+    const credential = $("testAttach").checked ? "并附带该凭证" : "且不附带该凭证";
+    if (!confirm(`将以「${name}」的测试配置向 ${target} 发送一次真实请求，${credential}。如果目标计费，会消耗真实额度。继续？`)) return;
   }
   const button = dryRun ? $("previewBtn") : $("sendBtn");
   button.disabled = true;
@@ -769,6 +918,11 @@ function renderTestResult(result, dryRun) {
     if (result.recorded) tags.push('<span class="tag flat">已记入历史</span>');
   }
   tags.push(`<span class="tag ${result.rule_applied ? "ok" : "flat"}">${result.rule_applied ? "规则已套用" : "未套用规则"}</span>`);
+  if (!result.codex_backend) {
+    tags.push(`<span class="tag ${result.credential_attached ? "warn" : "flat"}">${result.credential_attached ? "自定义端点，已附带凭证" : "自定义端点，未附带凭证"}</span>`);
+  } else if (!result.credential_attached) {
+    tags.push('<span class="tag flat">未附带凭证</span>');
+  }
   const chain = dryRun ? "" : `<div style="margin-top:10px">${modelChain({ model: result.sent_model, upstream_model: result.upstream_model, model_mismatch: result.model_mismatch, model_conflict: result.model_conflict })}</div>`;
   const errors = [result.error, result.error_preview].filter(Boolean)
     .map((text) => `<div class="notice warn" style="margin-top:10px"><svg class="i"><use href="#i-alert"/></svg><span class="mono">${esc(text)}</span></div>`).join("");
@@ -793,6 +947,10 @@ $("addSet").addEventListener("click", () => headerRow($("setRows"), "", "").focu
 $("addRemove").addEventListener("click", () => headerRow($("removeRows")).focus());
 $("addTestHeader").addEventListener("click", () => headerRow($("testHeaderRows"), "", "").focus());
 $("addTestRemove").addEventListener("click", () => headerRow($("testRemoveRows")).focus());
+$("testTemplate").addEventListener("change", applyHeaderTemplate);
+$("testModelSelect").addEventListener("change", syncModelInput);
+$("testEndpoint").addEventListener("input", syncAttachSwitch);
+$("testAttach").addEventListener("change", () => { store.attachTouched = true; syncAttachSwitch(); });
 $("reloadRule").addEventListener("click", () => loadRule().then(() => toast("已恢复服务器版本")).catch(fail));
 $("saveRule").addEventListener("click", async () => {
   if (!store.selected) return;

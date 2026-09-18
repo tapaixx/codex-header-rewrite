@@ -83,16 +83,31 @@ func parsePluginConfig(raw []byte) pluginConfig {
 	return cfg
 }
 
-func shutdownPlugin() {
+// quiescePlugin releases process-external resources before the host loads a
+// replacement .so. In particular, bbolt holds an exclusive file lock: if the
+// old instance keeps it while the new instance registers, hot reload waits
+// forever and also blocks later uninstall operations behind the host apply
+// lock. The host can re-register this instance after a failed replacement, in
+// which case configurePlugin opens the store again.
+func quiescePlugin() error {
 	state.mu.Lock()
 	writer := state.writer
+	store := state.store
 	state.writer = nil
 	state.store = nil
 	state.pending = map[string]*pendingRequest{}
 	state.mu.Unlock()
 	if writer != nil {
-		_ = writer.Close()
+		return writer.Close()
 	}
+	if store != nil {
+		return store.Close()
+	}
+	return nil
+}
+
+func shutdownPlugin() {
+	_ = quiescePlugin()
 }
 
 func getRule(authIndex string) (headerRule, bool) {

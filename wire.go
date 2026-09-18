@@ -20,6 +20,7 @@ const (
 const (
 	methodPluginRegister               = "plugin.register"
 	methodPluginReconfigure            = "plugin.reconfigure"
+	methodPluginQuiesce                = "plugin.quiesce"
 	methodRequestInterceptBefore       = "request.intercept_before"
 	methodRequestInterceptAfter        = "request.intercept_after"
 	methodRequestComplete              = "request.complete"
@@ -242,11 +243,23 @@ func (r hostAuthGetResponse) document() json.RawMessage {
 
 // hostHTTPRequest is a host-mediated outbound request. Body is base64 encoded
 // by encoding/json, matching the host ABI's byte-buffer convention.
+//
+// The host performs the call with its own proxy-aware client, so the request
+// leaves from CLIProxyAPI rather than from a second HTTP stack inside the
+// plugin. WireProfile can make the HTTP/1.1 header layout deterministic; it
+// does not claim to reproduce the Codex CLI's complete TLS fingerprint.
 type hostHTTPRequest struct {
-	Method  string      `json:"method"`
-	URL     string      `json:"url"`
-	Headers http.Header `json:"headers,omitempty"`
-	Body    []byte      `json:"body,omitempty"`
+	Method      string           `json:"method"`
+	URL         string           `json:"url"`
+	Headers     http.Header      `json:"headers,omitempty"`
+	Body        []byte           `json:"body,omitempty"`
+	WireProfile *hostWireProfile `json:"wire_profile,omitempty"`
+}
+
+type hostWireProfile struct {
+	HTTP1Only              bool     `json:"http1_only,omitempty"`
+	DisableAutoCompression bool     `json:"disable_auto_compression,omitempty"`
+	HeaderProfile          []string `json:"header_profile,omitempty"`
 }
 
 type hostHTTPResponse struct {

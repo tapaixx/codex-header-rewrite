@@ -16,6 +16,11 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 			return nil, err
 		}
 		return okEnvelope(pluginRegistration())
+	case methodPluginQuiesce:
+		if err := quiescePlugin(); err != nil {
+			return nil, err
+		}
+		return okEnvelope(struct{}{})
 	case methodRequestInterceptBefore:
 		return okEnvelope(requestInterceptResponse{})
 	case methodRequestInterceptAfter:

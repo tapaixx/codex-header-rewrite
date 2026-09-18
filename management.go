@@ -9,19 +9,20 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 //go:embed web/index.html
 var indexHTML []byte
 
 const (
-	resourceIndexPath      = "/index"
-	apiCredentialsPath     = "/codex-header-rewrite/credentials"
-	apiRulePath            = "/codex-header-rewrite/rule"
-	apiHistoryPath         = "/codex-header-rewrite/history"
-	apiHistoryClearPath    = "/codex-header-rewrite/history/clear"
-	apiOrphansCleanupPath  = "/codex-header-rewrite/orphans/cleanup"
-	apiTestPath            = "/codex-header-rewrite/test"
+	resourceIndexPath     = "/index"
+	apiCredentialsPath    = "/codex-header-rewrite/credentials"
+	apiRulePath           = "/codex-header-rewrite/rule"
+	apiHistoryPath        = "/codex-header-rewrite/history"
+	apiHistoryClearPath   = "/codex-header-rewrite/history/clear"
+	apiOrphansCleanupPath = "/codex-header-rewrite/orphans/cleanup"
+	apiTestPath           = "/codex-header-rewrite/test"
 )
 
 type credentialView struct {
@@ -32,6 +33,30 @@ type credentialView struct {
 }
 type cleanupResponse struct {
 	Deleted []string `json:"deleted"`
+}
+
+type historyHeaderTemplate struct {
+	ID        string            `json:"id"`
+	Model     string            `json:"model,omitempty"`
+	StartedAt time.Time         `json:"started_at"`
+	Headers   map[string]string `json:"headers"`
+}
+
+type historyPageResponse struct {
+	historyPage
+	Templates []historyHeaderTemplate `json:"templates"`
+}
+
+var nonReusableTemplateHeaders = map[string]struct{}{
+	"chatgpt-account-id": {},
+	"connection":         {},
+	"content-length":     {},
+	"host":               {},
+	"proxy-connection":   {},
+	"te":                 {},
+	"trailer":            {},
+	"transfer-encoding":  {},
+	"upgrade":            {},
 }
 
 func registerManagement() managementRegistration {
@@ -74,9 +99,10 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 		if err != nil {
 			return jsonError(http.StatusBadGateway, err.Error()), nil
 		}
-		// The panel renders the test form from these defaults so the form and
-		// the server never drift apart.
-		return jsonResponse(http.StatusOK, map[string]any{"credentials": items, "test_defaults": map[string]any{
+		// plugin_version is the version of the library actually serving this
+		// request. A native plugin keeps running until the host restarts, so an
+		// operator who just installed an update needs to see which build answered.
+		return jsonResponse(http.StatusOK, map[string]any{"credentials": items, "plugin_version": pluginVersion, "test_defaults": map[string]any{
 			"model":    defaultTestModel,
 			"endpoint": defaultTestURL,
 			"prompt":   defaultTestPrompt,
@@ -139,7 +165,10 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 		if err != nil {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
-		return jsonResponse(http.StatusOK, result), nil
+		return jsonResponse(http.StatusOK, historyPageResponse{
+			historyPage: result,
+			Templates:   historyHeaderTemplates(result.Items),
+		}), nil
 	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiHistoryClearPath):
 		var body struct {
 			AuthIndex string `json:"auth_index"`
@@ -180,6 +209,40 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 	default:
 		return jsonError(http.StatusNotFound, "route not found"), nil
 	}
+}
+
+// historyHeaderTemplates turns persisted, already-redacted request snapshots
+// into safe test-form presets. Authentication, account identity, hop-by-hop
+// transport fields, and any value carrying a redaction marker are deliberately
+// omitted so a template can never replace a live credential with placeholder
+// text or replay an identity into a different endpoint.
+func historyHeaderTemplates(records []historyRecord) []historyHeaderTemplate {
+	templates := make([]historyHeaderTemplate, 0, len(records))
+	for _, record := range records {
+		headers := make(map[string]string)
+		for rawName, values := range record.BeforeHeaders {
+			name := http.CanonicalHeaderKey(strings.TrimSpace(rawName))
+			lowerName := strings.ToLower(name)
+			value := strings.Join(values, ", ")
+			if name == "" || isSensitiveHeader(name) || strings.Contains(strings.ToUpper(value), "[REDACTED]") {
+				continue
+			}
+			if _, blocked := nonReusableTemplateHeaders[lowerName]; blocked {
+				continue
+			}
+			headers[name] = value
+		}
+		if len(headers) == 0 {
+			continue
+		}
+		templates = append(templates, historyHeaderTemplate{
+			ID:        record.ID,
+			Model:     record.Model,
+			StartedAt: record.StartedAt,
+			Headers:   headers,
+		})
+	}
+	return templates
 }
 
 func listCredentialViews() ([]credentialView, error) {

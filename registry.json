@@ -1,7 +1,7 @@
 {
   "id": "codex-header-rewrite",
   "name": "codex-header-rewrite",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "repository": "https://github.com/tapaixx/codex-header-rewrite",
   "license": "MIT",
   "platforms": {

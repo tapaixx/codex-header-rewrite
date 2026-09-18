@@ -21,6 +21,8 @@ Plugin Resource 路由只提供静态 HTML；credential、rule、history、test�
 ## 测试请求的额度与目标地址
 
 - 真实测试请求会消耗该凭证的真实额度，只能由操作者显式触发；插件自身不调度任何请求。
-- 测试请求携带 bearer token，因此目标地址被钉死在 `https://chatgpt.com/backend-api/codex/` 前缀内：scheme、host 不可改，只能改路径。任意目标地址等于把凭证交给第三方。
+- 自定义端点必须是绝对 `https` URL；明文 `http` 只允许 `localhost`、`127.0.0.1` 或 `::1`，URL 中不得嵌入用户名/密码。
+- `chatgpt.com` 默认附带所选凭证。其他主机默认不读取、不附带凭证；只有操作者明确勾选后，才会把 access token 与账号 ID 发送给该地址，面板同时显示醒目警告并在发送前二次确认。
 - 账号标识只从 `id_token.chatgpt_account_id` 及其显式别名读取。同级的 `account` / `id` 字段装的是操作者邮箱，不是账号标识，取不到标识时如实报错，不拿地址顶替。
 - 凭证材料在发出请求前即时读取，用完不保留、不记录、不返回面板。
+- 历史 Header 模板在服务端生成，剔除凭证、账号 ID、Host、Content-Length、hop-by-hop 字段以及任何带 `[REDACTED]` 标记的值，避免把脱敏占位符或身份信息重新发出。

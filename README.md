@@ -18,7 +18,7 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - 记录重写前/后的 Request Header 与 upstream Response Header。
 - Authorization、Cookie、API key、token/secret/password 等在写盘前永久脱敏。
 - 不保存 request / response body。
-- 自定义测试请求：预览规则改写结果（不发请求），或用该凭证向 Codex 发一次真实请求。
+- 自定义测试请求：从凭证可用模型中选择模型、复用安全的历史 Header 模板、预览改写结果，或向自定义端点发一次真实请求。
 - 模型一致性核对：记录上游实际声明的模型，与发出的模型比对，不一致时标红。
 - 中文内嵌 UI，单文档零外部依赖；敏感数据接口走 CPA Management API。
 - Linux amd64 / arm64 CI 与 tag Release。
@@ -44,7 +44,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.3.0.so` | `codex-header-rewrite` | `0.3.0` |
+| `codex-header-rewrite-v0.4.0.so` | `codex-header-rewrite` | `0.4.0` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -57,7 +57,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.3.0.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.4.0.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -77,7 +77,7 @@ plugins:
 
 面板优先复用宿主管理面板已保存的管理密钥，读不到时才会提示填写；手工填写的 Key 只保存在当前标签页的 `sessionStorage`，不写入插件数据库。
 
-## 商店为什么可能看不到更新
+## 商店更新、卸载与实际运行版本
 
 CLIProxyAPI 判断「有更新」要同时满足三件事，任何一条不成立都不会提示：
 
@@ -91,13 +91,28 @@ CLIProxyAPI 判断「有更新」要同时满足三件事，任何一条不成�
 另外宿主会把「最新 Release 版本」缓存 **1 小时**（GitHub 接口失败时还有退避重试），
 所以刚发完版的一段时间内商店仍可能显示旧版本，这是缓存不是故障。
 
+商店安装器会先把新版本写成 `codex-header-rewrite-v<version>.so` 并保存目标版本，随后才在
+后台异步热切换插件。因此“安装成功”只说明文件与配置已经写入，不等于这一刻的新库已经开始
+响应。插件面板顶栏的 **“运行 vX.Y.Z”** 来自当前实际处理请求的 `.so`，应以它为准；更新后
+该值没有变化时，说明热切换尚未完成。
+
+**v0.3.0 及更早版本有一个确定的热更新死锁**：它们没有实现宿主在替换 `.so` 前调用的
+`plugin.quiesce`。旧实例继续持有 bbolt 独占文件锁，新实例注册时会一直等待同一个 DB；CPA 的
+插件 apply 锁也随之被占住，因此会同时出现“商店显示更新成功但运行版本没变”和“卸载也一直
+不完成”。v0.4.0 会在 quiesce 时刷盘并释放 DB 锁，修复后续热更新与卸载。
+
+从已经卡住的 v0.3.0 恢复时，先重启 CPA 解除本次死锁，再从商店安装 v0.4.0；如果重启后仍
+无法由商店替换，就停止 CPA，手动只保留 `codex-header-rewrite-v0.4.0.so`，再启动。卸载本身由
+CPA 的 `DELETE /v0/management/plugins/{id}` 执行；较旧、不支持热卸载的 CPA 返回
+`plugin_delete_requires_restart` 时，仍需停止 CPA 后删除文件并移除对应配置。
+
 自检命令：
 
 ```bash
 curl -s -H "Authorization: Bearer <management-key>" \
   http://<cpa-host>/v0/management/plugin-store \
   | jq '.plugins[] | select(.id=="codex-header-rewrite")
-        | {installed, installed_version, install_source_status, version, update_available}'
+        | {installed, installed_version, registered, path, install_source_status, version, update_available}'
 ```
 
 `installed=false` 说明文件名导致 ID 对不上；`installed_version` 为空说明文件名没带版本
@@ -106,17 +121,17 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 ## 测试请求
 
-面板的「测试请求」面板可以自定义模型、提示词、推理强度、流式开关、临时 Header、临时移除，以及（高级）Codex 后端路径和原始 JSON 请求体。
+面板的「测试请求」可以从当前凭证的可用模型里选择模型（宿主未返回列表时回退为手填），设置提示词、推理强度、流式开关、临时 Header、临时移除、自定义端点与原始 JSON 请求体。Header 模板默认使用插件生成的 Codex 基础 Header，也可载入当前历史页中规则生效前的 Header；凭证、账号 ID、Host、Content-Length 和 hop-by-hop 字段不会进入模板。
 
 两种执行方式：
 
 - **预览 Header**：只在插件内解析，不读凭证、不发请求、不消耗额度，直接看到规则作用后的 Header 差异。
-- **发送测试请求**：用该凭证向 Codex 发一次**真实请求**，消耗真实额度，需要二次确认。返回 HTTP 状态、上游 Response Header、延迟、上游实际模型，失败时附一段截断的上游错误文本；可选记入历史（标记为「测试」，与线上请求区分）。
+- **发送测试请求**：向指定端点发一次**真实请求**，需要二次确认。返回 HTTP 状态、上游 Response Header、延迟、上游实际模型，失败时附一段截断的上游错误文本；可选记入历史（标记为「测试」，与线上请求区分）。
 
 两点边界：
 
-- 测试请求由插件通过宿主直接发往 Codex 后端，**不经过 Codex Provider Executor**。所以它验证的是规则本身是否按预期改写，而线上请求仍可能被 executor 覆盖特殊字段。
-- 目标地址被限定在 `https://chatgpt.com/backend-api/codex/` 前缀内，只能改路径。请求携带 bearer token，任意目标地址等于把凭证交给第三方。
+- 插件调用 CPA 的 `host.http.do`，所以 socket、代理配置与请求观测都由 CPA 宿主负责；但它**不经过 Codex Provider Executor**。Codex 端点额外使用稳定的 HTTP/1.1 Header 顺序并关闭自动压缩注入，这改善 HTTP 线级一致性，但不等于完整复刻 Codex CLI 的 TLS 指纹。
+- 端点可使用任意 `https` 地址，明文 `http` 仅允许 loopback。Codex 后端默认附带所选凭证；其他端点默认不读也不带凭证，只有操作者明确勾选后才发送 access token 与账号 ID。
 
 ## 模型一致性核对
 

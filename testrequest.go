@@ -6,16 +6,16 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 )
 
 const (
-	testEndpointHost   = "chatgpt.com"
-	testEndpointPrefix = "/backend-api/codex/"
-	defaultTestURL     = "https://chatgpt.com/backend-api/codex/responses"
-	defaultTestModel   = "gpt-5.6-luna"
-	defaultTestPrompt  = "Reply with exactly OK"
+	codexBackendHost  = "chatgpt.com"
+	defaultTestURL    = "https://chatgpt.com/backend-api/codex/responses"
+	defaultTestModel  = "gpt-5.6-luna"
+	defaultTestPrompt = "Reply with exactly OK"
 	// Upstream error text is returned to the panel to explain a failure. It is
 	// truncated, returned once, and never written to history.
 	testErrorPreviewLimit = 600
@@ -38,12 +38,18 @@ type testRequest struct {
 	Body         string            `json:"body"`
 	DryRun       bool              `json:"dry_run"`
 	Record       bool              `json:"record"`
+	// AttachCredential overrides the default: send the credential to the Codex
+	// backend, and to nowhere else unless asked.
+	AttachCredential *bool `json:"attach_credential"`
 }
 
 type testResult struct {
-	AuthIndex       string      `json:"auth_index"`
-	DryRun          bool        `json:"dry_run"`
-	Endpoint        string      `json:"endpoint"`
+	AuthIndex          string `json:"auth_index"`
+	DryRun             bool   `json:"dry_run"`
+	Endpoint           string `json:"endpoint"`
+	CodexBackend       bool   `json:"codex_backend"`
+	CredentialAttached bool   `json:"credential_attached"`
+
 	Method          string      `json:"method"`
 	SentModel       string      `json:"sent_model,omitempty"`
 	RuleApplied     bool        `json:"rule_applied"`
@@ -90,10 +96,11 @@ func runTestRequest(req testRequest) (testResult, error) {
 	if !isCodexCredential(runtimeAuth.Auth.Provider, runtimeAuth.Auth.Type) {
 		return testResult{}, badTestRequest("credential is not Codex type")
 	}
-	endpoint, err := resolveTestEndpoint(req.Endpoint)
+	endpoint, codexBackend, err := resolveTestEndpoint(req.Endpoint)
 	if err != nil {
 		return testResult{}, err
 	}
+	carriesCredential := attachCredential(req, codexBackend)
 	body, model, err := resolveTestBody(req)
 	if err != nil {
 		return testResult{}, err
@@ -105,16 +112,18 @@ func runTestRequest(req testRequest) (testResult, error) {
 	}
 
 	result := testResult{
-		AuthIndex:   authIndex,
-		DryRun:      req.DryRun,
-		Endpoint:    endpoint,
-		Method:      http.MethodPost,
-		SentModel:   model,
-		RuleApplied: applyRule,
+		AuthIndex:          authIndex,
+		DryRun:             req.DryRun,
+		Endpoint:           endpoint,
+		CodexBackend:       codexBackend,
+		CredentialAttached: carriesCredential,
+		Method:             http.MethodPost,
+		SentModel:          model,
+		RuleApplied:        applyRule,
 	}
 
 	started := time.Now().UTC()
-	base, material, err := testBaseHeaders(req, authIndex)
+	base, material, err := testBaseHeaders(req, authIndex, carriesCredential)
 	if err != nil {
 		return testResult{}, err
 	}
@@ -129,14 +138,20 @@ func runTestRequest(req testRequest) (testResult, error) {
 		result.Outcome = "dry_run"
 		return result, nil
 	}
-	if material.accessToken == "" {
+	if carriesCredential && material.accessToken == "" {
 		return testResult{}, &testRequestError{status: http.StatusBadGateway, message: "credential has no usable access token"}
 	}
 
 	// Timed around the upstream call only: reading the credential through the
 	// host is plugin overhead, not upstream latency.
 	callStarted := time.Now()
-	response, callErr := hostHTTPDoFunc(hostHTTPRequest{Method: http.MethodPost, URL: endpoint, Headers: outgoing, Body: body})
+	response, callErr := hostHTTPDoFunc(hostHTTPRequest{
+		Method:      http.MethodPost,
+		URL:         endpoint,
+		Headers:     outgoing,
+		Body:        body,
+		WireProfile: testWireProfile(outgoing, codexBackend),
+	})
 	result.LatencyMS = time.Since(callStarted).Milliseconds()
 	result.StatusCode = response.StatusCode
 	result.ResponseHeaders = redactHeaders(response.Headers)
@@ -200,11 +215,12 @@ func resolveTestRule(authIndex string, req testRequest) (headerRule, bool, error
 // testBaseHeaders builds the headers a Codex request needs before any rule is
 // applied, then layers the operator's custom headers on top.
 //
-// Authentication material is read here and used for the single call that
-// follows. Returned header maps are redacted before they leave the plugin.
-func testBaseHeaders(req testRequest, authIndex string) (http.Header, testAuthMaterial, error) {
+// Credential material is read only when this request is actually going to carry
+// it, and only for the single call that follows. Returned header maps are
+// redacted before they leave the plugin.
+func testBaseHeaders(req testRequest, authIndex string, carriesCredential bool) (http.Header, testAuthMaterial, error) {
 	material := testAuthMaterial{}
-	if !req.DryRun {
+	if !req.DryRun && carriesCredential {
 		document, err := hostAuthGetFunc(authIndex)
 		if err != nil {
 			return nil, material, &testRequestError{status: http.StatusBadGateway, message: "credential is not readable through the host"}
@@ -224,12 +240,17 @@ func testBaseHeaders(req testRequest, authIndex string) (http.Header, testAuthMa
 		"Originator":   {"codex-tui"},
 		"User-Agent":   {fmt.Sprintf("codex-header-rewrite/%s (Linux; %s)", pluginVersion, runtime.GOARCH)},
 	}
-	if req.DryRun {
+	switch {
+	case !carriesCredential:
+		// Nothing authenticated is added, so an operator pointing the test at
+		// their own gateway can supply whatever authorization that gateway wants
+		// through the ad-hoc headers instead.
+	case req.DryRun:
 		// A dry run must show the same header shape without reading credential
 		// material, so the two authenticated values are named, not valued.
 		base.Set("Authorization", "Bearer [CREDENTIAL]")
 		base.Set("Chatgpt-Account-Id", "[ACCOUNT]")
-	} else {
+	default:
 		base.Set("Authorization", "Bearer "+material.accessToken)
 		base.Set("Chatgpt-Account-Id", material.accountID)
 	}
@@ -292,23 +313,108 @@ func firstStringField(object map[string]json.RawMessage, names ...string) string
 	return strings.TrimSpace(value)
 }
 
-// resolveTestEndpoint keeps a test request pointed at the Codex backend. The
-// path is adjustable so an operator can exercise a different Codex route, but
-// the scheme and host are fixed: the request carries a bearer token, and an
-// arbitrary destination would hand that token to a third party.
-func resolveTestEndpoint(raw string) (string, error) {
+// resolveTestEndpoint accepts any endpoint the operator wants to exercise and
+// reports whether it is the Codex backend.
+//
+// The destination is not restricted, because testing a gateway, a mock, or a
+// staging host is a legitimate thing to want. What is restricted is the
+// credential: it travels only to the Codex backend unless the operator asks for
+// it explicitly (see attachCredential). Transport still has to protect the
+// request, so plaintext http is allowed only against loopback, and credentials
+// embedded in the URL are rejected outright.
+func resolveTestEndpoint(raw string) (endpoint string, codexBackend bool, err error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return defaultTestURL, nil
+		return defaultTestURL, true, nil
 	}
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return "", badTestRequest("endpoint is not a valid URL")
+	parsed, parseErr := url.Parse(raw)
+	if parseErr != nil {
+		return "", false, badTestRequest("endpoint is not a valid URL")
 	}
-	if parsed.Scheme != "https" || parsed.Host != testEndpointHost || !strings.HasPrefix(parsed.Path, testEndpointPrefix) {
-		return "", badTestRequest("endpoint must be an https://%s%s… URL", testEndpointHost, testEndpointPrefix)
+	if !parsed.IsAbs() || parsed.Host == "" {
+		return "", false, badTestRequest("endpoint must be an absolute URL with a host")
 	}
-	return parsed.String(), nil
+	if parsed.User != nil {
+		return "", false, badTestRequest("endpoint must not embed credentials in the URL")
+	}
+	switch parsed.Scheme {
+	case "https":
+	case "http":
+		if !isLoopbackHost(parsed.Hostname()) {
+			return "", false, badTestRequest("plaintext http is only allowed for loopback hosts")
+		}
+	default:
+		return "", false, badTestRequest("endpoint scheme must be https (or http for loopback)")
+	}
+	return parsed.String(), strings.EqualFold(parsed.Hostname(), codexBackendHost), nil
+}
+
+func isLoopbackHost(hostname string) bool {
+	switch strings.ToLower(strings.TrimSpace(hostname)) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
+}
+
+// attachCredential decides whether this request carries the credential.
+//
+// The Codex backend gets it by default because that is what the rule is for.
+// Any other destination gets it only when the operator sets attach_credential,
+// so pointing the test at a third-party host cannot leak a token by accident.
+func attachCredential(req testRequest, codexBackend bool) bool {
+	if req.AttachCredential != nil {
+		return *req.AttachCredential
+	}
+	return codexBackend
+}
+
+// testWireProfile asks the CPA host to preserve a deterministic HTTP/1.1
+// header layout for Codex test calls. The network call still belongs to
+// host.http.do (and
+// therefore inherits the host's proxy), while custom endpoints retain the
+// host's normal transport behavior instead of receiving a Codex-specific
+// profile unexpectedly.
+func testWireProfile(headers http.Header, codexBackend bool) *hostWireProfile {
+	if !codexBackend {
+		return nil
+	}
+	preferred := []string{
+		"Host",
+		"Content-Type",
+		"Authorization",
+		"User-Agent",
+		"Accept",
+		"Chatgpt-Account-Id",
+		"Originator",
+	}
+	seen := make(map[string]struct{}, len(preferred)+len(headers))
+	profile := make([]string, 0, len(preferred)+len(headers))
+	for _, name := range preferred {
+		profile = append(profile, name)
+		seen[strings.ToLower(name)] = struct{}{}
+	}
+	extra := make([]string, 0, len(headers))
+	for rawName := range headers {
+		name := http.CanonicalHeaderKey(strings.TrimSpace(rawName))
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[strings.ToLower(name)]; exists {
+			continue
+		}
+		extra = append(extra, name)
+	}
+	sort.Slice(extra, func(i, j int) bool {
+		return strings.ToLower(extra[i]) < strings.ToLower(extra[j])
+	})
+	profile = append(profile, extra...)
+	return &hostWireProfile{
+		HTTP1Only:              true,
+		DisableAutoCompression: true,
+		HeaderProfile:          profile,
+	}
 }
 
 // resolveTestBody returns the request body and the model that body sends. A

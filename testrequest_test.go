@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -91,6 +92,10 @@ func TestRealTestRequestReportsUpstreamModelMismatchAndRecordsIt(t *testing.T) {
 	if sent.Headers.Get("X-Probe") != "1" {
 		t.Fatalf("custom header dropped: %#v", sent.Headers)
 	}
+	wantProfile := []string{"Host", "Content-Type", "Authorization", "User-Agent", "Accept", "Chatgpt-Account-Id", "Originator", "X-Probe"}
+	if sent.WireProfile == nil || !sent.WireProfile.HTTP1Only || !sent.WireProfile.DisableAutoCompression || !reflect.DeepEqual(sent.WireProfile.HeaderProfile, wantProfile) {
+		t.Fatalf("Codex wire profile=%#v, want headers %#v", sent.WireProfile, wantProfile)
+	}
 	if got := result.BeforeHeaders.Get("Authorization"); got != "Bearer [REDACTED]" {
 		t.Fatalf("returned headers must be redacted, got %q", got)
 	}
@@ -165,24 +170,106 @@ func TestUpstreamFailureKeepsAnErrorPreviewOutOfHistory(t *testing.T) {
 	}
 }
 
-func TestEndpointIsPinnedToTheCodexBackend(t *testing.T) {
-	resetState(t)
-	testStubCredential(t, stubCredentialDocument)
-	hostHTTPDoFunc = func(hostHTTPRequest) (hostHTTPResponse, error) {
-		t.Fatal("a rejected endpoint must not be contacted")
-		return hostHTTPResponse{}, nil
+func TestCustomEndpointsAreAllowedButUnsafeTransportIsNot(t *testing.T) {
+	for _, endpoint := range []string{
+		"https://gateway.internal.example/v1/responses",
+		"http://localhost:8317/v1/responses",
+		"http://127.0.0.1:8317/v1/responses",
+		"https://chatgpt.com/backend-api/codex/responses?x=1",
+	} {
+		if _, _, err := resolveTestEndpoint(endpoint); err != nil {
+			t.Fatalf("endpoint %q should be allowed: %v", endpoint, err)
+		}
 	}
 	for _, endpoint := range []string{
-		"https://example.com/backend-api/codex/responses",
-		"http://chatgpt.com/backend-api/codex/responses",
-		"https://chatgpt.com/admin",
+		"http://gateway.example.com/v1/responses", // plaintext to a remote host
+		"ftp://example.com/x",                     // not an HTTP scheme
+		"/backend-api/codex/responses",            // not absolute
+		"https://user:pass@example.com/v1",        // credentials in the URL
 	} {
-		if _, err := runTestRequest(testRequest{AuthIndex: "idx-a", Endpoint: endpoint}); err == nil {
+		if _, _, err := resolveTestEndpoint(endpoint); err == nil {
 			t.Fatalf("endpoint %q should be rejected", endpoint)
 		}
 	}
-	if got, err := resolveTestEndpoint("https://chatgpt.com/backend-api/codex/responses?x=1"); err != nil || !strings.HasPrefix(got, defaultTestURL) {
-		t.Fatalf("got=%q err=%v", got, err)
+	if _, codex, _ := resolveTestEndpoint("https://gateway.example.com/v1"); codex {
+		t.Fatal("a non-Codex host must not be reported as the Codex backend")
+	}
+	if _, codex, _ := resolveTestEndpoint(""); !codex {
+		t.Fatal("the default endpoint is the Codex backend")
+	}
+}
+
+func TestCredentialTravelsToTheCodexBackendAndNowhereElseByDefault(t *testing.T) {
+	resetState(t)
+	testStubCredential(t, stubCredentialDocument)
+	credentialReads := 0
+	baseGet := hostAuthGetFunc
+	hostAuthGetFunc = func(index string) (json.RawMessage, error) {
+		credentialReads++
+		return baseGet(index)
+	}
+	var sent hostHTTPRequest
+	hostHTTPDoFunc = func(request hostHTTPRequest) (hostHTTPResponse, error) {
+		sent = request
+		return hostHTTPResponse{StatusCode: 200, Body: []byte(`{"model":"gpt-5.6-luna"}`)}, nil
+	}
+
+	custom, err := runTestRequest(testRequest{AuthIndex: "idx-a", Endpoint: "https://gateway.example.com/v1/responses"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if custom.CredentialAttached || custom.CodexBackend {
+		t.Fatalf("a custom host must not carry the credential by default: %#v", custom)
+	}
+	if sent.Headers.Get("Authorization") != "" || sent.Headers.Get("Chatgpt-Account-Id") != "" {
+		t.Fatalf("credential leaked to a custom host: %#v", sent.Headers)
+	}
+	if sent.WireProfile != nil {
+		t.Fatalf("a custom endpoint must keep the host's normal transport profile: %#v", sent.WireProfile)
+	}
+	if credentialReads != 0 {
+		t.Fatalf("credential was read %d times for a request that does not carry it", credentialReads)
+	}
+
+	attach := true
+	optedIn, err := runTestRequest(testRequest{AuthIndex: "idx-a", Endpoint: "https://gateway.example.com/v1/responses", AttachCredential: &attach})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !optedIn.CredentialAttached || sent.Headers.Get("Authorization") != "Bearer tok-secret" {
+		t.Fatalf("explicit opt-in should attach the credential: %#v %#v", optedIn, sent.Headers)
+	}
+
+	withheld := false
+	refused, err := runTestRequest(testRequest{AuthIndex: "idx-a", AttachCredential: &withheld})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refused.CredentialAttached || sent.Headers.Get("Authorization") != "" {
+		t.Fatalf("opting out must withhold the credential even from the Codex backend: %#v", sent.Headers)
+	}
+
+	defaulted, err := runTestRequest(testRequest{AuthIndex: "idx-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !defaulted.CredentialAttached || sent.Headers.Get("Authorization") != "Bearer tok-secret" {
+		t.Fatalf("the Codex backend should carry the credential by default: %#v", sent.Headers)
+	}
+}
+
+func TestCustomEndpointWithoutCredentialDoesNotNeedAnAccountID(t *testing.T) {
+	resetState(t)
+	testStubCredential(t, `{"access_token":"tok"}`)
+	hostHTTPDoFunc = func(hostHTTPRequest) (hostHTTPResponse, error) {
+		return hostHTTPResponse{StatusCode: 200, Body: []byte(`{"model":"m"}`)}, nil
+	}
+	result, err := runTestRequest(testRequest{AuthIndex: "idx-a", Endpoint: "http://localhost:8317/v1/responses"})
+	if err != nil {
+		t.Fatalf("a request that carries no credential must not require one: %v", err)
+	}
+	if result.Outcome != "succeeded" {
+		t.Fatalf("result=%#v", result)
 	}
 }
 
