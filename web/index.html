@@ -44,8 +44,8 @@ body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 var(--sans);
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
 svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .num{font-variant-numeric:tabular-nums}
-.mono{font-family:var(--mono);font-size:12.5px}
-.muted{color:var(--text-mute);font-size:12.5px}
+.mono{font-family:var(--mono);font-size:13px}
+.muted{color:var(--text-mute);font-size:13px}
 .spacer{flex:1}
 
 button{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-control);padding:6px 11px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
@@ -64,7 +64,7 @@ input,textarea,select{font:inherit;color:var(--text);background:var(--surface);b
   transition:border-color .16s var(--ease),box-shadow .16s var(--ease)}
 input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
 input::placeholder,textarea::placeholder{color:var(--text-mute)}
-textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:12.5px;line-height:1.6}
+textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;line-height:1.6}
 
 /* Top bar */
 .topbar{position:sticky;top:0;z-index:20;height:60px;display:flex;align-items:center;gap:12px;padding:0 20px;
@@ -75,7 +75,7 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:12.5p
 .mark{width:26px;height:26px;border-radius:7px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;flex:none}
 .mark svg{width:15px;height:15px;stroke-width:2}
 .lockup b{font-size:14px;font-weight:600;letter-spacing:-.01em;line-height:1.2}
-.lockup span{display:block;color:var(--text-mute);font-size:11.5px;line-height:1.3}
+.lockup span{display:block;color:var(--text-mute);font-size:12px;line-height:1.3}
 .chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--text-soft);background:var(--surface)}
 
 /* Shell */
@@ -87,18 +87,18 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:12.5p
   transition:border-color .16s var(--ease),background .16s var(--ease)}
 .cred:hover{border-color:var(--line-strong)}
 .cred[aria-current=true]{border-color:var(--accent);background:var(--accent-weak)}
-.cred b{display:block;font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.35}
-.cred-meta{display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--text-mute);font-size:11.5px}
+.cred b{display:block;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.35}
+.cred-meta{display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--text-mute);font-size:12px}
 
 /* Panels */
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);margin-bottom:18px;scroll-margin-top:76px}
 .panel-head{display:flex;align-items:center;gap:10px;min-height:48px;padding:10px 16px;border-bottom:1px solid var(--line)}
-.panel-head h3{margin:0;font-size:13.5px;font-weight:600}
+.panel-head h3{margin:0;font-size:14px;font-weight:600}
 .panel-body{padding:16px}
 .field{display:grid;gap:6px;margin-bottom:14px}
 .field label{font-size:12px;font-weight:500;color:var(--text-soft)}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
-.switch{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-size:13px}
+.switch{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-size:14px}
 .switch input{appearance:none;width:34px;height:20px;margin:0;border-radius:999px;background:var(--line-strong);border:none;position:relative;cursor:pointer;transition:background .18s var(--ease)}
 .switch input::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .18s var(--ease)}
 .switch input:checked{background:var(--accent)}
@@ -110,7 +110,7 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:12.5p
    so both lists read down one edge instead of two. */
 .hrow.single{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr) 32px}
 .hrow.single button{grid-column:3}
-.notice{display:flex;gap:9px;padding:10px 12px;border-radius:var(--r-control);font-size:12.5px;line-height:1.55}
+.notice{display:flex;gap:9px;padding:10px 12px;border-radius:var(--r-control);font-size:13px;line-height:1.55}
 .notice.warn{background:var(--over-weak);color:var(--over)}
 .notice.info{background:var(--sunk);color:var(--text-soft);border:1px solid var(--line)}
 .notice svg{margin-top:2px}
@@ -120,7 +120,7 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:12.5p
    Changed rows lead; unchanged rows collapse so the changes stay readable. */
 .diff{border:1px solid var(--line);border-radius:var(--r-control);overflow:hidden}
 .diff-row{display:grid;grid-template-columns:30px minmax(120px,210px) minmax(0,1fr);align-items:baseline;
-  font-family:var(--mono);font-size:12.5px;line-height:1.6;border-top:1px solid var(--line)}
+  font-family:var(--mono);font-size:13px;line-height:1.6;border-top:1px solid var(--line)}
 .diff-row:first-child{border-top:none}
 .diff-row>*{padding:8px 10px;min-width:0;overflow-wrap:anywhere}
 .diff-mark{text-align:center;color:var(--text-mute);background:var(--sunk);border-right:1px solid var(--line);user-select:none;align-self:stretch}
@@ -147,26 +147,35 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:12.5p
 @keyframes rowIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 
 /* Status vocabulary */
-.tag{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:11.5px;font-weight:500;border:1px solid transparent;white-space:nowrap}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid transparent;white-space:nowrap}
 .tag.ok{background:var(--set-weak);color:var(--set);border-color:color-mix(in srgb,var(--set) 26%,transparent)}
 .tag.bad{background:var(--gone-weak);color:var(--gone);border-color:color-mix(in srgb,var(--gone) 26%,transparent)}
 .tag.warn{background:var(--over-weak);color:var(--over);border-color:color-mix(in srgb,var(--over) 26%,transparent)}
 .tag.flat{background:var(--sunk);color:var(--text-soft);border-color:var(--line)}
-.chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:12.5px}
+.chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:13px}
 .chain .arrow{color:var(--text-mute)}
 .metaline{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;color:var(--text-mute);font-size:12px}
 
 /* History */
-table{width:100%;border-collapse:collapse;font-size:12.5px}
-th{text-align:left;font-weight:600;font-size:12px;color:var(--text-mute);padding:0 10px 9px}
-tbody tr{cursor:pointer;transition:background .14s var(--ease)}
-tbody td{padding:10px;border-top:1px solid var(--line);vertical-align:middle}
-tbody tr:hover{background:var(--sunk)}
-tbody tr[aria-selected=true]{background:var(--accent-weak);box-shadow:inset 2px 0 0 var(--accent)}
+.history-table{width:100%;border-collapse:collapse;font-size:13px}
+.history-table th{text-align:left;font-weight:600;font-size:12px;color:var(--text-mute);padding:0 10px 9px}
+.history-summary{cursor:pointer;transition:background .14s var(--ease)}
+.history-summary td{padding:10px;border-top:1px solid var(--line);vertical-align:middle}
+.history-summary:hover{background:var(--sunk)}
+.history-summary[aria-selected=true]{background:var(--accent-weak);box-shadow:inset 2px 0 0 var(--accent)}
+.history-summary:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.history-detail{cursor:default}
+.history-detail>td{padding:0;border-top:1px solid var(--line-strong)}
+.history-detail-shell{padding:16px;background:var(--sunk)}
+.history-detail-head{display:flex;align-items:flex-start;gap:12px;justify-content:space-between;margin-bottom:14px}
+.history-detail-title{font-size:12px;font-weight:600;color:var(--text-soft)}
+.history-detail-section+.history-detail-section{margin-top:16px}
+.history-detail-label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;color:var(--text-mute);font-size:12px;font-weight:600}
+.history-detail .diff{background:var(--surface)}
 .pager{display:flex;align-items:center;gap:6px;justify-content:flex-end;margin-top:14px}
 .pager .page{min-width:32px;justify-content:center}
 .pager .page[aria-current=true]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
-.empty{padding:28px 12px;text-align:center;color:var(--text-mute);font-size:12.5px}
+.empty{padding:28px 12px;text-align:center;color:var(--text-mute);font-size:13px}
 
 /* Loading skeletons keep the layout still while data arrives */
 .skel{border-radius:6px;background:var(--sunk);height:12px}
@@ -181,7 +190,7 @@ tbody tr[aria-selected=true]{background:var(--accent-weak);box-shadow:inset 2px 
 .overlay[data-open=true]{display:grid;animation:fade .18s var(--ease)}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 .dialog{background:var(--surface);border:1px solid var(--line);border-radius:14px;width:min(460px,100%);padding:20px;box-shadow:0 20px 48px rgba(10,12,15,.22)}
-.dialog h3{margin:0 0 6px;font-size:15px}
+.dialog h3{margin:0 0 6px;font-size:16px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,12px);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13px;
   opacity:0;pointer-events:none;transition:opacity .18s var(--ease),transform .18s var(--ease);z-index:60;max-width:min(560px,92vw)}
 .toast[data-show=true]{opacity:1;transform:translate(-50%,0)}
@@ -201,14 +210,51 @@ tbody tr[aria-selected=true]{background:var(--accent-weak);box-shadow:inset 2px 
   .lockup>span:last-child{display:none}
 }
 @media (max-width:600px){
-  .topbar{height:52px;gap:5px;padding:0 10px}
+  body{font-size:16px}
+  input,textarea,select{font-size:16px;line-height:1.4}
+  textarea,.mono{font-size:14px}
+  .shell{padding:10px;gap:12px}
+  .topbar{height:56px;gap:5px;padding:0 10px}
   .lockup{margin-right:auto}
   .lockup .mark{display:grid}
   #keyChip{display:none!important}
   #versionChip{height:26px;padding:0 8px}
-  .topbar button{width:32px;height:32px;padding:6px;justify-content:center}
+  .topbar button{width:44px;height:44px;padding:10px;justify-content:center}
   .topbar button>span{display:none}
-  .panel{scroll-margin-top:64px}
+  .panel{margin-bottom:12px;scroll-margin-top:68px}
+  .panel-head{padding:10px 12px;min-height:46px}
+  .panel-body{padding:14px 12px}
+  .grid2{grid-template-columns:1fr;gap:10px}
+  .rail-head{height:44px}
+  .rail-head button{width:44px;height:44px;justify-content:center}
+  .switch{min-height:40px;font-size:14px}
+  .hrow{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr) 44px;gap:7px}
+  .hrow .hk{grid-column:1;grid-row:1}
+  .hrow .hv{grid-column:2;grid-row:1}
+  .hrow input{font-size:16px}
+  .hrow button{grid-column:3;grid-row:1;align-self:stretch;justify-content:center}
+  .hrow.single{grid-template-columns:minmax(0,1fr) 44px}
+  .hrow.single button{grid-column:2;grid-row:1}
+  .actions button{min-height:40px}
+  .history-table,.history-table tbody{display:block;width:100%}
+  .history-table thead{display:none}
+  .history-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;padding:12px 10px;border-top:1px solid var(--line)}
+  .history-summary:first-child{border-top:0}
+  .history-summary td{display:block;padding:0;border:0;min-width:0}
+  .history-time{grid-column:1;font-size:13px}
+  .history-origin{grid-column:2;justify-self:end}
+  .history-model{grid-column:1 / -1}
+  .history-outcome{grid-column:1}
+  .history-status{grid-column:2;justify-self:end;text-align:right!important}
+  .history-detail{display:block}
+  .history-detail>td{display:block;border-top:1px solid var(--line-strong)}
+  .history-detail-shell{padding:14px 10px}
+  .history-detail-head{display:grid;gap:8px}
+  .history-detail .metaline{display:grid;gap:4px}
+  #historyPanel .panel-head{flex-wrap:wrap;row-gap:6px}
+  #historyMeta{margin-left:auto}
+  #clearHistory{min-height:40px}
+  .pager{justify-content:center}
 }
 </style>
 </head>
@@ -336,10 +382,10 @@ tbody tr[aria-selected=true]{background:var(--accent-weak);box-shadow:inset 2px 
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="historyPanel">
       <div class="panel-head"><h3>请求历史</h3><div class="spacer"></div><span class="muted" id="historyMeta"></span><button class="quiet destructive" id="clearHistory"><svg class="i"><use href="#i-trash"/></svg>清空</button></div>
       <div class="panel-body">
-        <table>
+        <table class="history-table">
           <thead><tr><th>时间</th><th>来源</th><th>模型：发出 → 上游</th><th>结果</th><th style="text-align:right">状态</th></tr></thead>
           <tbody id="historyBody"></tbody>
         </table>
@@ -691,30 +737,37 @@ function diffRowHTML(row, index, animate) {
     <div class="diff-value">${value}</div>
   </div>`;
 }
-function renderDiff(before, after, sourceLabel) {
-  $("diffSource").textContent = sourceLabel || "";
+function diffHTML(before, after, emptyText = "暂无 Header 数据", animate = false) {
   const rows = diffRows(before, after);
   const changed = rows.filter((row) => row.kind !== "same");
   const unchanged = rows.filter((row) => row.kind === "same");
-  $("diffCount").textContent = changed.length ? `${changed.length} 处改动` : (rows.length ? "无改动" : "暂无数据");
   if (!rows.length) {
-    $("diffBox").innerHTML = '<div class="empty">预览规则，或在下方历史里选择一条记录。</div>';
-    return;
+    return { count: 0, hasRows: false, html: `<div class="empty">${esc(emptyText)}</div>` };
   }
-  $("diffBox").innerHTML = `<div class="diff">
-    ${changed.map((row, index) => diffRowHTML(row, index, true)).join("")}
+  return { count: changed.length, hasRows: true, html: `<div class="diff">
+    ${changed.map((row, index) => diffRowHTML(row, index, animate)).join("")}
     ${unchanged.length ? `<details${changed.length ? "" : " open"}>
       <summary>未改动的 ${unchanged.length} 个 Header</summary>
       ${unchanged.map((row, index) => diffRowHTML(row, index, false)).join("")}
     </details>` : ""}
-  </div>`;
+  </div>` };
+}
+function renderDiff(before, after, sourceLabel) {
+  $("diffSource").textContent = sourceLabel || "";
+  const rendered = diffHTML(before, after, "预览规则或发送测试请求后在这里查看差异", true);
+  $("diffCount").textContent = rendered.count ? `${rendered.count} 处改动` : (rendered.hasRows ? "无改动" : "暂无数据");
+  $("diffBox").innerHTML = rendered.html;
+}
+function responseHeadersHTML(headers) {
+  const entries = Object.entries(headers || {}).sort((a, b) => a[0].localeCompare(b[0]));
+  if (!entries.length) return '<div class="empty">上游没有返回可展示的 Response Header</div>';
+  return `<div class="diff">${entries.map(([name, values]) => `<div class="diff-row is-same">
+    <div class="diff-mark">${MARKS.same}</div><div class="diff-name">${esc(name)}</div>
+    <div class="diff-value">${esc(Array.isArray(values) ? values.join(", ") : values)}</div></div>`).join("")}</div>`;
 }
 function renderResponseHeaders(headers, prefixHTML = "") {
   const entries = Object.entries(headers || {}).sort((a, b) => a[0].localeCompare(b[0]));
-  $("diffExtra").innerHTML = `${prefixHTML}${entries.length ? `<div class="sub">上游 Response Header</div>
-    <div class="diff">${entries.map(([name, values]) => `<div class="diff-row is-same">
-      <div class="diff-mark">${MARKS.same}</div><div class="diff-name">${esc(name)}</div>
-      <div class="diff-value">${esc(Array.isArray(values) ? values.join(", ") : values)}</div></div>`).join("")}</div>` : ""}`;
+  $("diffExtra").innerHTML = `${prefixHTML}${entries.length ? `<div class="sub">上游 Response Header</div>${responseHeadersHTML(headers)}` : ""}`;
 }
 
 /* ---------- status vocabulary ----------------------------------------- */
@@ -750,6 +803,7 @@ async function loadHistory(page = 1) {
   if (!store.history.length) historySkeleton();
   const payload = await api(`/history?auth_index=${encodeURIComponent(store.selected)}&page=${page}`);
   store.history = payload.items || [];
+  store.selectedRecord = "";
   store.templates = payload.templates || [];
   renderHeaderTemplates();
   store.page = payload.page || 1;
@@ -764,14 +818,24 @@ async function loadHistory(page = 1) {
   }
   for (const record of store.history) {
     const row = document.createElement("tr");
+    row.className = "history-summary";
     row.dataset.id = record.id;
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
     row.setAttribute("aria-selected", String(record.id === store.selectedRecord));
-    row.innerHTML = `<td class="num">${esc(new Date(record.started_at).toLocaleString())}</td>
-      <td>${record.origin === "test" ? '<span class="tag flat">测试</span>' : '<span class="muted">线上</span>'}</td>
-      <td>${modelChain(record)}</td>
-      <td>${outcomeTag(record.outcome)}${record.error ? ` <span class="muted">${esc(record.error)}</span>` : ""}</td>
-      <td class="num" style="text-align:right">${record.status_code || "-"}</td>`;
-    row.addEventListener("click", () => showRecord(record));
+    row.setAttribute("aria-expanded", String(record.id === store.selectedRecord));
+    row.setAttribute("aria-controls", `history-detail-${record.id}`);
+    row.innerHTML = `<td class="history-time num">${esc(new Date(record.started_at).toLocaleString())}</td>
+      <td class="history-origin">${record.origin === "test" ? '<span class="tag flat">测试</span>' : '<span class="muted">线上</span>'}</td>
+      <td class="history-model">${modelChain(record)}</td>
+      <td class="history-outcome">${outcomeTag(record.outcome)}${record.error ? ` <span class="muted">${esc(record.error)}</span>` : ""}</td>
+      <td class="history-status num" style="text-align:right">${record.status_code || "-"}</td>`;
+    row.addEventListener("click", () => showRecord(record, row));
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      showRecord(record, row);
+    });
     body.append(row);
   }
   renderPager();
@@ -830,19 +894,44 @@ function renderPager() {
   for (let page = 1; page <= store.totalPages; page += 1) pager.append(button(String(page), page, false, page === store.page));
   pager.append(button('<svg class="i"><use href="#i-right"/></svg>', store.page + 1, store.page >= store.totalPages, false, "下一页"));
 }
-// Selecting a row only repaints the selection. Refetching the page here made
-// every click flash the whole table and jump the scroll position.
-function showRecord(record) {
-  store.selectedRecord = record.id;
-  for (const row of $("historyBody").querySelectorAll("tr")) {
-    row.setAttribute("aria-selected", String(row.dataset.id === record.id));
+// History is a local master-detail interaction. The detail row stays beside
+// the selected request, so examining older records never moves the operator to
+// the global preview panel above.
+function showRecord(record, summaryRow) {
+  const collapsing = store.selectedRecord === record.id;
+  store.selectedRecord = collapsing ? "" : record.id;
+  $("historyBody").querySelector(".history-detail")?.remove();
+  for (const row of $("historyBody").querySelectorAll(".history-summary")) {
+    const selected = !collapsing && row.dataset.id === record.id;
+    row.setAttribute("aria-selected", String(selected));
+    row.setAttribute("aria-expanded", String(selected));
   }
-  renderDiff(record.before_headers, record.after_headers, new Date(record.started_at).toLocaleString());
-  const meta = `<div class="notice info" style="margin-bottom:14px"><svg class="i"><use href="#i-info"/></svg><span>
-    ${modelChain(record)}<span class="metaline"><span>Request ID ${esc(record.request_id || "-")}</span>
-    <span>${esc(record.source_format || "-")}</span><span>${record.stream ? "流式" : "非流式"}</span></span></span></div>`;
-  renderResponseHeaders(record.response_headers, meta);
-  $("diffPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  if (collapsing) return;
+
+  const requestDiff = diffHTML(record.before_headers, record.after_headers, "没有记录 Request Header");
+  const detail = document.createElement("tr");
+  detail.className = "history-detail";
+  detail.dataset.recordId = record.id;
+  detail.id = `history-detail-${record.id}`;
+  const cell = document.createElement("td");
+  cell.colSpan = 5;
+  cell.innerHTML = `<div class="history-detail-shell">
+    <div class="history-detail-head">
+      <div><div class="history-detail-title">请求详情</div>${modelChain(record)}</div>
+      <div class="metaline"><span>Request ID ${esc(record.request_id || "-")}</span>
+        <span>${esc(record.source_format || "-")}</span><span>${record.stream ? "流式" : "非流式"}</span></div>
+    </div>
+    <div class="history-detail-section">
+      <div class="history-detail-label"><span>Request Header 差异</span><span>${requestDiff.count ? `${requestDiff.count} 处改动` : (requestDiff.hasRows ? "无改动" : "无数据")}</span></div>
+      ${requestDiff.html}
+    </div>
+    <div class="history-detail-section">
+      <div class="history-detail-label"><span>上游 Response Header</span></div>
+      ${responseHeadersHTML(record.response_headers)}
+    </div>
+  </div>`;
+  detail.append(cell);
+  summaryRow.after(detail);
 }
 
 /* ---------- test request ---------------------------------------------- */

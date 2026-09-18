@@ -13,7 +13,7 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - 使用 `request.intercept_after`，在 credential 选定后按 `selected_auth_index` 应用规则。
 - 规则保存后下一请求立即生效，无需重启 CPA。
 - bbolt 持久化规则。
-- 每个 credential 保留最近 50 条 attempt，10 条/页。
+- 每个 credential 保留最近 50 条 attempt，10 条/页；详情在所选记录下方原地展开。
 - retry A → B 分别记录；被替换 attempt 标记 `switched`，不猜测 401/429。
 - 记录重写前/后的 Request Header 与 upstream Response Header。
 - Authorization、Cookie、API key、token/secret/password 等在写盘前永久脱敏。
@@ -44,7 +44,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.4.0.so` | `codex-header-rewrite` | `0.4.0` |
+| `codex-header-rewrite-v0.4.1.so` | `codex-header-rewrite` | `0.4.1` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -57,7 +57,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.4.0.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.4.1.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -101,8 +101,8 @@ CLIProxyAPI 判断「有更新」要同时满足三件事，任何一条不成�
 插件 apply 锁也随之被占住，因此会同时出现“商店显示更新成功但运行版本没变”和“卸载也一直
 不完成”。v0.4.0 会在 quiesce 时刷盘并释放 DB 锁，修复后续热更新与卸载。
 
-从已经卡住的 v0.3.0 恢复时，先重启 CPA 解除本次死锁，再从商店安装 v0.4.0；如果重启后仍
-无法由商店替换，就停止 CPA，手动只保留 `codex-header-rewrite-v0.4.0.so`，再启动。卸载本身由
+从已经卡住的 v0.3.0 恢复时，先重启 CPA 解除本次死锁，再从商店安装当前最新版；如果重启后仍
+无法由商店替换，就停止 CPA，手动只保留最新的版本化 `.so`，再启动。卸载本身由
 CPA 的 `DELETE /v0/management/plugins/{id}` 执行；较旧、不支持热卸载的 CPA 返回
 `plugin_delete_requires_restart` 时，仍需停止 CPA 后删除文件并移除对应配置。
 
