@@ -133,6 +133,7 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 - 插件调用 CPA 的 `host.http.do`，所以 socket、代理配置与请求观测都由 CPA 宿主负责；但它**不经过 Codex Provider Executor**。Codex 端点额外使用稳定的 HTTP/1.1 Header 顺序并关闭自动压缩注入，这改善 HTTP 线级一致性，但不等于完整复刻 Codex CLI 的 TLS 指纹。
 - 端点可使用任意 `https` 地址，明文 `http` 仅允许 loopback。Codex 后端默认附带所选凭证；其他端点默认不读也不带凭证，只有操作者明确勾选后才发送 access token 与账号 ID。
+- **端点不是 Codex 后端时（例如直接打 CPA 自己的网关），插件不再拼 Codex 那套 Header**：只发 `Content-Type`、`Accept`、`User-Agent`，不发 `Originator`、不发凭证、不套用 Header 模板（模板选择器会自动停用并说明原因），也不套 Codex 的 HTTP/1.1 线级配置。那台主机会自己构造上游请求，重复一份只会互相打架。它需要什么（比如 CPA 的 API key）用临时 Header 显式加。
 
 ## Codex Responses Lite
 

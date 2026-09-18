@@ -129,7 +129,7 @@ func runTestRequest(req testRequest) (testResult, error) {
 	}
 
 	started := time.Now().UTC()
-	base, material, err := testBaseHeaders(req, authIndex, carriesCredential)
+	base, material, err := testBaseHeaders(req, authIndex, carriesCredential, codexBackend)
 	if err != nil {
 		return testResult{}, err
 	}
@@ -237,7 +237,7 @@ func resolveTestRule(authIndex string, req testRequest) (headerRule, bool, error
 // Credential material is read only when this request is actually going to carry
 // it, and only for the single call that follows. Returned header maps are
 // redacted before they leave the plugin.
-func testBaseHeaders(req testRequest, authIndex string, carriesCredential bool) (http.Header, testAuthMaterial, error) {
+func testBaseHeaders(req testRequest, authIndex string, carriesCredential, codexBackend bool) (http.Header, testAuthMaterial, error) {
 	material := testAuthMaterial{}
 	if !req.DryRun && carriesCredential {
 		document, err := hostAuthGetFunc(authIndex)
@@ -256,8 +256,15 @@ func testBaseHeaders(req testRequest, authIndex string, carriesCredential bool) 
 	base := http.Header{
 		"Content-Type": {"application/json"},
 		"Accept":       {accept},
-		"Originator":   {"codex-tui"},
 		"User-Agent":   {fmt.Sprintf("codex-header-rewrite/%s (Linux; %s)", pluginVersion, runtime.GOARCH)},
+	}
+	// Codex identity headers belong on requests that go to Codex. When the
+	// endpoint is something else, typically CLIProxyAPI's own gateway, that host
+	// builds its own upstream request and our Originator would be noise it has
+	// to ignore or, worse, forward. Whatever such an endpoint needs is the
+	// operator's to add explicitly.
+	if codexBackend {
+		base.Set("Originator", "codex-tui")
 	}
 	switch {
 	case !carriesCredential:

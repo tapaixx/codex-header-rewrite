@@ -494,3 +494,61 @@ func TestRawBodyIsNotRewrittenForLiteMode(t *testing.T) {
 		t.Fatalf("the mismatch should be reported, not fixed: %#v", result)
 	}
 }
+
+// A request aimed at CLIProxyAPI's own gateway is not a Codex request: that
+// host builds the Codex request itself, so the plugin sends a plain body with
+// no Codex identity headers and lets the operator supply what the gateway wants.
+func TestNonCodexEndpointGetsNoCodexHeaders(t *testing.T) {
+	resetState(t)
+	testStubCredential(t, stubCredentialDocument)
+	var sent hostHTTPRequest
+	hostHTTPDoFunc = func(request hostHTTPRequest) (hostHTTPResponse, error) {
+		sent = request
+		return hostHTTPResponse{StatusCode: 200, Body: []byte(`{"model":"m"}`)}, nil
+	}
+	result, err := runTestRequest(testRequest{AuthIndex: "idx-a", Model: "m", Stream: true,
+		Endpoint: "http://localhost:8317/v1/responses",
+		Headers:  map[string]string{"Authorization": "Bearer cpa-api-key"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sent.Headers.Get("Originator") != "" {
+		t.Fatalf("Codex originator must not be sent to another host: %#v", sent.Headers)
+	}
+	if sent.Headers.Get("Chatgpt-Account-Id") != "" {
+		t.Fatalf("account id leaked to another host: %#v", sent.Headers)
+	}
+	// What the operator set explicitly still goes out, and the transport basics
+	// stay: the gateway still needs to know what it is being sent.
+	if sent.Headers.Get("Authorization") != "Bearer cpa-api-key" {
+		t.Fatalf("explicit authorization dropped: %#v", sent.Headers)
+	}
+	if sent.Headers.Get("Content-Type") != "application/json" || sent.Headers.Get("Accept") != "text/event-stream" {
+		t.Fatalf("transport headers=%#v", sent.Headers)
+	}
+	if sent.WireProfile != nil {
+		t.Fatalf("the Codex wire profile is for Codex: %#v", sent.WireProfile)
+	}
+	if result.CodexBackend || result.CredentialAttached {
+		t.Fatalf("result=%#v", result)
+	}
+}
+
+func TestCodexEndpointKeepsItsIdentityHeaders(t *testing.T) {
+	resetState(t)
+	testStubCredential(t, stubCredentialDocument)
+	var sent hostHTTPRequest
+	hostHTTPDoFunc = func(request hostHTTPRequest) (hostHTTPResponse, error) {
+		sent = request
+		return hostHTTPResponse{StatusCode: 200, Body: []byte(`{"model":"m"}`)}, nil
+	}
+	if _, err := runTestRequest(testRequest{AuthIndex: "idx-a", Model: "m"}); err != nil {
+		t.Fatal(err)
+	}
+	if sent.Headers.Get("Originator") != "codex-tui" {
+		t.Fatalf("Codex requests keep their originator: %#v", sent.Headers)
+	}
+	if sent.Headers.Get("Chatgpt-Account-Id") == "" {
+		t.Fatalf("Codex requests keep the account id: %#v", sent.Headers)
+	}
+}

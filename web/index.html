@@ -1008,6 +1008,7 @@ function renderHeaderTemplates() {
   $("templateHint").textContent = store.templates.length
     ? `可载入当前历史页的 ${store.templates.length} 个安全模板；凭证、账号 ID 与传输控制 Header 已过滤。`
     : "自动生成 Accept、Content-Type、Originator、User-Agent 与凭证 Header；有请求历史后可在这里复用安全 Header。";
+  applyTemplateGate();
 }
 
 function applyHeaderTemplate() {
@@ -1155,6 +1156,21 @@ function syncAttachSwitch() {
   const codex = endpointIsCodexBackend();
   if (!store.attachTouched) $("testAttach").checked = codex;
   $("attachWarn").hidden = codex || !$("testAttach").checked;
+  applyTemplateGate();
+}
+// Aiming at CLIProxyAPI's own gateway means that host builds the Codex request
+// itself, so replaying Codex headers captured from history is noise at best.
+// The picker is disabled rather than hidden, so the reason stays visible.
+function applyTemplateGate() {
+  const select = $("testTemplate");
+  const codex = endpointIsCodexBackend();
+  select.disabled = !codex;
+  if (codex) return;
+  if (select.value) {
+    select.value = "";
+    toast("非 Codex 端点，已停用 Header 模板");
+  }
+  $("templateHint").textContent = "该端点不是 Codex 后端：由它自己构造上游请求，插件只发送 Content-Type、Accept 与 User-Agent，其余按需自己加临时 Header。";
 }
 function collectTest(dryRun) {
   const request = {
