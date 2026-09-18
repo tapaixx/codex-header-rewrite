@@ -37,30 +37,6 @@ type cleanupResponse struct {
 	Deleted []string `json:"deleted"`
 }
 
-type historyHeaderTemplate struct {
-	ID        string            `json:"id"`
-	Model     string            `json:"model,omitempty"`
-	StartedAt time.Time         `json:"started_at"`
-	Headers   map[string]string `json:"headers"`
-}
-
-type historyPageResponse struct {
-	historyPage
-	Templates []historyHeaderTemplate `json:"templates"`
-}
-
-var nonReusableTemplateHeaders = map[string]struct{}{
-	"chatgpt-account-id": {},
-	"connection":         {},
-	"content-length":     {},
-	"host":               {},
-	"proxy-connection":   {},
-	"te":                 {},
-	"trailer":            {},
-	"transfer-encoding":  {},
-	"upgrade":            {},
-}
-
 func registerManagement() managementRegistration {
 	return managementRegistration{Routes: []managementRoute{
 		{Method: http.MethodGet, Path: apiCredentialsPath, Description: "List Codex credentials"},
@@ -169,10 +145,7 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 		if err != nil {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
-		return jsonResponse(http.StatusOK, historyPageResponse{
-			historyPage: result,
-			Templates:   historyHeaderTemplates(result.Items),
-		}), nil
+		return jsonResponse(http.StatusOK, result), nil
 	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiHistoryClearPath):
 		var body struct {
 			AuthIndex string `json:"auth_index"`
@@ -263,40 +236,6 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 	default:
 		return jsonError(http.StatusNotFound, "route not found"), nil
 	}
-}
-
-// historyHeaderTemplates turns persisted, already-redacted request snapshots
-// into safe test-form presets. Authentication, account identity, hop-by-hop
-// transport fields, and any value carrying a redaction marker are deliberately
-// omitted so a template can never replace a live credential with placeholder
-// text or replay an identity into a different endpoint.
-func historyHeaderTemplates(records []historyRecord) []historyHeaderTemplate {
-	templates := make([]historyHeaderTemplate, 0, len(records))
-	for _, record := range records {
-		headers := make(map[string]string)
-		for rawName, values := range record.BeforeHeaders {
-			name := http.CanonicalHeaderKey(strings.TrimSpace(rawName))
-			lowerName := strings.ToLower(name)
-			value := strings.Join(values, ", ")
-			if name == "" || isSensitiveHeader(name) || strings.Contains(strings.ToUpper(value), "[REDACTED]") {
-				continue
-			}
-			if _, blocked := nonReusableTemplateHeaders[lowerName]; blocked {
-				continue
-			}
-			headers[name] = value
-		}
-		if len(headers) == 0 {
-			continue
-		}
-		templates = append(templates, historyHeaderTemplate{
-			ID:        record.ID,
-			Model:     record.Model,
-			StartedAt: record.StartedAt,
-			Headers:   headers,
-		})
-	}
-	return templates
 }
 
 func listCredentialViews() ([]credentialView, error) {

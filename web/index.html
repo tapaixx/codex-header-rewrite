@@ -368,11 +368,6 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
           <div class="field"><label for="testEffort">推理强度</label><select id="testEffort"><option value="low">low</option><option value="minimal">minimal</option><option value="medium">medium</option><option value="high">high</option></select></div>
         </div>
         <div class="field"><label for="testPrompt">提示词</label><input id="testPrompt" spellcheck="false"></div>
-        <div class="field">
-          <label for="testTemplate">Header 模板</label>
-          <select id="testTemplate"><option value="">Codex 默认 Header（自动生成）</option></select>
-          <span class="muted" id="templateHint">自动生成 Accept、Content-Type、Originator、User-Agent 与凭证 Header；也可载入当前历史页里规则生效前的安全 Header。</span>
-        </div>
         <div class="grid2" style="margin-bottom:6px">
           <label class="switch"><input type="checkbox" id="testStream" checked><span>流式（SSE）</span></label>
           <label class="switch"><input type="checkbox" id="testApplyRule" checked><span>套用已保存规则</span></label>
@@ -483,7 +478,7 @@ const SESSION_KEY = "chr.key";
 const CUSTOM_MODEL = "__custom__";
 const store = {
   creds: [], selected: "", rule: null, defaults: {}, models: [], version: "",
-  history: [], templates: [], page: 1, totalPages: 0, selectedRecord: "", attachTouched: false,
+  history: [], page: 1, totalPages: 0, selectedRecord: "", attachTouched: false,
 };
 
 /* ---------- management key ----------------------------------------------
@@ -677,10 +672,8 @@ function renderCredentials() {
 async function selectCredential(authIndex) {
   store.selected = authIndex;
   store.selectedRecord = "";
-  store.templates = [];
   store.attachTouched = false;
   $("testHeaderRows").replaceChildren();
-  renderHeaderTemplates();
   syncAttachSwitch();
   renderCredentials();
   const cred = store.creds.find((item) => item.auth_index === authIndex);
@@ -873,8 +866,10 @@ function turnStateAge(info) {
   return `${Math.round(seconds / 3600)} 小时前`;
 }
 function turnStateRows(label, info, extra = "", blob = "", model = "") {
-  if (!info) return "";
-  const decode = blob ? `<button class="btn-xs" data-blob="${esc(blob)}" title="把原始 blob 送去解码面板"><svg class="i" style="width:12px;height:12px"><use href="#i-eye"/></svg>解码</button>` : "";
+  const decode = blob ? `<button class="btn-xs" data-blob="${esc(blob)}" title="自动送到解码器并显示结果"><svg class="i" style="width:12px;height:12px"><use href="#i-eye"/></svg>解码 state</button>` : "";
+  if (!info) {
+    return blob ? `<div class="ts-block"><div class="ts-title">${esc(label)}${extra}<span style="flex:1"></span>${decode}</div><div class="muted">历史记录只有原始 blob，点击按钮即可自动解析，不需要复制粘贴。</div></div>` : "";
+  }
   const issued = info.issued_at && !info.issued_at.startsWith("0001")
     ? `${new Date(info.issued_at).toLocaleString()}<span class="muted"> · ${turnStateAge(info)}</span>` : "未能读出";
   const shape = info.decodable
@@ -902,7 +897,9 @@ function turnStateRows(label, info, extra = "", blob = "", model = "") {
   </div>`;
 }
 function turnStateDetail(record) {
-  if (!record.turn_state_echo && !record.turn_state_minted) return "";
+  const echoBlob = pickHeader(record.before_headers, "x-codex-turn-state") || "";
+  const mintedBlob = pickHeader(record.response_headers, "x-codex-turn-state") || "";
+  if (!record.turn_state_echo && !record.turn_state_minted && !echoBlob && !mintedBlob) return "";
   const origin = record.turn_state_origin_label || record.turn_state_origin_index;
   const echoExtra = record.turn_state_cross_account === true
     ? ` <span class="tag bad">由 ${esc(origin || "其他凭证")} 铸造</span>`
@@ -911,8 +908,8 @@ function turnStateDetail(record) {
   return `<div class="history-detail-section">
     <div class="history-detail-label"><span>X-Codex-Turn-State</span><span>${turnStateTags(record)}</span></div>
     <div class="ts-pair">
-      ${turnStateRows("客户端回带", record.turn_state_echo, echoExtra, pickHeader(record.before_headers, "x-codex-turn-state") || "", record.turn_state_origin_model || "")}
-      ${turnStateRows("上游铸造", record.turn_state_minted, "", pickHeader(record.response_headers, "x-codex-turn-state") || "", record.model || "")}
+      ${turnStateRows("客户端回带", record.turn_state_echo, echoExtra, echoBlob, record.turn_state_origin_model || "")}
+      ${turnStateRows("上游铸造", record.turn_state_minted, "", mintedBlob, record.model || "")}
     </div>
     ${session}
   </div>`;
@@ -951,8 +948,6 @@ async function loadHistory(page = 1) {
   const payload = await api(`/history?auth_index=${encodeURIComponent(store.selected)}&page=${page}`);
   store.history = payload.items || [];
   store.selectedRecord = "";
-  store.templates = payload.templates || [];
-  renderHeaderTemplates();
   store.page = payload.page || 1;
   store.totalPages = payload.total_pages || 0;
   $("historyMeta").textContent = payload.total ? `${payload.total} 条，第 ${store.page}/${store.totalPages} 页` : "";
@@ -988,42 +983,6 @@ async function loadHistory(page = 1) {
   renderPager();
 }
 
-function renderHeaderTemplates() {
-  const select = $("testTemplate");
-  const selected = select.value;
-  select.replaceChildren();
-  const builtIn = document.createElement("option");
-  builtIn.value = "";
-  builtIn.textContent = "Codex 默认 Header（自动生成）";
-  select.append(builtIn);
-  for (const template of store.templates) {
-    const option = document.createElement("option");
-    option.value = template.id;
-    const when = new Date(template.started_at).toLocaleString();
-    const count = Object.keys(template.headers || {}).length;
-    option.textContent = `${when} · ${template.model || "未知模型"} · ${count} 个 Header`;
-    select.append(option);
-  }
-  select.value = store.templates.some((template) => template.id === selected) ? selected : "";
-  $("templateHint").textContent = store.templates.length
-    ? `可载入当前历史页的 ${store.templates.length} 个安全模板；凭证、账号 ID 与传输控制 Header 已过滤。`
-    : "自动生成 Accept、Content-Type、Originator、User-Agent 与凭证 Header；有请求历史后可在这里复用安全 Header。";
-  applyTemplateGate();
-}
-
-function applyHeaderTemplate() {
-  const selected = $("testTemplate").value;
-  const template = store.templates.find((item) => item.id === selected);
-  const rows = $("testHeaderRows");
-  rows.replaceChildren();
-  if (!template) {
-    toast("已恢复 Codex 默认 Header");
-    return;
-  }
-  const headers = Object.entries(template.headers || {}).sort((a, b) => a[0].localeCompare(b[0]));
-  for (const [name, value] of headers) headerRow(rows, name, value);
-  toast(`已载入 ${headers.length} 个历史 Header，凭证字段未复制`);
-}
 function renderPager() {
   const pager = $("pager");
   pager.replaceChildren();
@@ -1156,21 +1115,6 @@ function syncAttachSwitch() {
   const codex = endpointIsCodexBackend();
   if (!store.attachTouched) $("testAttach").checked = codex;
   $("attachWarn").hidden = codex || !$("testAttach").checked;
-  applyTemplateGate();
-}
-// Aiming at CLIProxyAPI's own gateway means that host builds the Codex request
-// itself, so replaying Codex headers captured from history is noise at best.
-// The picker is disabled rather than hidden, so the reason stays visible.
-function applyTemplateGate() {
-  const select = $("testTemplate");
-  const codex = endpointIsCodexBackend();
-  select.disabled = !codex;
-  if (codex) return;
-  if (select.value) {
-    select.value = "";
-    toast("非 Codex 端点，已停用 Header 模板");
-  }
-  $("templateHint").textContent = "该端点不是 Codex 后端：由它自己构造上游请求，插件只发送 Content-Type、Accept 与 User-Agent，其余按需自己加临时 Header。";
 }
 function collectTest(dryRun) {
   const request = {
@@ -1262,7 +1206,6 @@ $("addSet").addEventListener("click", () => headerRow($("setRows"), "", "").focu
 $("addRemove").addEventListener("click", () => headerRow($("removeRows")).focus());
 $("addTestHeader").addEventListener("click", () => headerRow($("testHeaderRows"), "", "").focus());
 $("addTestRemove").addEventListener("click", () => headerRow($("testRemoveRows")).focus());
-$("testTemplate").addEventListener("change", applyHeaderTemplate);
 $("testModelSelect").addEventListener("change", syncModelInput);
 $("testEndpoint").addEventListener("input", syncAttachSwitch);
 $("testAttach").addEventListener("change", () => { store.attachTouched = true; syncAttachSwitch(); });

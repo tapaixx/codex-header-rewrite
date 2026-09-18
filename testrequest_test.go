@@ -93,7 +93,7 @@ func TestRealTestRequestReportsUpstreamModelMismatchAndRecordsIt(t *testing.T) {
 	if sent.Headers.Get("X-Probe") != "1" {
 		t.Fatalf("custom header dropped: %#v", sent.Headers)
 	}
-	wantProfile := []string{"Host", "Content-Type", "Authorization", "User-Agent", "Accept", "Chatgpt-Account-Id", "Originator", "X-Probe"}
+	wantProfile := []string{"Host", "Content-Type", "Authorization", "Accept", "Chatgpt-Account-Id", "Originator", "X-Probe"}
 	if sent.WireProfile == nil || !sent.WireProfile.HTTP1Only || !sent.WireProfile.DisableAutoCompression || !reflect.DeepEqual(sent.WireProfile.HeaderProfile, wantProfile) {
 		t.Fatalf("Codex wire profile=%#v, want headers %#v", sent.WireProfile, wantProfile)
 	}
@@ -365,6 +365,26 @@ func TestManagementTestRouteReturnsAResult(t *testing.T) {
 	}
 }
 
+func TestGeneratedTestBodyUsesHiAsTheDefaultPrompt(t *testing.T) {
+	body, model, raw, err := resolveTestBody(testRequest{})
+	if err != nil || raw || model != defaultTestModel {
+		t.Fatalf("body=%s model=%q raw=%v err=%v", body, model, raw, err)
+	}
+	var payload struct {
+		Input []struct {
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"input"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Input) != 1 || len(payload.Input[0].Content) != 1 || payload.Input[0].Content[0].Text != "hi" {
+		t.Fatalf("generated input=%#v", payload.Input)
+	}
+}
+
 // The lite header selects a mode the upstream enforces on the body. A header
 // template copied from real Codex traffic carries it, so a generated body that
 // ignores it is rejected with an error naming a field the operator never set.
@@ -523,7 +543,7 @@ func TestNonCodexEndpointGetsNoCodexHeaders(t *testing.T) {
 	if sent.Headers.Get("Authorization") != "Bearer cpa-api-key" {
 		t.Fatalf("explicit authorization dropped: %#v", sent.Headers)
 	}
-	if sent.Headers.Get("Content-Type") != "application/json" || sent.Headers.Get("Accept") != "text/event-stream" {
+	if sent.Headers.Get("Content-Type") != "application/json" || sent.Headers.Get("Accept") != "text/event-stream" || sent.Headers.Get("User-Agent") != "" {
 		t.Fatalf("transport headers=%#v", sent.Headers)
 	}
 	if sent.WireProfile != nil {

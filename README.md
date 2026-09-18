@@ -18,7 +18,7 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - 记录重写前/后的 Request Header 与 upstream Response Header。
 - Authorization、Cookie、API key、token/secret/password 等在写盘前永久脱敏。
 - 不保存 request / response body。
-- 自定义测试请求：从凭证可用模型中选择模型、复用安全的历史 Header 模板、预览改写结果，或向自定义端点发一次真实请求。
+- 自定义测试请求：从凭证可用模型中选择模型、发送默认 `hi` 或自定义 JSON、预览改写结果，或向自定义端点发一次真实请求。
 - 模型一致性核对：记录上游实际声明的模型，与发出的模型比对，不一致时标红。
 - 回合状态（X-Codex-Turn-State）溯源：记录 blob 的铸造凭证，发现跨账号回带并可按规则摘除；内置 Fernet 信封解码。
 - 中文内嵌 UI，单文档零外部依赖；敏感数据接口走 CPA Management API。
@@ -45,7 +45,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.6.1.so` | `codex-header-rewrite` | `0.6.1` |
+| `codex-header-rewrite-v0.6.2.so` | `codex-header-rewrite` | `0.6.2` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -58,7 +58,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.6.1.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.6.2.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -122,7 +122,7 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 ## 测试请求
 
-面板的「测试请求」可以从当前凭证的可用模型里选择模型（宿主未返回列表时回退为手填），设置提示词、推理强度、流式开关、临时 Header、临时移除、自定义端点与原始 JSON 请求体。Header 模板默认使用插件生成的 Codex 基础 Header，也可载入当前历史页中规则生效前的 Header；凭证、账号 ID、Host、Content-Length 和 hop-by-hop 字段不会进入模板。
+面板的「测试请求」可以从当前凭证的可用模型里选择模型（宿主未返回列表时回退为手填），设置提示词、推理强度、流式开关、临时 Header、临时移除、自定义端点与原始 JSON 请求体。默认提示词是 `hi`，自动生成 Responses API JSON 请求体；填写原始 JSON 后会按原文发送。
 
 两种执行方式：
 
@@ -131,9 +131,9 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 两点边界：
 
-- 插件调用 CPA 的 `host.http.do`，所以 socket、代理配置与请求观测都由 CPA 宿主负责；但它**不经过 Codex Provider Executor**。Codex 端点额外使用稳定的 HTTP/1.1 Header 顺序并关闭自动压缩注入，这改善 HTTP 线级一致性，但不等于完整复刻 Codex CLI 的 TLS 指纹。
+- 插件调用 CPA 的 `host.http.do`，所以 socket、代理配置与请求观测都由 CPA 宿主负责；但它**不经过 Codex Provider Executor**。插件保留 JSON/SSE 必需的 `Content-Type` 与 `Accept`，不再自造 `User-Agent`；其余只带凭证身份和操作者明确添加的临时 Header。
 - 端点可使用任意 `https` 地址，明文 `http` 仅允许 loopback。Codex 后端默认附带所选凭证；其他端点默认不读也不带凭证，只有操作者明确勾选后才发送 access token 与账号 ID。
-- **端点不是 Codex 后端时（例如直接打 CPA 自己的网关），插件不再拼 Codex 那套 Header**：只发 `Content-Type`、`Accept`、`User-Agent`，不发 `Originator`、不发凭证、不套用 Header 模板（模板选择器会自动停用并说明原因），也不套 Codex 的 HTTP/1.1 线级配置。那台主机会自己构造上游请求，重复一份只会互相打架。它需要什么（比如 CPA 的 API key）用临时 Header 显式加。
+- 端点不是 Codex 后端时（例如直接打 CPA 自己的网关），插件不发 Codex 身份头，也不附带凭证；目标主机需要什么（比如 CPA API key）用临时 Header 显式加。
 
 ## Codex Responses Lite
 
@@ -142,7 +142,7 @@ curl -s -H "Authorization: Bearer <management-key>" \
 - `reasoning.context` 必须是 `all_turns`
 - `parallel_tool_calls` 必须是 `false`
 
-从历史载入 Header 模板时会把真实 Codex 请求里的这个 Header 一起带上，而插件自动生成的请求体原本不满足上面两条，于是上游返回：
+如果操作者在临时 Header 中显式加入这个 Header，而自动生成的请求体不满足上面两条，上游会返回：
 
 ```json
 {"error":{"message":"X-OpenAI-Internal-Codex-Responses-Lite requires `reasoning.context` to be `all_turns`.",

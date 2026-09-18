@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -15,7 +14,7 @@ const (
 	codexBackendHost  = "chatgpt.com"
 	defaultTestURL    = "https://chatgpt.com/backend-api/codex/responses"
 	defaultTestModel  = "gpt-5.6-luna"
-	defaultTestPrompt = "Reply with exactly OK"
+	defaultTestPrompt = "hi"
 	// Upstream error text is returned to the panel to explain a failure. It is
 	// truncated, returned once, and never written to history.
 	testErrorPreviewLimit = 600
@@ -249,6 +248,9 @@ func testBaseHeaders(req testRequest, authIndex string, carriesCredential, codex
 			return nil, material, &testRequestError{status: http.StatusBadGateway, message: "credential has no ChatGPT account id"}
 		}
 	}
+	// host.http.do does not pass through the Codex provider executor, so the
+	// protocol headers still belong here. User-Agent is intentionally left to
+	// CPA's transport rather than inventing a plugin identity.
 	accept := "application/json"
 	if req.Stream {
 		accept = "text/event-stream"
@@ -256,7 +258,6 @@ func testBaseHeaders(req testRequest, authIndex string, carriesCredential, codex
 	base := http.Header{
 		"Content-Type": {"application/json"},
 		"Accept":       {accept},
-		"User-Agent":   {fmt.Sprintf("codex-header-rewrite/%s (Linux; %s)", pluginVersion, runtime.GOARCH)},
 	}
 	// Codex identity headers belong on requests that go to Codex. When the
 	// endpoint is something else, typically CLIProxyAPI's own gateway, that host
@@ -410,7 +411,6 @@ func testWireProfile(headers http.Header, codexBackend bool) *hostWireProfile {
 		"Host",
 		"Content-Type",
 		"Authorization",
-		"User-Agent",
 		"Accept",
 		"Chatgpt-Account-Id",
 		"Originator",

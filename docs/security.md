@@ -25,7 +25,7 @@ Plugin Resource 路由只提供静态 HTML；credential、rule、history、test�
 - `chatgpt.com` 默认附带所选凭证。其他主机默认不读取、不附带凭证；只有操作者明确勾选后，才会把 access token 与账号 ID 发送给该地址，面板同时显示醒目警告并在发送前二次确认。
 - 账号标识只从 `id_token.chatgpt_account_id` 及其显式别名读取。同级的 `account` / `id` 字段装的是操作者邮箱，不是账号标识，取不到标识时如实报错，不拿地址顶替。
 - 凭证材料在发出请求前即时读取，用完不保留、不记录、不返回面板。
-- 历史 Header 模板在服务端生成，剔除凭证、账号 ID、Host、Content-Length、hop-by-hop 字段以及任何带 `[REDACTED]` 标记的值，避免把脱敏占位符或身份信息重新发出。
+- 测试请求不复制历史 Header 模板；插件只保留 JSON/SSE 必需的 `Content-Type` 与 `Accept`，不设置 `User-Agent`。历史详情里的 Turn-State 可通过“解码 state”按钮送入解码接口，不需要手动复制粘贴。
 
 ## 回合状态 blob
 
