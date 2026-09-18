@@ -39,6 +39,10 @@
   }
 }
 *{box-sizing:border-box}
+/* Class-level display rules outrank the UA [hidden] rule, so toggling the
+   attribute on .notice/.chip elements did nothing and left empty boxes on
+   screen. Make the attribute win everywhere. */
+[hidden]{display:none!important}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
@@ -87,6 +91,15 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
 .col{display:flex;flex-direction:column;gap:16px;min-width:0}
 @media (min-width:1200px){
   main{grid-template-columns:minmax(380px,430px) minmax(0,1fr)}
+  /* Each column owns its scrolling: reading a long history detail no longer
+     drags the rule and test forms off the top of the screen. */
+  body{height:100dvh;overflow:hidden;display:flex;flex-direction:column}
+  .topbar{position:static;flex:none}
+  .shell{flex:1;min-height:0;overflow:hidden;padding-bottom:0}
+  .rail{position:static;height:100%;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-right:4px;padding-bottom:16px}
+  main{height:100%;min-height:0}
+  .col{height:100%;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-right:4px;padding-bottom:16px}
+  .panel{scroll-margin-top:8px}
 }
 .rail{position:sticky;top:76px;display:flex;flex-direction:column;gap:6px}
 .rail-head{display:flex;align-items:center;justify-content:space-between;height:28px;padding-left:2px}
@@ -168,6 +181,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
 .ts-grid{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0;font-size:12px}
 .ts-grid dt{color:var(--text-mute)}
 .ts-grid dd{margin:0;overflow-wrap:anywhere}
+.btn-xs{padding:1px 8px;font-size:11.5px;gap:4px;border-color:var(--line-strong);background:var(--surface)}
 .chain{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:13px}
 .chain .arrow{color:var(--text-mute)}
 .metaline{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;color:var(--text-mute);font-size:12px}
@@ -841,7 +855,7 @@ function turnStateAge(info) {
 }
 function turnStateRows(label, info, extra = "", blob = "") {
   if (!info) return "";
-  const decode = blob ? `<button class="quiet" data-blob="${esc(blob)}" style="padding:1px 7px;font-size:11.5px">解码</button>` : "";
+  const decode = blob ? `<button class="btn-xs" data-blob="${esc(blob)}" title="把原始 blob 送去解码面板"><svg class="i" style="width:12px;height:12px"><use href="#i-eye"/></svg>解码</button>` : "";
   const issued = info.issued_at && !info.issued_at.startsWith("0001")
     ? `${new Date(info.issued_at).toLocaleString()}<span class="muted"> · ${turnStateAge(info)}</span>` : "未能读出";
   const shape = info.decodable
