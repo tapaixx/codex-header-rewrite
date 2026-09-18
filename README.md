@@ -45,7 +45,7 @@ plugins:
 ## 开发
 
 ```bash
-go mod download
+go mod tidy
 go test ./...
 go test -tags localtest -modfile=go.localtest.mod ./...
 ```
