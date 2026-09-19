@@ -1454,7 +1454,6 @@ body[data-workspace="rules"] .overview-strip{display:grid}
       <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg></span>
       <span class="lockup-copy"><b>Codex Header Rewrite</b><span>为每个凭证定制请求 Header 规则，让 Codex 更稳定、更可控</span></span>
     </div>
-    <span class="chip num" id="versionChip" hidden title="当前实际响应此页面的插件版本"></span>
     <div class="spacer"></div>
     <div class="credential-picker" id="credentialSwitcher">
       <button class="credential-trigger" id="credentialTrigger" type="button" aria-expanded="false" aria-haspopup="listbox">
@@ -1477,6 +1476,7 @@ body[data-workspace="rules"] .overview-strip{display:grid}
       </div>
     </div>
     <span class="chip" id="keyChip" hidden><svg class="i"><use href="#i-key"/></svg><span id="keyChipText"></span></span>
+    <span class="chip num" id="versionChip" hidden title="当前实际响应此页面的插件版本"></span>
     <button class="primary toolbar-action" id="keyBtn" title="管理密钥" aria-label="管理密钥"><svg class="i"><use href="#i-key"/></svg><span>管理密钥</span></button>
     <button class="toolbar-action toolbar-danger-soft" id="cleanupBtn" title="清理宿主中已不存在凭证的遗留数据" aria-label="清理遗留"><svg class="i"><use href="#i-eraser"/></svg><span>清理遗留</span></button>
   </div>
@@ -1499,11 +1499,11 @@ body[data-workspace="rules"] .overview-strip{display:grid}
       <div class="panel-head">
         <div class="panel-title">
           <h3 id="ruleTitle">Header 规则</h3>
-          <div class="panel-caption">配置将应用于当前凭证的请求 Header；保存后下一请求立即生效</div>
+          <div class="panel-caption">配置请求头的设置、覆盖、移除规则，右侧实时预览最终效果</div>
         </div>
         <div class="spacer"></div>
         <span class="muted" id="ruleUpdated"></span>
-        <label class="switch"><input type="checkbox" id="ruleEnabled"><span>启用规则</span></label>
+        <label class="switch"><input type="checkbox" id="ruleEnabled"><span>启用改写</span></label>
       </div>
       <div class="panel-body">
         <div class="rule-blocks">
@@ -1731,7 +1731,7 @@ body[data-workspace="rules"] .overview-strip{display:grid}
       <div class="overview-head"><b>测试请求</b><button class="primary" id="overviewTestBtn" type="button">发送测试请求</button></div>
       <div class="overview-toolbar"><span class="method-mini">POST</span><span class="overview-endpoint">https://api.openai.com/v1/chat/completions</span></div>
       <div class="overview-tabs"><span class="active">请求头</span><span>请求体</span><span>响应结果</span></div>
-      <div class="overview-split"><pre id="overviewTestHeaders">{}</pre><div class="overview-response"><small>响应结果</small><div><span class="tag ok">200</span> <span class="muted">耗时 —</span></div><code id="overviewResponseHeader">content-type: application/json</code></div></div>
+      <div class="overview-split"><pre id="overviewTestHeaders">{}</pre><div class="overview-response"><small>响应结果</small><div><span class="tag flat" id="overviewTestStatus">待发送</span> <span class="muted" id="overviewTestLatency">耗时 —</span></div><code id="overviewResponseHeader">尚未发送测试请求</code></div></div>
     </article>
 
     <article class="overview-card overview-history">
@@ -2770,6 +2770,9 @@ function renderTestResult(result, dryRun) {
     overviewStatus.textContent = responseEntries.length
       ? responseEntries.slice(0, 3).map(([name, values]) => name + ": " + (Array.isArray(values) ? values.join(", ") : values)).join("\n")
       : (dryRun ? "预览模式：未发送请求" : "没有可展示的 Response Header");
+    $("overviewTestStatus").textContent = dryRun ? "预览" : String(result.status_code || result.outcome || "—");
+    $("overviewTestStatus").className = "tag " + (result.outcome === "succeeded" || Number(result.status_code) < 400 ? "ok" : (dryRun ? "flat" : "bad"));
+    $("overviewTestLatency").textContent = dryRun ? "未发送" : ("耗时 " + (result.latency_ms ?? "—") + " ms");
   }
   $("diffPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
