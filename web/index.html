@@ -173,7 +173,10 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
 .metaline{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;color:var(--text-mute);font-size:12px}
 
 /* History */
-.history-table{width:100%;border-collapse:collapse;font-size:13px}
+.history-table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+.history-table td{overflow-wrap:anywhere}
+.history-error-preview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.history-error-full{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto}
 .history-table th{text-align:left;font-weight:600;font-size:11.5px;color:var(--text-mute);padding:0 9px 7px}
 .history-summary{cursor:pointer;transition:background .14s var(--ease)}
 .history-summary td{padding:7px 9px;border-top:1px solid var(--line);vertical-align:middle}
@@ -1338,7 +1341,8 @@ body[data-workspace="rules"] .overview-strip{display:grid}
 .overview-decode-label{padding:0 9px 5px}.overview-decode pre{margin:0 9px 9px;max-height:92px}
 
 @media (max-width:1200px){
-  body[data-workspace="rules"] .shell main{grid-template-columns:minmax(520px,1fr) minmax(470px,1fr)!important}
+  body[data-workspace="rules"] .shell main{grid-template-columns:minmax(0,1fr)!important}
+  body[data-workspace="rules"] #rulePanel,body[data-workspace="rules"] #diffPanel,body[data-workspace="rules"] #ruleSummaryPanel,body[data-workspace="rules"] #ruleStrategyPanel{grid-column:1!important;grid-row:auto!important}
   .overview-strip{grid-template-columns:1fr 1fr}
 }
 @media (max-width:820px){
@@ -1692,7 +1696,7 @@ body[data-workspace="rules"] .overview-strip{display:grid}
           <div class="summary-tile"><span class="summary-icon warn">!</span><small>State 守卫</small><strong id="summaryGuard">关闭</strong></div>
           <div class="summary-tile"><span class="summary-icon">◇</span><small>可用模型</small><strong id="summaryModels">—</strong></div>
           <div class="summary-tile"><span class="summary-icon">◷</span><small>最后更新时间</small><strong class="summary-small" id="summaryUpdated">—</strong></div>
-          <div class="summary-tile"><span class="summary-icon ok">●</span><small>规则状态</small><strong><span class="status-dot"></span>正常</strong></div>
+          <div class="summary-tile"><span class="summary-icon">●</span><small>规则状态</small><strong id="summaryHealth">未加载</strong></div>
         </div>
         <div class="summary-hint"><svg class="i"><use href="#i-info"/></svg><span>右侧预览基于示例请求生成；实际请求可能包含更多或更少的 Headers。</span></div>
       </div>
@@ -1729,7 +1733,7 @@ body[data-workspace="rules"] .overview-strip{display:grid}
   <section class="overview-strip" id="overviewStrip">
     <article class="overview-card overview-test">
       <div class="overview-head"><b>测试请求</b><button class="primary" id="overviewTestBtn" type="button">发送测试请求</button></div>
-      <div class="overview-toolbar"><span class="method-mini">POST</span><span class="overview-endpoint">https://api.openai.com/v1/chat/completions</span></div>
+      <div class="overview-toolbar"><span class="method-mini">POST</span><span class="overview-endpoint" id="overviewEndpoint">尚未发送</span></div>
       <div class="overview-tabs"><span class="active">请求头</span><span>请求体</span><span>响应结果</span></div>
       <div class="overview-split"><pre id="overviewTestHeaders">{}</pre><div class="overview-response"><small>响应结果</small><div><span class="tag flat" id="overviewTestStatus">待发送</span> <span class="muted" id="overviewTestLatency">耗时 —</span></div><code id="overviewResponseHeader">尚未发送测试请求</code></div></div>
     </article>
@@ -1785,7 +1789,7 @@ const CUSTOM_MODEL = "__custom__";
 const store = {
   creds: [], selected: "", rule: null, defaults: {}, models: [], version: "",
   history: [], page: 1, totalPages: 0, selectedRecord: "", attachTouched: false,
-  turnStates: [], diffBefore: {}, diffAfter: {}, diffMode: "rule", credentialFilter: "",
+  turnStates: [], diffBefore: {}, diffAfter: {}, diffMode: "rule", credentialFilter: "", selectionEpoch: 0,
 };
 
 
@@ -1865,6 +1869,7 @@ function updateRuleCounts() {
 }
 
 function renderRuleSummary() {
+  $("summaryHealth").textContent = store.rule ? "已加载" : "未加载";
   const cred = store.creds.find((item) => item.auth_index === store.selected);
   const rule = store.rule || {};
   const setCount = Object.keys(readPairs($("setRows"))).length;
@@ -1922,11 +1927,8 @@ function previewAfterHeaders(before) {
     const removeNames = readNames($("removeRows"));
     for (const [name, value] of Object.entries(setPairs)) setHeaderCaseInsensitive(after, name, value);
     for (const name of removeNames) deleteHeaderCaseInsensitive(after, name);
-    const explicitTurnSet = Object.keys(setPairs).some((name) => name.toLowerCase() === "x-codex-turn-state");
-    const explicitTurnRemove = removeNames.some((name) => name.toLowerCase() === "x-codex-turn-state");
-    if ($("ruleStripTurnState")?.checked && !explicitTurnSet && !explicitTurnRemove) {
-      setHeaderCaseInsensitive(after, "x-codex-turn-state", "state: reusable-pool");
-    }
+    // Automatic state handling needs live credential/model/provenance data.
+    // This example deliberately previews only explicit Set/Remove rules.
   }
   return after;
 }
@@ -1963,7 +1965,6 @@ function renderCodeCompare(beforeHeaders, afterHeaders, sourceLabel = "") {
     '</div>';
   $("diffPanel").dataset.mobileView = $("diffPanel").dataset.mobileView || "after";
   document.body.dataset.diff = "on";
-  $("overviewTestHeaders").textContent = JSON.stringify(after, null, 2);
 }
 function renderRulePreview() {
   if (!$("diffPanel") || !$("setRows") || !store.rule) return;
@@ -1972,7 +1973,7 @@ function renderRulePreview() {
   const before = exampleHeaders();
   const after = previewAfterHeaders(before);
   const enabled = !!$("ruleEnabled")?.checked;
-  renderCodeCompare(before, after, enabled ? "当前规则 · 实时预览" : "规则未启用 · 示例预览");
+  renderCodeCompare(before, after, enabled ? "示例 · 仅手工 Set/Remove；自动 State 注入以请求历史为准" : "规则未启用 · 示例预览");
   $("diffExtra").innerHTML = "";
   renderRuleSummary();
   $("guardBadge").textContent = $("ruleStripTurnState")?.checked ? "已启用" : "未启用";
@@ -2169,17 +2170,42 @@ async function loadCredentials() {
   }
 }
 async function selectCredential(authIndex) {
+  const epoch = ++store.selectionEpoch;
   store.selected = authIndex;
   store.rule = null;
   store.models = [];
   store.selectedRecord = "";
   store.attachTouched = false;
+  store.history = [];
+  store.turnStates = [];
+  store.diffBefore = {};
+  store.diffAfter = {};
+  for (const id of ["setRows", "removeRows", "historyBody", "turnStateBody", "diffBox", "diffExtra", "testOutcome", "decodeOutput", "pager", "testRemoveRows"]) $(id).replaceChildren();
+  for (const id of ["ruleUpdated", "historyMeta", "turnStateMeta", "diffSource", "modelHint"]) $(id).textContent = "";
+  $("ruleEnabled").checked = false;
+  $("ruleStripTurnState").checked = false;
+  $("testModelSelect").replaceChildren();
+  $("testModel").value = "";
+  $("decodeInput").value = "";
+  $("overviewDecodeInput").value = "";
+  $("overviewDecodeOutput").textContent = "{}";
+  $("overviewTestHeaders").textContent = "尚未预览或发送；请打开测试请求配置";
+  $("overviewEndpoint").textContent = "尚未发送";
+  $("overviewResponseHeader").textContent = "尚未发送测试请求";
+  $("overviewTestStatus").textContent = "待发送";
+  $("overviewTestStatus").className = "tag flat";
+  $("overviewTestLatency").textContent = "耗时 —";
+  for (const control of $("rulePanel").querySelectorAll("input,button,select")) control.disabled = control.id !== "reloadRule";
+  renderHistoryStats(0);
+  renderOverviewStates([]);
+  renderRuleSummary();
   $("testHeaderRows").replaceChildren();
   syncAttachSwitch();
   renderCredentials();
   const cred = store.creds.find((item) => item.auth_index === authIndex);
   $("ruleTitle").textContent = "Header 规则";
   await Promise.all([loadRule(), loadHistory(1), loadModels(cred), loadTurnStates()]);
+  if (epoch !== store.selectionEpoch) return;
   renderCredentialMenu();
   renderRulePreview();
 }
@@ -2188,6 +2214,7 @@ async function selectCredential(authIndex) {
    actually serve. A failure here is not fatal, it just falls back to typing the
    model by hand. */
 async function loadModels(cred) {
+  const epoch = store.selectionEpoch;
   const select = $("testModelSelect");
   const input = $("testModel");
   const hint = $("modelHint");
@@ -2199,6 +2226,7 @@ async function loadModels(cred) {
       models = (payload.models || []).map((model) => String(model.id || "")).filter(Boolean);
     } catch { models = []; }
   }
+  if (epoch !== store.selectionEpoch) return;
   store.models = models;
   if (!models.length) {
     select.hidden = true;
@@ -2242,8 +2270,13 @@ function currentModel() {
 /* ---------- rule ------------------------------------------------------ */
 async function loadRule() {
   if (!store.selected) return;
-  const payload = await api(`/rule?auth_index=${encodeURIComponent(store.selected)}`);
+  const epoch = store.selectionEpoch;
+  const authIndex = store.selected;
+  const payload = await api(`/rule?auth_index=${encodeURIComponent(authIndex)}`);
+  if (epoch !== store.selectionEpoch) return;
+  if (!payload.rule || payload.rule.auth_index !== authIndex) throw new Error("规则凭证不匹配，请刷新重试");
   store.rule = payload.rule;
+  for (const control of $("rulePanel").querySelectorAll("input,button,select")) control.disabled = false;
   $("ruleEnabled").checked = !!store.rule.enabled;
   $("ruleStripTurnState").checked = !!store.rule.strip_foreign_turn_state;
   $("setRows").replaceChildren();
@@ -2460,7 +2493,7 @@ function outcomeTag(outcome) {
 /* ---------- history --------------------------------------------------- */
 function renderHistoryStats(total) {
   const items = store.history || [];
-  const success = items.filter((record) => record.outcome === "succeeded" || Number(record.status_code) === 200).length;
+  const success = items.filter((record) => record.outcome === "succeeded").length;
   const authErrors = items.filter((record) => Number(record.status_code) === 401 || Number(record.status_code) === 429).length;
   const latencies = items.map((record) => Number(record.latency_ms)).filter((value) => Number.isFinite(value) && value >= 0);
   const avg = latencies.length ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : null;
@@ -2494,8 +2527,10 @@ function historySkeleton() {
 }
 async function loadHistory(page = 1) {
   if (!store.selected) return;
+  const epoch = store.selectionEpoch;
   if (!store.history.length) historySkeleton();
   const payload = await api(`/history?auth_index=${encodeURIComponent(store.selected)}&page=${page}`);
+  if (epoch !== store.selectionEpoch) return;
   store.history = payload.items || [];
   store.selectedRecord = "";
   store.page = payload.page || 1;
@@ -2521,7 +2556,7 @@ async function loadHistory(page = 1) {
     row.innerHTML = `<td class="history-time num">${esc(new Date(record.started_at).toLocaleString())}</td>
       <td class="history-origin">${record.origin === "test" ? '<span class="tag flat">测试</span>' : '<span class="muted">线上</span>'}</td>
       <td class="history-model">${modelChain(record)}</td>
-      <td class="history-outcome">${outcomeTag(record.outcome)}${turnStateTags(record)}${record.error ? ` <span class="muted">${esc(record.error)}</span>` : ""}</td>
+      <td class="history-outcome">${outcomeTag(record.outcome)}${turnStateTags(record)}${record.error ? ` <span class="muted history-error-preview">${esc(record.error)}</span>` : ""}</td>
       <td class="history-latency num">${Number.isFinite(Number(record.latency_ms)) ? (Number(record.latency_ms) >= 1000 ? (Number(record.latency_ms) / 1000).toFixed(1) + " s" : record.latency_ms + " ms") : "-"}</td>
       <td class="history-status num" style="text-align:right">${record.status_code || "-"}</td>`;
     row.addEventListener("click", () => showRecord(record, row));
@@ -2575,6 +2610,7 @@ function showRecord(record, summaryRow) {
   const cell = document.createElement("td");
   cell.colSpan = 6;
   cell.innerHTML = `<div class="history-detail-shell">
+    ${record.error ? `<div class="history-error-full">${esc(record.error)}</div>` : ""}
     <div class="history-detail-head">
       <div><div class="history-detail-title">请求详情</div>${modelChain(record)}</div>
       <div class="metaline"><span>Request ID ${esc(record.request_id || "-")}</span>
@@ -2597,6 +2633,7 @@ function showRecord(record, summaryRow) {
 
 /* State pool: one non-degraded state per credential and model, newest first. */
 function renderOverviewStates(items) {
+  items = items.filter((item) => item.auth_index === store.selected && !item.expired);
   $("overviewStateCount").textContent = String(items.length);
   const list = $("overviewStateList");
   list.replaceChildren();
@@ -2614,9 +2651,13 @@ function renderOverviewStates(items) {
 }
 async function loadTurnStates() {
   const body = $("turnStateBody");
+  const epoch = store.selectionEpoch;
+  const authIndex = store.selected;
+  if (!authIndex) return;
   try {
-    const payload = await api("/turn-states");
-    const items = payload.turn_states || [];
+    const payload = await api(`/turn-states?auth_index=${encodeURIComponent(authIndex)}`);
+    if (epoch !== store.selectionEpoch) return;
+    const items = (payload.turn_states || []).filter((item) => item.auth_index === authIndex);
     store.turnStates = items;
     renderOverviewStates(items);
     const window = payload.reuse_window_seconds || 3600;
@@ -2647,7 +2688,7 @@ async function loadTurnStates() {
       body.append(row);
     }
   } catch (error) {
-    body.innerHTML = `<div class="empty">${esc(error.message || String(error))}</div>`;
+    if (epoch === store.selectionEpoch) body.innerHTML = `<div class="empty">${esc(error.message || String(error))}</div>`;
   }
 }
 /* ---------- turn-state decoder ----------------------------------------
@@ -2714,6 +2755,7 @@ function collectTest(dryRun) {
 }
 async function runTest(dryRun) {
   if (!store.selected) { toast("先选择一个 Codex 凭证", true); return; }
+  const epoch = store.selectionEpoch;
   if (!dryRun) {
     const cred = store.creds.find((item) => item.auth_index === store.selected);
     const name = cred?.label || cred?.name || store.selected;
@@ -2726,6 +2768,7 @@ async function runTest(dryRun) {
   if (!dryRun) $("sendIcon").classList.add("spin");
   try {
     const payload = await api("/test", { method: "POST", body: collectTest(dryRun) });
+    if (epoch !== store.selectionEpoch) return;
     renderTestResult(payload.result, dryRun);
     if (payload.result?.recorded) {
       store.history = [];
@@ -2740,6 +2783,8 @@ async function runTest(dryRun) {
 }
 function renderTestResult(result, dryRun) {
   if (!result) return;
+  $("overviewEndpoint").textContent = result.endpoint || "端点未返回";
+  $("overviewTestHeaders").textContent = JSON.stringify(result.after_headers || {}, null, 2);
   renderDiff(result.before_headers, result.after_headers, dryRun ? "预览，未发送请求" : `测试请求 ${new Date().toLocaleTimeString()}`);
   const tags = [outcomeTag(result.outcome)];
   if (!dryRun) {
@@ -2771,7 +2816,7 @@ function renderTestResult(result, dryRun) {
       ? responseEntries.slice(0, 3).map(([name, values]) => name + ": " + (Array.isArray(values) ? values.join(", ") : values)).join("\n")
       : (dryRun ? "预览模式：未发送请求" : "没有可展示的 Response Header");
     $("overviewTestStatus").textContent = dryRun ? "预览" : String(result.status_code || result.outcome || "—");
-    $("overviewTestStatus").className = "tag " + (result.outcome === "succeeded" || Number(result.status_code) < 400 ? "ok" : (dryRun ? "flat" : "bad"));
+    $("overviewTestStatus").className = "tag " + (dryRun ? "flat" : (result.outcome === "succeeded" ? "ok" : "bad"));
     $("overviewTestLatency").textContent = dryRun ? "未发送" : ("耗时 " + (result.latency_ms ?? "—") + " ms");
   }
   $("diffPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -2819,7 +2864,7 @@ $("testEndpoint").addEventListener("input", syncAttachSwitch);
 $("testAttach").addEventListener("change", () => { store.attachTouched = true; syncAttachSwitch(); });
 $("reloadRule").addEventListener("click", () => loadRule().then(() => toast("已恢复服务器版本")).catch(fail));
 $("saveRule").addEventListener("click", async () => {
-  if (!store.selected) return;
+  if (!store.selected || !store.rule || store.rule.auth_index !== store.selected) return;
   try {
     await api("/rule", { method: "PUT", body: collectRule() });
     await Promise.all([loadRule(), loadCredentials()]);
@@ -2907,7 +2952,8 @@ $("formatDiffBtn").addEventListener("click", () => {
   renderCodeCompare(store.diffBefore, store.diffAfter, $("diffSource").textContent || "");
   toast("已格式化 Header 预览");
 });
-$("overviewTestBtn").addEventListener("click", () => runTest(false));
+$("overviewTestBtn").textContent = "配置并测试";
+$("overviewTestBtn").addEventListener("click", () => setWorkspace("test"));
 $("overviewHistoryBtn").addEventListener("click", () => $("clearHistory").click());
 $("overviewStateBtn").addEventListener("click", () => loadTurnStates().catch(fail));
 $("overviewDecodeBtn").addEventListener("click", async () => {
@@ -2945,7 +2991,7 @@ $("diffPanel").dataset.mobileView = "after";
 if (globalThis.matchMedia?.("(max-width:820px)").matches) {
   for (const block of document.querySelectorAll(".rule-block")) block.removeAttribute("open");
 }
-$("overviewTestHeaders").textContent = JSON.stringify(exampleHeaders(), null, 2);
+$("overviewTestHeaders").textContent = "尚未预览或发送；请打开测试请求配置";
 renderDiff(null, null, "");
 if (currentKey()) loadCredentials().catch(fail);
 else openKeyDialog();
