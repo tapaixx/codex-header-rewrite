@@ -218,6 +218,10 @@ blob 是 Fernet token，版本号与签发时间在信封里明文可读，**不
 
 ## 开发
 
+UI 开发前先阅读 [UI 设计基准与开发规范](docs/ui-design.md)，并对照
+[已确认 UI 参考图](docs/ui/approved-ui-reference.svg)。这两份内容是后续继续优化 PC / 手机端 UI 时的设计基线；
+普通样式调整不应无意中改变“无侧边栏、高信息密度、快速凭证切换、规则与 Header Diff 同屏”等核心原则。
+
 ```bash
 go mod tidy
 go test ./...

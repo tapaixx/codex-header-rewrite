@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <style>
+      .bg{fill:#0f1724}.app{fill:#f4f7fb}.surface{fill:#fff;stroke:#dfe7f1;stroke-width:1}
+      .soft{fill:#f7f9fc;stroke:#e3eaf4;stroke-width:1}.blue{fill:#1677ff}.blueSoft{fill:#edf5ff}
+      .green{fill:#13a36d}.greenSoft{fill:#eaf9f2}.red{fill:#ef4d55}.redSoft{fill:#fff0f1}
+      .amber{fill:#f3a516}.amberSoft{fill:#fff6df}.ink{fill:#13233d}.muted{fill:#7f8ea5}
+      .code{fill:#101827;stroke:#1b2940}.code2{fill:#121c2b;stroke:#1b2940}
+      .t{font:600 15px system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+      .s{font:500 11px system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+      .xs{font:500 9px system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+      .mono{font:500 9px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+      .white{fill:#fff}.line{stroke:#dfe7f1;stroke-width:1}
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="900"/>
+  <text x="32" y="30" class="s white">Codex Header Rewrite · Approved UI Baseline</text>
+
+  <!-- Desktop -->
+  <rect x="20" y="45" width="1200" height="810" rx="12" class="app"/>
+  <rect x="20" y="45" width="1200" height="58" rx="12" class="surface"/>
+  <rect x="38" y="57" width="34" height="34" rx="9" class="blue"/>
+  <text x="49" y="80" class="t white">C</text>
+  <text x="84" y="71" class="t ink">Codex Header Rewrite</text>
+  <text x="84" y="87" class="xs muted">Rewrite headers for Codex. More control. More possibilities.</text>
+
+  <rect x="542" y="56" width="250" height="36" rx="7" fill="#fff" stroke="#9fc5ff"/>
+  <text x="555" y="69" class="xs muted">当前凭证</text>
+  <circle cx="623" cy="75" r="4" class="green"/>
+  <text x="635" y="80" class="s ink">sk-…a1b2（默认）</text>
+  <text x="776" y="80" class="s muted">⌄</text>
+  <rect x="800" y="59" width="64" height="30" rx="7" class="greenSoft"/>
+  <circle cx="812" cy="74" r="4" class="green"/>
+  <text x="820" y="78" class="xs green">已连接</text>
+  <text x="881" y="78" class="xs muted">v0.3.0</text>
+  <rect x="931" y="58" width="88" height="31" rx="7" class="surface"/><text x="950" y="78" class="xs ink">管理密钥</text>
+  <rect x="1028" y="58" width="92" height="31" rx="7" class="redSoft"/><text x="1047" y="78" class="xs red">清理遗留</text>
+
+  <rect x="20" y="103" width="1200" height="40" fill="#fff" stroke="#e3eaf4"/>
+  <text x="40" y="128" class="s blue">Header 规则</text>
+  <text x="148" y="128" class="s ink">测试请求</text>
+  <text x="242" y="128" class="s ink">请求历史</text>
+  <text x="338" y="128" class="s ink">State 池</text>
+  <text x="414" y="128" class="s ink">Turn-State 解码</text>
+  <rect x="37" y="139" width="72" height="2" class="blue"/>
+
+  <!-- Main columns -->
+  <rect x="36" y="157" width="568" height="472" rx="8" class="surface"/>
+  <text x="52" y="181" class="t ink">Header 规则</text>
+  <text x="52" y="198" class="xs muted">配置请求头的设置、覆盖、移除规则，右侧实时预览最终效果</text>
+  <rect x="498" y="169" width="40" height="20" rx="10" class="blue"/><circle cx="528" cy="179" r="8" fill="#fff"/>
+  <text x="545" y="183" class="xs ink">启用改写</text>
+
+  <!-- Set block -->
+  <rect x="51" y="214" width="538" height="147" rx="7" class="soft"/>
+  <rect x="62" y="226" width="24" height="24" rx="7" class="greenSoft"/><text x="70" y="243" class="s green">+</text>
+  <text x="94" y="239" class="s ink">设置 / 覆盖 Header</text>
+  <text x="94" y="253" class="xs muted">添加或覆盖请求头，会覆盖原始值</text>
+  <rect x="217" y="227" width="22" height="18" rx="9" class="greenSoft"/><text x="225" y="240" class="xs green">3</text>
+  <rect x="62" y="266" width="516" height="23" rx="5" fill="#f5f8fc"/>
+  <text x="72" y="281" class="xs muted">Header 名称</text><text x="250" y="281" class="xs muted">值</text><text x="430" y="281" class="xs muted">说明</text>
+  <text x="72" y="305" class="mono ink">user-agent</text><text x="250" y="305" class="mono ink">Mozilla/5.0 …</text><text x="430" y="305" class="xs muted">自定义 UA</text>
+  <line x1="62" y1="314" x2="578" y2="314" class="line"/>
+  <text x="72" y="330" class="mono ink">x-foo</text><text x="250" y="330" class="mono ink">bar</text><text x="430" y="330" class="xs muted">测试值</text>
+  <rect x="62" y="335" width="104" height="20" rx="5" class="blue"/><text x="76" y="349" class="xs white">＋ 添加 Header</text>
+
+  <!-- Remove block -->
+  <rect x="51" y="370" width="538" height="104" rx="7" class="soft"/>
+  <rect x="62" y="382" width="24" height="24" rx="7" class="redSoft"/><text x="70" y="399" class="s red">×</text>
+  <text x="94" y="395" class="s ink">移除 Header</text><text x="94" y="409" class="xs muted">从请求中移除指定的请求头</text>
+  <rect x="198" y="383" width="22" height="18" rx="9" class="redSoft"/><text x="206" y="396" class="xs red">2</text>
+  <text x="72" y="438" class="mono ink">x-openai-assistant-app-id</text><text x="390" y="438" class="xs muted">移除官方标识</text>
+  <text x="72" y="459" class="mono ink">x-stainless-retry-count</text><text x="390" y="459" class="xs muted">避免重试干扰</text>
+
+  <!-- Guard block -->
+  <rect x="51" y="484" width="538" height="88" rx="7" class="soft"/>
+  <rect x="62" y="496" width="24" height="24" rx="7" class="amberSoft"/><text x="70" y="513" class="s amber">!</text>
+  <text x="94" y="509" class="s ink">X-Codex-Turn-State 守卫</text><text x="94" y="523" class="xs muted">自动修复 / 保护 X-Codex-Turn-State，防止 401 错误</text>
+  <rect x="453" y="494" width="49" height="20" rx="10" class="amberSoft"/><text x="466" y="508" class="xs amber">已启用</text>
+  <rect x="94" y="536" width="190" height="26" rx="5" fill="#fff" stroke="#dfe7f1"/><text x="106" y="553" class="xs ink">自动修复（推荐）⌄</text>
+
+  <rect x="51" y="582" width="538" height="34" rx="7" class="soft"/>
+  <text x="68" y="603" class="xs blue">⚡ 保存后立即生效</text><text x="225" y="603" class="xs blue">▣ 持久化存储</text><text x="378" y="603" class="xs blue">◷ 历史脱敏记录</text>
+
+  <rect x="618" y="157" width="584" height="318" rx="8" class="surface"/>
+  <text x="634" y="181" class="t ink">Header 差异预览</text><text x="755" y="181" class="xs muted">（实时）</text>
+  <text x="634" y="198" class="xs muted">基于当前规则的实时对比，也会显示测试请求实际结果</text>
+  <rect x="635" y="213" width="50" height="24" rx="6" class="blueSoft"/><text x="649" y="229" class="xs blue">POST</text>
+  <rect x="693" y="213" width="358" height="24" rx="6" fill="#fff" stroke="#dfe7f1"/><text x="707" y="229" class="xs ink">/v1/chat/completions</text>
+  <rect x="1061" y="213" width="83" height="24" rx="6" class="surface"/><text x="1075" y="229" class="xs blue">切换示例</text>
+
+  <rect x="634" y="248" width="260" height="178" rx="7" class="code"/>
+  <rect x="904" y="248" width="282" height="178" rx="7" class="code2"/>
+  <text x="646" y="269" class="s white">原始 Headers</text><text x="847" y="269" class="xs muted">12 项</text>
+  <text x="916" y="269" class="s green">改写后 Headers</text><text x="1139" y="269" class="xs muted">11 项</text>
+  <text x="646" y="292" class="mono" fill="#d8e3f0">1  {</text><text x="646" y="310" class="mono" fill="#ff9da3">2    "user-agent": "OpenAI/Python …",</text>
+  <text x="646" y="328" class="mono" fill="#d8e3f0">3    "accept-language": "en-US,…",</text><text x="646" y="346" class="mono" fill="#ff9da3">4    "x-stainless-retry-count": "0",</text>
+  <text x="646" y="364" class="mono" fill="#ff9da3">5    "x-codex-turn-state": "invalid",</text><text x="646" y="382" class="mono" fill="#d8e3f0">6    "connection": "keep-alive"</text>
+  <text x="646" y="400" class="mono" fill="#d8e3f0">7  }</text>
+  <text x="916" y="292" class="mono" fill="#d8e3f0">1  {</text><text x="916" y="310" class="mono" fill="#53e1af">2    "user-agent": "Mozilla/5.0 …",</text>
+  <text x="916" y="328" class="mono" fill="#53e1af">3    "accept-language": "zh-CN,…",</text><text x="916" y="346" class="mono" fill="#53e1af">4    "x-foo": "bar",</text>
+  <text x="916" y="364" class="mono" fill="#53e1af">5    "x-codex-turn-state": "state:…",</text><text x="916" y="382" class="mono" fill="#d8e3f0">6    "connection": "keep-alive"</text>
+  <text x="916" y="400" class="mono" fill="#d8e3f0">7  }</text>
+
+  <circle cx="640" cy="443" r="4" class="green"/><text x="650" y="447" class="xs muted">新增或修改</text>
+  <circle cx="735" cy="443" r="4" class="red"/><text x="745" y="447" class="xs muted">已移除</text>
+  <circle cx="815" cy="443" r="4" fill="#cbd5e1"/><text x="825" y="447" class="xs muted">未变化</text>
+  <rect x="1024" y="433" width="117" height="25" rx="6" class="surface"/><text x="1035" y="449" class="xs blue">复制改写后 Headers</text>
+
+  <rect x="618" y="486" width="584" height="143" rx="8" class="surface"/>
+  <text x="634" y="510" class="t ink">规则摘要</text>
+  <!-- 8 summary tiles -->
+  <g>
+    <rect x="634" y="522" width="132" height="42" rx="6" class="soft"/><text x="646" y="538" class="xs muted">规则已启用</text><text x="646" y="555" class="s green">已启用</text>
+    <rect x="773" y="522" width="132" height="42" rx="6" class="soft"/><text x="785" y="538" class="xs muted">当前凭证</text><text x="785" y="555" class="s ink">sk-…a1b2</text>
+    <rect x="912" y="522" width="132" height="42" rx="6" class="soft"/><text x="924" y="538" class="xs muted">设置 / 覆盖</text><text x="924" y="555" class="s ink">3 项</text>
+    <rect x="1051" y="522" width="132" height="42" rx="6" class="soft"/><text x="1063" y="538" class="xs muted">移除 Header</text><text x="1063" y="555" class="s ink">2 项</text>
+    <rect x="634" y="570" width="132" height="42" rx="6" class="soft"/><text x="646" y="586" class="xs muted">State 守卫</text><text x="646" y="603" class="s green">已启用</text>
+    <rect x="773" y="570" width="132" height="42" rx="6" class="soft"/><text x="785" y="586" class="xs muted">可用模型</text><text x="785" y="603" class="s ink">12 个</text>
+    <rect x="912" y="570" width="132" height="42" rx="6" class="soft"/><text x="924" y="586" class="xs muted">最后更新时间</text><text x="924" y="603" class="xs ink">2026-09-19</text>
+    <rect x="1051" y="570" width="132" height="42" rx="6" class="soft"/><text x="1063" y="586" class="xs muted">规则状态</text><text x="1063" y="603" class="s green">● 正常</text>
+  </g>
+
+  <!-- Bottom overview strip -->
+  <rect x="36" y="644" width="285" height="194" rx="8" class="surface"/><text x="50" y="667" class="s ink">测试请求</text>
+  <rect x="331" y="644" width="285" height="194" rx="8" class="surface"/><text x="345" y="667" class="s ink">请求历史</text>
+  <rect x="626" y="644" width="285" height="194" rx="8" class="surface"/><text x="640" y="667" class="s ink">State 池</text>
+  <rect x="921" y="644" width="281" height="194" rx="8" class="surface"/><text x="935" y="667" class="s ink">Turn-State 解码</text>
+  <text x="50" y="691" class="xs muted">POST  https://api.openai.com/v1/chat/completions</text>
+  <rect x="50" y="706" width="118" height="92" rx="6" class="soft"/><text x="58" y="722" class="mono ink">{ "user-agent": … }</text>
+  <rect x="178" y="706" width="128" height="92" rx="6" class="soft"/><text x="186" y="722" class="xs muted">响应结果</text><text x="186" y="744" class="s green">200</text>
+  <text x="345" y="691" class="xs muted">总记录 1,234　成功率 98.2%　平均延迟 1.28s</text>
+  <line x1="345" y1="707" x2="602" y2="707" class="line"/><text x="345" y="725" class="xs muted">14:31:22　POST　/v1/chat/completions　200</text><text x="345" y="744" class="xs muted">14:31:08　GET　 /v1/models　　　　 200</text>
+  <text x="640" y="691" class="xs muted">可用 State 12</text><text x="640" y="718" class="mono ink">● eyJ0dXJuX2lk…　2 分钟前</text><text x="640" y="740" class="mono ink">● eyJ0dXJuX2lk…　15 分钟前</text>
+  <rect x="935" y="682" width="183" height="25" rx="6" class="soft"/><text x="944" y="699" class="xs muted">输入 Turn-State</text><rect x="1125" y="682" width="58" height="25" rx="6" class="blue"/><text x="1144" y="699" class="xs white">解码</text>
+  <rect x="935" y="719" width="248" height="92" rx="6" class="soft"/><text x="944" y="737" class="mono ink">{ "turn_id": "turn_abc123",</text><text x="944" y="754" class="mono ink">  "model": "gpt-5.6",</text><text x="944" y="771" class="mono ink">  "created_at": 176… }</text>
+
+  <!-- Phone -->
+  <rect x="1260" y="45" width="320" height="810" rx="44" fill="#090d14" stroke="#566174" stroke-width="3"/>
+  <rect x="1274" y="59" width="292" height="782" rx="34" class="app"/>
+  <text x="1292" y="83" class="s ink">9:41</text><text x="1532" y="83" class="s ink">●</text>
+  <rect x="1290" y="96" width="26" height="26" rx="7" class="blue"/><text x="1298" y="114" class="s white">C</text>
+  <text x="1324" y="114" class="s ink">Codex Header Rewrite</text><text x="1515" y="113" class="xs muted">v0.3.0</text>
+
+  <rect x="1290" y="134" width="256" height="42" rx="7" class="surface"/><text x="1300" y="148" class="xs muted">当前凭证</text><text x="1300" y="166" class="s ink">sk-…a1b2（默认）</text>
+  <rect x="1472" y="144" width="61" height="22" rx="7" class="greenSoft"/><text x="1486" y="159" class="xs green">已连接</text>
+  <text x="1300" y="203" class="s blue">规则</text><text x="1361" y="203" class="s ink">测试</text><text x="1421" y="203" class="s ink">历史</text><text x="1477" y="203" class="s ink">State</text><text x="1525" y="203" class="s ink">解码</text>
+  <rect x="1298" y="210" width="35" height="2" class="blue"/>
+
+  <text x="1290" y="244" class="t ink">Header 规则</text>
+  <rect x="1488" y="226" width="38" height="20" rx="10" class="blue"/><circle cx="1517" cy="236" r="8" fill="#fff"/>
+  <rect x="1290" y="264" width="256" height="43" rx="7" class="surface"/><text x="1303" y="290" class="s ink">设置 / 覆盖 Header　 3</text>
+  <rect x="1290" y="315" width="256" height="43" rx="7" class="surface"/><text x="1303" y="341" class="s ink">移除 Header　　　　 2</text>
+  <rect x="1290" y="366" width="256" height="43" rx="7" class="surface"/><text x="1303" y="392" class="s ink">X-Codex-Turn-State 守卫　已启用</text>
+  <rect x="1290" y="421" width="256" height="171" rx="8" class="surface"/><text x="1302" y="445" class="s ink">Header 差异预览</text>
+  <rect x="1302" y="459" width="112" height="28" rx="6" class="soft"/><text x="1315" y="477" class="xs muted">原始 Headers (12)</text>
+  <rect x="1420" y="459" width="114" height="28" rx="6" class="blueSoft"/><text x="1432" y="477" class="xs blue">改写后 Headers (11)</text>
+  <rect x="1302" y="496" width="232" height="77" rx="6" class="code"/><text x="1312" y="514" class="mono" fill="#53e1af">"user-agent": "Mozilla/5.0…"</text><text x="1312" y="531" class="mono" fill="#53e1af">"x-foo": "bar"</text><text x="1312" y="548" class="mono" fill="#53e1af">"x-codex-turn-state": "state…"</text>
+
+  <rect x="1290" y="603" width="256" height="122" rx="8" class="surface"/><text x="1302" y="627" class="s ink">规则摘要</text>
+  <rect x="1302" y="640" width="72" height="34" rx="6" class="soft"/><text x="1310" y="653" class="xs muted">规则</text><text x="1310" y="667" class="xs green">已启用</text>
+  <rect x="1381" y="640" width="72" height="34" rx="6" class="soft"/><text x="1389" y="653" class="xs muted">凭证</text><text x="1389" y="667" class="xs ink">sk-…a1b2</text>
+  <rect x="1460" y="640" width="72" height="34" rx="6" class="soft"/><text x="1468" y="653" class="xs muted">设置</text><text x="1468" y="667" class="xs ink">3 项</text>
+  <rect x="1302" y="680" width="72" height="34" rx="6" class="soft"/><text x="1310" y="693" class="xs muted">移除</text><text x="1310" y="707" class="xs ink">2 项</text>
+  <rect x="1381" y="680" width="72" height="34" rx="6" class="soft"/><text x="1389" y="693" class="xs muted">守卫</text><text x="1389" y="707" class="xs green">已启用</text>
+  <rect x="1460" y="680" width="72" height="34" rx="6" class="soft"/><text x="1468" y="693" class="xs muted">模型</text><text x="1468" y="707" class="xs ink">12 个</text>
+
+  <rect x="1274" y="771" width="292" height="70" fill="#fff" stroke="#e3eaf4"/>
+  <text x="1295" y="811" class="xs blue">规则</text><text x="1350" y="811" class="xs ink">测试</text><text x="1408" y="811" class="xs ink">历史</text><text x="1466" y="811" class="xs ink">State</text><text x="1521" y="811" class="xs ink">更多</text>
+</svg>
