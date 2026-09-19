@@ -1432,6 +1432,7 @@ function setWorkspace(view, scroll = true) {
   for (const button of document.querySelectorAll("[data-workspace]")) {
     button.setAttribute("aria-current", String(button.dataset.workspace === next));
   }
+  if (next === "rules" && store.rule) requestAnimationFrame(renderRulePreview);
   if (scroll) window.scrollTo({ top: 0, behavior: "smooth" });
 }
 function syncCredentialSelect() {
@@ -1470,6 +1471,52 @@ function updateRuleCounts() {
   const removeCount = $("removeRuleCount");
   if (setCount) setCount.textContent = String($("setRows")?.querySelectorAll(".hrow").length || 0);
   if (removeCount) removeCount.textContent = String($("removeRows")?.querySelectorAll(".hrow").length || 0);
+}
+
+function renderRuleSummary() {
+  const cred = store.creds.find((item) => item.auth_index === store.selected);
+  const rule = store.rule || {};
+  const setCount = Object.keys(readPairs($("setRows"))).length;
+  const removeCount = readNames($("removeRows")).length;
+  const enabled = !!$("ruleEnabled")?.checked;
+  $("summaryRuleStatus").innerHTML = enabled ? '<span class="tag ok">已启用</span>' : '<span class="tag flat">未启用</span>';
+  $("summaryCredential").textContent = cred ? ((cred.label || cred.name || cred.auth_index) + " · " + cred.auth_index) : (store.selected || "—");
+  $("summarySetCount").textContent = setCount + " 条";
+  $("summaryRemoveCount").textContent = removeCount + " 条";
+  $("summaryGuard").innerHTML = $("ruleStripTurnState")?.checked ? '<span class="tag ok">已开启</span>' : '<span class="tag flat">关闭</span>';
+  $("summaryModels").textContent = store.models.length ? (store.models.length + " 个") : "未获取";
+  $("summaryUpdated").textContent = rule.updated_at && !String(rule.updated_at).startsWith("0001") ? new Date(rule.updated_at).toLocaleString() : "尚未保存";
+}
+
+function rulePreviewLine(mark, name, value) {
+  return '<div class="preview-line"><div class="preview-mark">' + esc(mark) + '</div><div class="preview-name">' + esc(name) + '</div><div class="preview-value">' + esc(value || "") + '</div></div>';
+}
+function rulePreviewGroup(kind, title, rows) {
+  const body = rows.length ? rows.join("") : '<div class="preview-empty">暂无配置</div>';
+  return '<section class="preview-group is-' + kind + '"><div class="preview-group-head"><span>' + esc(title) + '</span><span class="preview-count">' + rows.length + '</span></div><div class="preview-lines">' + body + '</div></section>';
+}
+function renderRulePreview() {
+  if (!$("diffPanel") || !$("setRows") || !store.rule) return;
+  const setPairs = Object.entries(readPairs($("setRows")));
+  const removeNames = readNames($("removeRows"));
+  const guardOn = !!$("ruleStripTurnState")?.checked;
+  const enabled = !!$("ruleEnabled")?.checked;
+  const setRows = setPairs.map(([name, value]) => rulePreviewLine("+", name, value));
+  const removeRows = removeNames.map((name) => rulePreviewLine("−", name, "请求前移除"));
+  const guardRows = [rulePreviewLine("~", "X-Codex-Turn-State", guardOn ? "不可复用时摘除；可复用时允许自动注入" : "守卫关闭；按客户端原样处理")];
+  $("diffPanel").hidden = false;
+  $("diffPanel").dataset.mode = "rule-preview";
+  $("diffSource").textContent = enabled ? "当前规则 · 实时预览" : "规则未启用 · 配置预览";
+  const count = setRows.length + removeRows.length + (guardOn ? 1 : 0);
+  $("diffCount").textContent = count + " 项配置";
+  $("diffBox").innerHTML = '<div class="rule-preview">' +
+    rulePreviewGroup("set", "设置 / 覆盖", setRows) +
+    rulePreviewGroup("gone", "移除", removeRows) +
+    rulePreviewGroup("over", "回合状态", guardRows) +
+    '</div>';
+  $("diffExtra").innerHTML = "";
+  document.body.dataset.diff = "on";
+  renderRuleSummary();
 }
 
 /* ---------- management key ----------------------------------------------
@@ -1678,6 +1725,7 @@ async function loadModels(cred) {
     input.hidden = false;
     hint.textContent = "宿主没有返回该凭证的可用模型，手动填写模型 ID。";
     if (!input.value) input.value = store.defaults.model || "";
+    renderRuleSummary();
     return;
   }
   const previous = currentModel();
@@ -1698,6 +1746,7 @@ async function loadModels(cred) {
   input.hidden = true;
   hint.textContent = `该凭证可用 ${models.length} 个模型`;
   syncModelInput();
+  renderRuleSummary();
 }
 function syncModelInput() {
   const custom = $("testModelSelect").value === CUSTOM_MODEL;
@@ -1725,6 +1774,7 @@ async function loadRule() {
     ? `更新于 ${new Date(store.rule.updated_at).toLocaleString()}` : "尚未保存";
   renderWarnings(payload.warnings || []);
   updateRuleCounts();
+  renderRulePreview();
 }
 function renderWarnings(warnings) {
   $("ruleWarn").hidden = !warnings.length;
@@ -1791,6 +1841,7 @@ function diffHTML(before, after, emptyText = "暂无 Header 数据", animate = f
   </div>` };
 }
 function renderDiff(before, after, sourceLabel) {
+  $("diffPanel").dataset.mode = "actual-diff";
   $("diffSource").textContent = sourceLabel || "";
   const rendered = diffHTML(before, after, "预览规则或发送测试请求后在这里查看差异", true);
   $("diffCount").textContent = rendered.count ? `${rendered.count} 处改动` : (rendered.hasRows ? "无改动" : "暂无数据");
@@ -1923,9 +1974,20 @@ function outcomeTag(outcome) {
 }
 
 /* ---------- history --------------------------------------------------- */
+function renderHistoryStats(total) {
+  const items = store.history || [];
+  const success = items.filter((record) => record.outcome === "succeeded" || Number(record.status_code) === 200).length;
+  const authErrors = items.filter((record) => Number(record.status_code) === 401 || Number(record.status_code) === 429).length;
+  const latencies = items.map((record) => Number(record.latency_ms)).filter((value) => Number.isFinite(value) && value >= 0);
+  const avg = latencies.length ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : null;
+  $("histTotal").textContent = String(total || 0);
+  $("histSuccessRate").textContent = items.length ? (Math.round(success / items.length * 100) + "%") : "—";
+  $("histAuthErrors").textContent = String(authErrors);
+  $("histLatency").textContent = avg === null ? "—" : (avg >= 1000 ? ((avg / 1000).toFixed(1) + " s") : (avg + " ms"));
+}
 function historySkeleton() {
   $("historyBody").innerHTML = Array.from({ length: 4 }, () =>
-    '<tr><td colspan="5"><div class="skel" style="width:100%;height:16px"></div></td></tr>').join("");
+    '<tr><td colspan="6"><div class="skel" style="width:100%;height:16px"></div></td></tr>').join("");
 }
 async function loadHistory(page = 1) {
   if (!store.selected) return;
@@ -1936,10 +1998,11 @@ async function loadHistory(page = 1) {
   store.page = payload.page || 1;
   store.totalPages = payload.total_pages || 0;
   $("historyMeta").textContent = payload.total ? `${payload.total} 条，第 ${store.page}/${store.totalPages} 页` : "";
+  renderHistoryStats(payload.total || 0);
   const body = $("historyBody");
   body.replaceChildren();
   if (!store.history.length) {
-    body.innerHTML = '<tr><td colspan="5" class="empty">暂无记录</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="empty">暂无记录</td></tr>';
     $("pager").replaceChildren();
     return;
   }
@@ -1956,6 +2019,7 @@ async function loadHistory(page = 1) {
       <td class="history-origin">${record.origin === "test" ? '<span class="tag flat">测试</span>' : '<span class="muted">线上</span>'}</td>
       <td class="history-model">${modelChain(record)}</td>
       <td class="history-outcome">${outcomeTag(record.outcome)}${turnStateTags(record)}${record.error ? ` <span class="muted">${esc(record.error)}</span>` : ""}</td>
+      <td class="history-latency num">${Number.isFinite(Number(record.latency_ms)) ? (Number(record.latency_ms) >= 1000 ? (Number(record.latency_ms) / 1000).toFixed(1) + " s" : record.latency_ms + " ms") : "-"}</td>
       <td class="history-status num" style="text-align:right">${record.status_code || "-"}</td>`;
     row.addEventListener("click", () => showRecord(record, row));
     row.addEventListener("keydown", (event) => {
@@ -2006,7 +2070,7 @@ function showRecord(record, summaryRow) {
   detail.dataset.recordId = record.id;
   detail.id = `history-detail-${record.id}`;
   const cell = document.createElement("td");
-  cell.colSpan = 5;
+  cell.colSpan = 6;
   cell.innerHTML = `<div class="history-detail-shell">
     <div class="history-detail-head">
       <div><div class="history-detail-title">请求详情</div>${modelChain(record)}</div>
@@ -2203,6 +2267,15 @@ $("credentialSelect").addEventListener("change", (event) => {
   if (authIndex && authIndex !== store.selected) selectCredential(authIndex).catch(fail);
 });
 $("refreshBtn").addEventListener("click", () => loadCredentials().catch(fail));
+$("rulePanel").addEventListener("input", (event) => {
+  if (event.target.matches(".hk,.hv")) { updateRuleCounts(); renderRulePreview(); }
+});
+$("rulePanel").addEventListener("change", (event) => {
+  if (event.target.matches("#ruleEnabled,#ruleStripTurnState")) renderRulePreview();
+});
+$("rulePanel").addEventListener("click", (event) => {
+  if (event.target.closest("#addSet,#addRemove,.hrow button")) requestAnimationFrame(renderRulePreview);
+});
 $("addSet").addEventListener("click", () => headerRow($("setRows"), "", "").focus());
 $("addRemove").addEventListener("click", () => headerRow($("removeRows")).focus());
 $("addTestHeader").addEventListener("click", () => headerRow($("testHeaderRows"), "", "").focus());
