@@ -1896,9 +1896,15 @@ function deleteHeaderCaseInsensitive(target, name) {
 function previewAfterHeaders(before) {
   const after = { ...before };
   if ($("ruleEnabled")?.checked) {
-    for (const [name, value] of Object.entries(readPairs($("setRows")))) setHeaderCaseInsensitive(after, name, value);
-    for (const name of readNames($("removeRows"))) deleteHeaderCaseInsensitive(after, name);
-    if ($("ruleStripTurnState")?.checked) setHeaderCaseInsensitive(after, "x-codex-turn-state", "state: reusable-pool");
+    const setPairs = readPairs($("setRows"));
+    const removeNames = readNames($("removeRows"));
+    for (const [name, value] of Object.entries(setPairs)) setHeaderCaseInsensitive(after, name, value);
+    for (const name of removeNames) deleteHeaderCaseInsensitive(after, name);
+    const explicitTurnSet = Object.keys(setPairs).some((name) => name.toLowerCase() === "x-codex-turn-state");
+    const explicitTurnRemove = removeNames.some((name) => name.toLowerCase() === "x-codex-turn-state");
+    if ($("ruleStripTurnState")?.checked && !explicitTurnSet && !explicitTurnRemove) {
+      setHeaderCaseInsensitive(after, "x-codex-turn-state", "state: reusable-pool");
+    }
   }
   return after;
 }
@@ -1945,6 +1951,7 @@ function renderRulePreview() {
   const after = previewAfterHeaders(before);
   const enabled = !!$("ruleEnabled")?.checked;
   renderCodeCompare(before, after, enabled ? "当前规则 · 实时预览" : "规则未启用 · 示例预览");
+  $("diffExtra").innerHTML = "";
   renderRuleSummary();
   $("guardBadge").textContent = $("ruleStripTurnState")?.checked ? "已启用" : "未启用";
   $("guardBadge").className = "tag " + ($("ruleStripTurnState")?.checked ? "warn" : "flat");
@@ -2142,6 +2149,7 @@ async function loadCredentials() {
 async function selectCredential(authIndex) {
   store.selected = authIndex;
   store.rule = null;
+  store.models = [];
   store.selectedRecord = "";
   store.attachTouched = false;
   $("testHeaderRows").replaceChildren();
@@ -2874,7 +2882,7 @@ $("formatDiffBtn").addEventListener("click", () => {
   renderCodeCompare(store.diffBefore, store.diffAfter, $("diffSource").textContent || "");
   toast("已格式化 Header 预览");
 });
-$("overviewTestBtn").addEventListener("click", () => setWorkspace("test"));
+$("overviewTestBtn").addEventListener("click", () => runTest(false));
 $("overviewHistoryBtn").addEventListener("click", () => $("clearHistory").click());
 $("overviewStateBtn").addEventListener("click", () => loadTurnStates().catch(fail));
 $("overviewDecodeBtn").addEventListener("click", async () => {
