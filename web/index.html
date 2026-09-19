@@ -82,32 +82,6 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
 .lockup span{display:block;color:var(--text-mute);font-size:12px;line-height:1.3}
 .chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--text-soft);background:var(--surface)}
 
-/* Shell */
-/* Wide screens get three columns: credentials, the forms that stay narrow by
-   nature, and the observation surfaces that actually want width. Stacking all
-   four panels in one column made the page long for no reason. */
-.shell{display:grid;grid-template-columns:250px minmax(0,1fr);gap:16px;padding:16px 18px;max-width:1720px;margin:0 auto;align-items:start}
-main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start;min-width:0}
-.col{display:flex;flex-direction:column;gap:16px;min-width:0}
-@media (min-width:1200px){
-  main{grid-template-columns:minmax(380px,430px) minmax(0,1fr)}
-  /* Each column owns its scrolling: reading a long history detail no longer
-     drags the rule and test forms off the top of the screen. */
-  body{height:100dvh;overflow:hidden;display:flex;flex-direction:column}
-  .topbar{position:static;flex:none}
-  .shell{flex:1;min-height:0;overflow:hidden;padding-bottom:0}
-  .rail{position:static;height:100%;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-right:4px;padding-bottom:16px}
-  main{height:100%;min-height:0}
-  .col{height:100%;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-right:4px;padding-bottom:16px}
-  .panel{scroll-margin-top:8px}
-}
-.rail{position:sticky;top:76px;display:flex;flex-direction:column;gap:6px}
-.rail-head{display:flex;align-items:center;justify-content:space-between;height:28px;padding-left:2px}
-.rail-head h2{margin:0;font-size:12px;font-weight:600;color:var(--text-mute)}
-.cred{display:block;width:100%;text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-control);background:var(--surface);cursor:pointer;
-  transition:border-color .16s var(--ease),background .16s var(--ease)}
-.cred:hover{border-color:var(--line-strong)}
-.cred[aria-current=true]{border-color:var(--accent);background:var(--accent-weak)}
 .cred b{display:block;font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.35}
 .cred-meta{display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--text-mute);font-size:12px}
 
@@ -225,7 +199,6 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
   .skel{background:linear-gradient(90deg,var(--sunk) 0%,var(--raised) 50%,var(--sunk) 100%);background-size:200% 100%;animation:shimmer 1.4s linear infinite}
 }
 @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
-.skel-cred{padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-control);background:var(--surface);display:grid;gap:7px}
 
 /* Dialog + toast */
 .overlay{position:fixed;inset:0;background:rgba(10,12,15,.45);display:none;place-items:center;z-index:50;padding:20px}
@@ -245,7 +218,6 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
 }
 @media (max-width:900px){
   .shell{grid-template-columns:1fr;padding:14px}
-  .rail{position:static}
   .diff-row{grid-template-columns:26px minmax(0,1fr)}
   .diff-row .diff-value{grid-column:2;padding-top:0}
   .topbar{padding:0 14px}
@@ -267,8 +239,6 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
   .panel-head{padding:10px 12px;min-height:46px}
   .panel-body{padding:14px 12px}
   .grid2{grid-template-columns:1fr;gap:10px}
-  .rail-head{height:44px}
-  .rail-head button{width:44px;height:44px;justify-content:center}
   .switch{min-height:40px;font-size:14px}
   .hrow{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr) 44px;gap:7px}
   .hrow .hk{grid-column:1;grid-row:1}
@@ -331,7 +301,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start
 }
 html{background:var(--bg)}
 body{
-  min-height:100dvh!important;height:auto!important;overflow:auto!important;display:block!important;
+  min-height:100dvh;
   background:
     radial-gradient(circle at 12% -10%,color-mix(in srgb,var(--accent) 7%,transparent),transparent 25rem),
     var(--bg);
@@ -411,20 +381,15 @@ textarea{min-height:82px}
 .workspace-tab[aria-current="true"]::after{
   content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;background:var(--accent)
 }
-#credList{display:none!important}
-
 /* Page shell */
-.shell{
-  display:block!important;max-width:none!important;margin:0!important;padding:14px 18px 30px!important;
-  overflow:visible!important;min-height:0!important;
-}
-.shell main{
-  display:grid!important;grid-template-columns:minmax(0,1.48fr) minmax(380px,.92fr)!important;
-  align-items:start!important;gap:14px!important;height:auto!important;min-height:0!important;overflow:visible!important;
-}
-#colWork,#colObserve{
-  display:contents!important;height:auto!important;min-height:0!important;overflow:visible!important;padding:0!important;
-}
+.shell{display:block;padding:14px 18px 30px}
+.shell main{display:grid;grid-template-columns:minmax(0,1.48fr) minmax(380px,.92fr);align-items:start;gap:14px}
+/* The panels are laid out by .shell main directly; these wrappers only exist
+   so the markup can group them. */
+#colWork,#colObserve{display:contents}
+/* With nothing to preview yet, the second column would be an empty half of the
+   screen, so the work panel takes the full width until a diff exists. */
+body[data-diff="off"] .shell main{grid-template-columns:minmax(0,1fr)}
 .panel{
   border:1px solid var(--line);border-radius:var(--r-panel);background:var(--surface);
   box-shadow:0 1px 2px rgba(15,31,61,.03),0 8px 28px rgba(15,31,61,.025);
@@ -612,7 +577,7 @@ body[data-workspace="decode"] #decoderPanel{max-width:980px;width:100%;margin:0 
   .hrow.single{grid-template-columns:minmax(0,1fr) 34px!important}
   .history-table thead{position:static}
   .mobile-nav{
-    position:fixed;left:0;right:0;bottom:0;z-index:45;display:grid;grid-template-columns:repeat(4,1fr);
+    position:fixed;left:0;right:0;bottom:0;z-index:45;display:grid;grid-template-columns:repeat(5,1fr);
     min-height:66px;padding:6px max(8px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));
     border-top:1px solid var(--line);background:color-mix(in srgb,var(--surface) 96%,transparent);
     backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)
@@ -1155,7 +1120,6 @@ button.destructive:hover:not(:disabled){
   </div>
 </nav>
 
-<div id="credList" hidden></div>
 <div class="shell">
   <main>
    <div class="col" id="colWork">
@@ -1310,6 +1274,7 @@ button.destructive:hover:not(:disabled){
   <button data-workspace="test" aria-current="false"><svg class="i"><use href="#i-flask"/></svg><span>测试</span></button>
   <button data-workspace="history" aria-current="false"><svg class="i"><use href="#i-clock"/></svg><span>历史</span></button>
   <button data-workspace="state" aria-current="false"><svg class="i"><use href="#i-key"/></svg><span>State</span></button>
+  <button data-workspace="decode" aria-current="false"><svg class="i"><use href="#i-eye"/></svg><span>解码</span></button>
 </nav>
 
 <div class="overlay" id="keyOverlay">
@@ -1531,14 +1496,11 @@ function readNames(container) {
 }
 
 /* ---------- credentials ----------------------------------------------- */
-function credSkeleton() {
-  $("credList").innerHTML = Array.from({ length: 3 }, () =>
-    '<div class="skel-cred" style="margin-bottom:6px"><div class="skel" style="width:62%"></div><div class="skel" style="width:40%;height:10px"></div></div>').join("");
-}
+// The toolbar select carries its own loading state, so there is no skeleton to
+// draw while the first fetch is in flight.
 async function loadCredentials() {
   const icon = $("refreshIcon");
   icon.classList.add("spin");
-  if (!store.creds.length) credSkeleton();
   try {
     const payload = await api("/credentials");
     store.creds = payload.credentials || [];
@@ -1553,25 +1515,10 @@ async function loadCredentials() {
     icon.classList.remove("spin");
   }
 }
+// The credential picker is the toolbar select; there is no sidebar list to
+// build any more.
 function renderCredentials() {
-  const list = $("credList");
-  list.replaceChildren();
   syncCredentialSelect();
-  if (!store.creds.length) {
-    list.innerHTML = '<div class="empty">宿主里没有 Codex 凭证</div>';
-    return;
-  }
-  for (const cred of store.creds) {
-    const button = document.createElement("button");
-    button.className = "cred";
-    button.style.marginBottom = "6px";
-    button.setAttribute("aria-current", String(cred.auth_index === store.selected));
-    button.innerHTML = `<b>${esc(cred.label || cred.name || cred.auth_index)}</b>
-      <span class="cred-meta">${cred.has_rule ? '<span class="tag ok">规则</span>' : '<span class="tag flat">无规则</span>'}
-      <span class="num">${cred.history_count || 0}/50 条</span></span>`;
-    button.addEventListener("click", () => selectCredential(cred.auth_index).catch(fail));
-    list.append(button);
-  }
 }
 async function selectCredential(authIndex) {
   store.selected = authIndex;
@@ -1727,6 +1674,7 @@ function renderDiff(before, after, sourceLabel) {
   // History carries its own inline detail, so an empty preview panel is just a
   // box taking the top of the column. It appears when it has something to say.
   $("diffPanel").hidden = !rendered.hasRows;
+  document.body.dataset.diff = rendered.hasRows ? "on" : "off";
 }
 function responseHeadersHTML(headers) {
   const entries = Object.entries(headers || {}).sort((a, b) => a[0].localeCompare(b[0]));
