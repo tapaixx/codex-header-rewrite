@@ -211,6 +211,10 @@ curl -s -H "Authorization: Bearer <management-key>" \
 | 已过期 N 分钟 | 信封里的签发时间已超过复用窗口 |
 | 已摘除 | 规则开启守卫，本次回带已被摘掉 |
 
+**为什么会出现跨号回带**：账号不是客户端选的。CPA 的 `routing.strategy` 默认为 `round-robin`，**按请求**轮换凭证，而 `routing.session-affinity` 默认关闭 —— 同一段对话的相邻两轮很可能由不同账号伺服。客户端只看到一个端点，它只是把上游给它的 `X-Codex-Turn-State` 原样带回来，于是 A 号铸的 state 被发给了 B 号。即使打开 `session-affinity`，CPA 在绑定凭证不可用时仍会自动故障转移（401 / 429 / 冷却），回合链照样换号。跨模型同理：state 绑在铸造它的模型上，会话中途换模型或发生回退后，回带的仍是旧模型的 state。单机直连 Codex 两种都不会发生——那里只有一个账号。
+
+**守卫在规则之内**：`strip_foreign_turn_state` 是 `headerRule` 的字段，不是与「启用改写」并列的开关。摘除要求 `rule.Enabled && rule.StripForeignTurnState` 两个都为真；从 State 池补发只要求 `rule.Enabled`，且规则没有手工设置或移除该 Header。规则总开关关闭时，守卫保存着也不生效。
+
 **摘除的边界**：规则里的「不可复用时移除 X-Codex-Turn-State」只摘**跨号**和**跨模型**这两种确定不可复用的情况；**过期只提示、不摘除** —— 那个窗口是经验值不是文档约定，猜错会把本来还能用的回合链打断。来源未知时也不动它。
 
 ### 不降智 State 池
