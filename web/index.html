@@ -53,9 +53,9 @@ svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.75;str
 .spacer{flex:1}
 
 button{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-control);padding:6px 11px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
-  transition:background .16s var(--ease),border-color .16s var(--ease),color .16s var(--ease),transform .08s var(--ease)}
+  transition:background .16s var(--ease),border-color .16s var(--ease),color .16s var(--ease),scale .08s var(--ease)}
 button:hover:not(:disabled){background:var(--sunk);border-color:var(--line-strong)}
-button:active:not(:disabled){transform:translateY(1px)}
+button:active:not(:disabled){scale:.96}
 button:disabled{opacity:.45;cursor:not-allowed}
 button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 button.primary:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
@@ -1445,6 +1445,60 @@ body[data-workspace="rules"] .overview-strip{display:none!important}
 body[data-workspace="history"] #historyPanel,
 body[data-workspace="history"] #turnStatePanel{display:block!important;grid-column:1/-1!important}
 @media(max-width:820px){.mobile-nav{grid-template-columns:repeat(4,1fr)!important}}
+
+/* --------------------------------------------------------------------------
+   Interaction polish: touch targets, concentric corners, text wrapping.
+   -------------------------------------------------------------------------- */
+
+/* Small icon-only controls keep their dense visual size and grow only their
+   hit area. Each extension stays inside the control's own gap so no two
+   targets claim the same pixel. */
+.hrow button,.diff-actions button,.overview-head button,
+.overview-decode-input button,.credential-menu-footer button{position:relative}
+.hrow button::after,.diff-actions button::after,.overview-head button::after,
+.overview-decode-input button::after,.credential-menu-footer button::after{
+  content:"";position:absolute;left:50%;top:50%;translate:-50% -50%;
+  width:max(100%,40px);height:max(100%,34px);
+}
+
+/* The pager owns its row, so its targets reach 40px both ways once the gap
+   between them matches the extension. */
+.pager{gap:10px}
+.pager .page{position:relative}
+.pager .page::after{
+  content:"";position:absolute;left:50%;top:50%;translate:-50% -50%;
+  width:max(100%,40px);height:max(100%,40px);
+}
+
+/* Touch input takes the full 44px where the layout has room for it. */
+@media (max-width:820px){
+  .hrow button::after,.diff-actions button::after,.overview-head button::after,
+  .overview-decode-input button::after,.credential-menu-footer button::after,
+  .pager .page::after{width:max(100%,44px);height:max(100%,40px)}
+  .mobile-nav button{min-height:44px}
+}
+
+/* Concentric corners: the menu's 8px inset means the field inside it rounds at
+   the menu radius minus that inset, not at a radius close to the menu's own. */
+.credential-menu{border-radius:14px}
+.credential-search-wrap{border-radius:6px}
+.credential-menu-list button,.credential-menu-footer button{border-radius:6px}
+
+/* Headings break where the phrase does; body copy avoids leaving one word
+   alone on the last line. */
+.panel-head h3,.panel-caption,.history-detail-title,.dialog h3,
+.summary-tile strong,.history-stat-label{text-wrap:balance}
+.muted,.notice span,.empty,.history-stat-note{text-wrap:pretty}
+
+/* An icon beside a 600-weight heading carries that weight. */
+.panel-head>svg.i{stroke-width:2}
+
+/* Figures that change between pages, credentials and runs hold their column. */
+.summary-tile strong,.history-stat-value,.history-stat-note,
+.overview-kpis strong,#overviewTestStatus,#overviewTestLatency,
+#histSuccessRate,#histLatency,#overviewSuccess,#overviewLatency,
+#overviewHistoryTotal{font-variant-numeric:tabular-nums}
+
 </style>
 </head>
 <body data-workspace="rules">
@@ -1703,13 +1757,13 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
       </div>
       <div class="panel-body">
         <div class="summary-grid">
-          <div class="summary-tile"><span class="summary-icon ok">✓</span><small>规则已启用</small><strong id="summaryRuleStatus">—</strong></div>
-          <div class="summary-tile"><span class="summary-icon">♙</span><small>当前凭证</small><strong id="summaryCredential">—</strong></div>
+          <div class="summary-tile"><span class="summary-icon ok">✓</span><small>规则已启用</small><strong id="summaryRuleStatus">-</strong></div>
+          <div class="summary-tile"><span class="summary-icon">♙</span><small>当前凭证</small><strong id="summaryCredential">-</strong></div>
           <div class="summary-tile"><span class="summary-icon">☷</span><small>设置 / 覆盖</small><strong id="summarySetCount">0 条</strong></div>
           <div class="summary-tile"><span class="summary-icon bad">□</span><small>移除 Header</small><strong id="summaryRemoveCount">0 条</strong></div>
           <div class="summary-tile"><span class="summary-icon warn">!</span><small>State 守卫</small><strong id="summaryGuard">关闭</strong></div>
-          <div class="summary-tile"><span class="summary-icon">◇</span><small>可用模型</small><strong id="summaryModels">—</strong></div>
-          <div class="summary-tile"><span class="summary-icon">◷</span><small>最后更新时间</small><strong class="summary-small" id="summaryUpdated">—</strong></div>
+          <div class="summary-tile"><span class="summary-icon">◇</span><small>可用模型</small><strong id="summaryModels">-</strong></div>
+          <div class="summary-tile"><span class="summary-icon">◷</span><small>最后更新时间</small><strong class="summary-small" id="summaryUpdated">-</strong></div>
           <div class="summary-tile"><span class="summary-icon">●</span><small>规则状态</small><strong id="summaryHealth">未加载</strong></div>
         </div>
         <div class="summary-hint"><svg class="i"><use href="#i-info"/></svg><span>右侧预览基于示例请求生成；实际请求可能包含更多或更少的 Headers。</span></div>
@@ -1721,9 +1775,9 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
       <div class="panel-body">
         <div class="history-stats" id="historyStats">
           <div class="history-stat"><span class="history-stat-icon"><svg class="i"><use href="#i-clock"/></svg></span><div><div class="history-stat-label">总记录</div><div class="history-stat-value num" id="histTotal">0</div><div class="history-stat-note">当前凭证</div></div></div>
-          <div class="history-stat ok"><span class="history-stat-icon"><svg class="i"><use href="#i-save"/></svg></span><div><div class="history-stat-label">本页成功率</div><div class="history-stat-value num" id="histSuccessRate">—</div><div class="history-stat-note">当前页样本</div></div></div>
+          <div class="history-stat ok"><span class="history-stat-icon"><svg class="i"><use href="#i-save"/></svg></span><div><div class="history-stat-label">本页成功率</div><div class="history-stat-value num" id="histSuccessRate">-</div><div class="history-stat-note">当前页样本</div></div></div>
           <div class="history-stat bad"><span class="history-stat-icon"><svg class="i"><use href="#i-alert"/></svg></span><div><div class="history-stat-label">401 / 429</div><div class="history-stat-value num" id="histAuthErrors">0</div><div class="history-stat-note">当前页异常</div></div></div>
-          <div class="history-stat warn"><span class="history-stat-icon"><svg class="i"><use href="#i-refresh"/></svg></span><div><div class="history-stat-label">平均延迟</div><div class="history-stat-value num" id="histLatency">—</div><div class="history-stat-note">当前页请求</div></div></div>
+          <div class="history-stat warn"><span class="history-stat-icon"><svg class="i"><use href="#i-refresh"/></svg></span><div><div class="history-stat-label">平均延迟</div><div class="history-stat-value num" id="histLatency">-</div><div class="history-stat-note">当前页请求</div></div></div>
         </div>
         <table class="history-table">
           <thead><tr><th>时间</th><th>来源</th><th>模型：发出 → 上游</th><th>结果</th><th>耗时</th><th style="text-align:right">状态码</th></tr></thead>
@@ -1860,7 +1914,7 @@ function renderRuleSummary() {
   const removeCount = readNames($("removeRows")).length;
   const enabled = !!$("ruleEnabled")?.checked;
   $("summaryRuleStatus").innerHTML = enabled ? '<span class="tag ok">已启用</span>' : '<span class="tag flat">未启用</span>';
-  $("summaryCredential").textContent = cred ? credentialDisplayName(cred) : (store.selected || "—");
+  $("summaryCredential").textContent = cred ? credentialDisplayName(cred) : (store.selected || "-");
   $("summarySetCount").textContent = setCount + " 条";
   $("summaryRemoveCount").textContent = removeCount + " 条";
   $("summaryGuard").innerHTML = $("ruleStripTurnState")?.checked ? '<span class="tag ok">已开启</span>' : '<span class="tag flat">关闭</span>';
@@ -1940,6 +1994,7 @@ function renderCodeCompare(beforeHeaders, afterHeaders, sourceLabel = "") {
   $("diffPanel").hidden = false;
   $("diffSource").textContent = sourceLabel;
   $("diffCount").textContent = changed ? (changed + " 处改动") : "无改动";
+  $("diffCount").classList.toggle("num", !!changed);
   $("beforeCount").textContent = String(Object.keys(before).length);
   $("afterCount").textContent = String(Object.keys(after).length);
   $("diffBox").innerHTML =
@@ -2372,7 +2427,7 @@ function turnStateTags(record) {
     tags.push('<span class="tag flat" title="没有记录到这个 blob 的来源凭证">回带来源未知</span>');
   }
   if (record.turn_state_expired) {
-    tags.push(`<span class="tag warn" title="超过复用窗口（经验值 1 小时）">已过期${record.turn_state_age_seconds ? ` ${Math.round(record.turn_state_age_seconds / 60)} 分钟` : ""}</span>`);
+    tags.push(`<span class="tag warn num" title="超过复用窗口（经验值 1 小时）">已过期${record.turn_state_age_seconds ? ` ${Math.round(record.turn_state_age_seconds / 60)} 分钟` : ""}</span>`);
   }
   if (record.turn_state_stripped) tags.push('<span class="tag warn">已摘除</span>');
   if (record.turn_state_injected) tags.push('<span class="tag ok" title="本次请求的 X-Codex-Turn-State 由插件从不降智池注入">已注入</span>');
@@ -2474,9 +2529,9 @@ function renderHistoryStats(total) {
   const avg = latencies.length ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : null;
   const rate = items.length ? Math.round(success / items.length * 100) : null;
   $("histTotal").textContent = String(total || 0);
-  $("histSuccessRate").textContent = rate === null ? "—" : (rate + "%");
+  $("histSuccessRate").textContent = rate === null ? "-" : (rate + "%");
   $("histAuthErrors").textContent = String(authErrors);
-  $("histLatency").textContent = avg === null ? "—" : (avg >= 1000 ? ((avg / 1000).toFixed(1) + " s") : (avg + " ms"));
+  $("histLatency").textContent = avg === null ? "-" : (avg >= 1000 ? ((avg / 1000).toFixed(1) + " s") : (avg + " ms"));
 }
 function historySkeleton() {
   $("historyBody").innerHTML = Array.from({ length: 4 }, () =>
@@ -2493,6 +2548,7 @@ async function loadHistory(page = 1) {
   store.page = payload.page || 1;
   store.totalPages = payload.total_pages || 0;
   $("historyMeta").textContent = payload.total ? `${payload.total} 条，第 ${store.page}/${store.totalPages} 页` : "";
+  $("historyMeta").classList.toggle("num", !!payload.total);
   renderHistoryStats(payload.total || 0);
   const body = $("historyBody");
   body.replaceChildren();
@@ -2574,7 +2630,7 @@ function showRecord(record, summaryRow) {
         <span>${esc(record.source_format || "-")}</span><span>${record.stream ? "流式" : "非流式"}</span></div>
     </div>
     <div class="history-detail-section">
-      <div class="history-detail-label"><span>Request Header 差异</span><span>${requestDiff.count ? `${requestDiff.count} 处改动` : (requestDiff.hasRows ? "无改动" : "无数据")}</span></div>
+      <div class="history-detail-label"><span>Request Header 差异</span><span class="${requestDiff.count ? "num" : ""}">${requestDiff.count ? `${requestDiff.count} 处改动` : (requestDiff.hasRows ? "无改动" : "无数据")}</span></div>
       ${requestDiff.html}
     </div>
     ${turnStateDetail(record)}
@@ -2727,7 +2783,7 @@ function renderTestResult(result, dryRun) {
   renderDiff(result.before_headers, result.after_headers, dryRun ? "预览，未发送请求" : `测试请求 ${new Date().toLocaleTimeString()}`);
   const tags = [outcomeTag(result.outcome)];
   if (!dryRun) {
-    tags.push(`<span class="tag flat">HTTP ${result.status_code || "-"}</span>`);
+    tags.push(`<span class="tag flat num">HTTP ${result.status_code || "-"}</span>`);
     tags.push(`<span class="tag flat"><svg class="i" style="width:13px;height:13px"><use href="#i-clock"/></svg><span class="num">${result.latency_ms ?? 0} ms</span></span>`);
     if (result.recorded) tags.push('<span class="tag flat">已记入历史</span>');
   }
