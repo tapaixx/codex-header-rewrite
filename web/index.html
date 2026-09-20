@@ -1654,6 +1654,17 @@ body[data-workspace="history"] #historyPanel{grid-row:2!important}
 #ruleSummaryPanel .panel-body{padding-top:9px!important;padding-bottom:10px!important}
 #ruleSummaryPanel .summary-tile{min-height:56px}
 
+/* Size carries the hierarchy inside the detail, not just colour and rules:
+   section label, then card title, then fields, then group markers. The whole
+   block steps down from the table it expands out of. */
+.history-detail-label{font-size:12px!important}
+.history-detail .ts-title{font-size:11.5px!important;padding:6px 9px!important}
+.history-detail .ts-body{padding:8px 9px}
+.history-detail .ts-grid{font-size:11px;gap:3px 10px}
+.history-detail .ts-sub{font-size:9.5px;margin:9px 0 4px}
+.history-detail .ts-grid .tag{font-size:9.5px!important;padding:1px 6px!important}
+.history-detail .metaline{font-size:10.5px}
+.history-detail .diff-row,.history-detail .diff-head{font-size:11px}
 /* History detail: every part of it was one weight and one rhythm -- section
    labels, card titles and field names all landed at 12px grey, so nothing said
    which of them contained which. Four levels now, each separated by a
