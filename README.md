@@ -13,7 +13,7 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - 使用 `request.intercept_after`，在 credential 选定后按 `selected_auth_index` 应用规则。
 - 规则保存后下一请求立即生效，无需重启 CPA。
 - bbolt 持久化规则。
-- 每个 credential 保留最近 50 条 attempt，10 条/页；详情在所选记录下方原地展开。
+- 每个 credential 保留最近 50 条 attempt，10 条/页；点击记录从右侧抽屉打开详情，列表不动、所选行保持高亮。
 - retry A → B 分别记录；被替换 attempt 标记 `switched`，不猜测 401/429。
 - 记录重写前/后的 Request Header 与 upstream Response Header。
 - Authorization、Cookie、API key、token/secret/password 等在写盘前永久脱敏。
@@ -220,6 +220,8 @@ curl -s -H "Authorization: Bearer <management-key>" \
 ### 不降智 State 池
 
 每个新收到的 state 都先按凭证套餐分类：Team 套餐长度 **≤ 332** 字符、个人套餐（非 Team，如 Pro / Plus）长度 **≤ 292** 字符是不降智；超限值只留在历史并标为疑似降智。阈值只分 Team 与非 Team 两档，所以插件不必穷举个人套餐的名字，没见过的套餐名一律按 292 判。凭证完全没有套餐声明时既不判定也不入池：按短阈值猜会把合格的 Team state 误判成降智，按长阈值猜会把降智的个人 state 放进池子。合格 state 每拿到一次就铸造一次，同一「凭证 + 模型」只保留时间最新的一条；乱序到达不会让旧值覆盖新值。
+
+凭证选择器直接显示每个凭证的套餐（Team / Pro / Plus…）：`/credentials` 列表在读取邮箱的同一次文档读取里一并解析 `chatgpt_plan_type`（id_token 优先，缺失时回退 access_token 里的同名 claim），所以不需要等该凭证跑过流量。仍显示「套餐未知」说明凭证文档里确实没有套餐声明，属于异常，值得检查该 auth 文件。
 
 数据来自 `GET /codex-header-rewrite/turn-states`。面板同时显示凭证名称、稳定的 `auth_index`、模型、长度/阈值，并可在原行展开 state 具体值。池把原始 state 持久化在配置的 bbolt `data_path`（CPA 工作目录为 `/CLIProxyAPI` 时，默认落在 `/CLIProxyAPI/plugins/data/codex-header-rewrite.db`），因此 CPA 重建、重启或插件更新后会恢复；插件目录随容器更新被整体替换时，应把 `/CLIProxyAPI/plugins/data` 挂到持久卷。
 
