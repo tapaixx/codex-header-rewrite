@@ -2992,10 +2992,27 @@ function openDrawer(title, html) {
   }
   $("drawerClose").focus({ preventScroll: true });
 }
-// A pooled state gets the same drawer as a request: identity and verdict up
-// top, the fields grouped, and the raw value with its actions at the bottom,
-// rather than three buttons squeezed into the row.
-function showPoolState(item) {
+// A pooled state gets the same drawer as a request. The envelope is decoded
+// in place -- the reader came here to see what the state is, not to be sent
+// to another workspace to find out -- and the raw value sits at the bottom as
+// selectable text.
+function envelopeRows(info) {
+  const issued = info.issued_at && !info.issued_at.startsWith("0001");
+  const unix = issued ? Math.floor(new Date(info.issued_at).getTime() / 1000) : null;
+  const shape = info.decodable
+    ? (info.fernet_like ? '<span class="tag ok">Fernet 结构</span>' : '<span class="tag warn">结构不符</span>')
+    : '<span class="tag bad">无法解码</span>';
+  return `<dl class="ts-grid">
+    <dt>摘要</dt><dd class="mono">${esc(info.digest || "-")}</dd>
+    <dt>解码后总字节数</dt><dd class="num">${info.decodable ? `${info.bytes} 字节` : "-"}</dd>
+    <dt>版本号</dt><dd class="num">${info.decodable ? `0x${Number(info.version).toString(16).padStart(2, "0")} (${info.version})` : "-"}</dd>
+    <dt>时间戳 (Unix)</dt><dd class="num">${unix !== null ? unix : "-"}</dd>
+    <dt>签发时间 (本地)</dt><dd>${issued ? `${new Date(info.issued_at).toLocaleString()}<span class="muted"> · ${turnStateAge(info)}</span>` : "未能读出"}</dd>
+    <dt>签发时间 (UTC)</dt><dd class="num">${issued ? esc(new Date(info.issued_at).toUTCString()) : "-"}</dd>
+    <dt>结构验证</dt><dd>${shape}</dd>
+  </dl>`;
+}
+async function showPoolState(item) {
   const key = poolStateKey(item);
   if (store.selectedState === key) { closeHistoryDrawer(); return; }
   store.selectedRecord = "";
@@ -3019,20 +3036,32 @@ function showPoolState(item) {
         <dt>Base64 字符数</dt><dd class="num">${item.chars ? `${item.chars} 个字符` : "-"}</dd>
         <dt>不降智阈值</dt><dd class="num">${item.max_chars ? `≤ ${item.max_chars} 个字符` : "-"}</dd>
         <dt>质量判定</dt><dd>${verdict}</dd>
-      </dl>
-      <div class="ts-sub">时间</div>
-      <dl class="ts-grid">
-        <dt>铸造时间</dt><dd>${esc(minted.toLocaleString())}<span class="muted"> · ${age} 分钟前</span></dd>
+        <dt>入池时间</dt><dd>${esc(minted.toLocaleString())}<span class="muted"> · ${age} 分钟前</span></dd>
         <dt>复用窗口</dt><dd>${$("turnStateWindow")?.textContent || "1 小时"}</dd>
       </dl>
     </div>
     <div class="history-detail-section">
-      <div class="history-detail-label"><span>具体值</span><span>${item.state
-        ? `<button class="btn-xs" data-copy-state="${esc(item.state)}">复制</button> <button class="btn-xs" data-blob="${esc(item.state)}"><svg class="i" style="width:12px;height:12px"><use href="#i-eye"/></svg>解码</button>`
-        : ""}</span></div>
+      <div class="history-detail-label"><span>Fernet 信封</span></div>
+      <div id="poolEnvelope"><div class="muted">解码中…</div></div>
+    </div>
+    <div class="history-detail-section">
+      <div class="history-detail-label"><span>原始值</span></div>
       <div class="pool-state-value mono">${esc(item.state || "未保存原值")}</div>
     </div>
   </div>`);
+  if (!item.state) { $("poolEnvelope").innerHTML = '<div class="muted">没有保存原值，无法解码</div>'; return; }
+  try {
+    const payload = await api("/turn-state/decode", { method: "POST", body: { token: item.state } });
+    // The reader may have moved on to another row while this was in flight.
+    if (store.selectedState !== key || !$("poolEnvelope")) return;
+    const origin = payload.origin_label || payload.origin_auth_index;
+    $("poolEnvelope").innerHTML = envelopeRows(payload.info || {}) +
+      `<dl class="ts-grid" style="margin-top:6px"><dt>入池来源</dt><dd>${origin ? esc(origin) : '<span class="muted">未记录到来源</span>'}</dd></dl>`;
+  } catch (error) {
+    if (store.selectedState === key && $("poolEnvelope")) {
+      $("poolEnvelope").innerHTML = `<div class="muted">解码失败：${esc(error.message || String(error))}</div>`;
+    }
+  }
 }
 function showRecord(record) {
   if (store.selectedRecord === record.id) { closeHistoryDrawer(); return; }
