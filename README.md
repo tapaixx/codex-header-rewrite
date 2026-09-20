@@ -69,7 +69,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.14.0.so` | `codex-header-rewrite` | `0.14.0` |
+| `codex-header-rewrite-v0.14.1.so` | `codex-header-rewrite` | `0.14.1` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -82,7 +82,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.14.0.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.14.1.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -225,7 +225,7 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 开启拦截后才能配置「拦截后重试取 state」「最大重试次数」和模型列表。后台重试使用同凭证、同模型发送最小 `hi` 请求，最多 1–5 次（默认 2），获得合格 state 后提前结束，并将整轮重试记录为一行历史。重试范围与拦截范围一致；关闭拦截会保留配置值，但不再触发新的重试。后台重试不会重新执行原始用户请求。
 
-**重试 SOCKS 代理（v0.14.0）**：开启拦截与重试后可配置 `retry_proxies`，每行一个 `socks5://host:port` 或 `socks5h://user:password@host:port`，用户名/密码中的特殊字符需 URL 编码。列表按凭证持久化，去空白与重复项；每次重试独立随机选择，允许连续选中相同代理。列表为空时**直接连接**，不继承 CPA、凭证或环境变量代理。代理失败不回退直连，下一次重试重新随机选取。
+**重试 SOCKS 代理（v0.14.0）**：开启拦截与重试后可配置 `retry_proxies`，每行一个 `socks5://host:port` 或 `socks5h://user:password@host:port`，用户名/密码中的特殊字符需 URL 编码。列表按凭证持久化，去空白与重复项；每次重试独立随机选择，允许连续选中相同代理。列表为空时**直接连接**，不继承 CPA、凭证或环境变量代理。面板未编辑该字段时密码以 `***` 掩去，点击输入框才显示原值；保存时若某行仍带掩码则保留已存值，不会把掩码写回。代理失败不回退直连，下一次重试重新随机选取。
 
 当前 CPA 的 `host.http.do` 不支持逐请求覆盖代理，因此**仅后台取 state 的补发改由插件自身的 HTTP/1.1 传输发送**，不使用 CPA 的指纹处理；正常业务请求与手动测试路径不变。补发不跟随重定向，只读响应头并关闭响应体，单次超时 30 秒，插件卸载/重载会取消在途补发。只有 2xx 响应中的合格 state 才能入池；代理密码不会写入请求历史或连接错误，但代理配置本身含明文认证信息，应保护管理端访问及数据文件。
 
