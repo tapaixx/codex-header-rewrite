@@ -1576,8 +1576,11 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
   position:fixed;left:0;top:0;z-index:80;max-width:min(330px,calc(100vw - 24px));
   padding:9px 11px;border-radius:8px;background:#14233a;color:#fff;
   font-size:11.5px;line-height:1.65;text-wrap:pretty;box-shadow:var(--shadow-float);
-  translate:0 5px;pointer-events:none;transition:translate .14s var(--ease)
+  translate:0 5px;pointer-events:none;transition:translate .14s var(--ease);
+  /* A long hint must not run off a short window; pinned, it can be scrolled. */
+  max-height:min(70vh,520px);overflow-y:auto;overscroll-behavior:contain
 }
+.hint-layer[data-pinned="true"]{pointer-events:auto}
 /* Visibility is the hidden attribute alone. Fading in from opacity:0 would
    mean that anywhere the transition does not run -- a suppressed frame, a
    forced-colors mode -- the hint is open but invisible. Only the slide is
@@ -1838,7 +1841,7 @@ body[data-workspace="history"] #historyPanel{grid-row:2!important}
               <span class="tag flat" id="guardBadge">已关闭</span>
             </summary>
             <div class="rule-block-body guard-layout">
-              <div class="guard-now"><span class="guard-state-key" id="guardNowKey">关闭</span><span id="guardNowText"></span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="守卫开关的详细说明">!</button><span class="hint-text"><span class="hint-k">开启</span><span class="hint-v">回带的 state 确认来自<b>其他凭证</b>或<b>其他模型</b>时，把 <code>X-Codex-Turn-State</code> 从这次请求里摘掉，让上游重新签发一个。</span><span class="hint-k">关闭</span><span class="hint-v">客户端带什么就原样发什么。来源照常记录、历史照常标注，只是不改这次请求。</span><span class="hint-p">守卫是<b>这条规则的一部分</b>，不是和「启用改写」并列的开关：规则总开关关掉时，守卫存着也不生效。摘除需要「启用改写」+「启用守卫」<b>两个都开</b>；从 State 池补发只需要「启用改写」，且没手工设置或移除这个 Header。</span><span class="hint-p">为什么会有跨号回带：<b>账号不是客户端选的</b>。CPA 的 <code>routing.strategy</code> 默认是 round-robin，<b>按请求</b>轮换凭证，而 <code>session-affinity</code> 默认关闭——同一段对话的相邻两轮很可能落在不同账号上。客户端只看到一个端点，它只是把上游给它的 state 原样带回来。即使开了 session-affinity，绑定的凭证不可用时 CPA 仍会自动故障转移，回合链照样换号。</span><span class="hint-p">跨模型同理：state 绑在铸造它的那个模型上，会话中途换模型或发生回退后，带回来的仍是旧模型的 state。单机直连 Codex 两种都不会出现——那里只有一个账号，模型也由你自己切。</span><span class="hint-p">开启后这两种也不摘：只是<b>超过复用窗口</b>（1 小时是经验值，摘错会打断还能用的回合），或<b>来源未知</b>（插件没见过签发它的那次响应）。</span></span></span></div>
+              <div class="guard-now"><span class="guard-state-key" id="guardNowKey">关闭</span><span id="guardNowText"></span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="守卫开关的详细说明">!</button><span class="hint-text"><span class="hint-k">先后顺序</span><span class="hint-v">轮到某个凭证时，插件先看<b>它自己的 State 池</b>：有「该凭证 + 当前模型」的合格 state 就<b>直接覆盖</b>回带值，这一步不经过守卫。只有池子拿不出东西时，才轮到守卫决定摘掉还是放行。</span><span class="hint-k">开启</span><span class="hint-v">池子补不上、且回带的 state 确认来自<b>其他凭证</b>或<b>其他模型</b>时，把 <code>X-Codex-Turn-State</code> 摘掉，让上游重新签发一个。</span><span class="hint-k">关闭</span><span class="hint-v">池子补不上就原样发出去。来源照常记录、历史照常标注，只是不改这次请求。</span><span class="hint-p">所以外来 state 真正会发到上游，只剩这几种情况：该凭证<b>没有规则或规则关着</b>；池里还没有它这个模型的 state（刚装插件、刚换号、刚换模型）且守卫关着；或者插件<b>没见过签发它的那次响应</b>，无法证明它是外来的。</span><span class="hint-p">守卫是<b>这条规则的一部分</b>，不是和「启用改写」并列的开关：规则总开关关掉时，守卫存着也不生效。摘除要「启用改写」+「启用守卫」两个都开；覆盖只要「启用改写」，且没手工设置或移除这个 Header。</span><span class="hint-p">为什么会有跨号回带：<b>账号不是客户端选的</b>。CPA 的 <code>routing.strategy</code> 默认 round-robin，按请求轮换凭证，<code>session-affinity</code> 默认关闭；换号后客户端并不知情，仍把上一轮的 state 原样带回来。跨模型同理——state 绑在铸造它的模型上。</span><span class="hint-p">开启后这两种也不摘：只是<b>超过复用窗口</b>（1 小时是经验值），或<b>来源未知</b>。</span></span></span></div>
               <label class="switch guard-switch"><input type="checkbox" id="ruleStripTurnState"><span>启用守卫</span></label>
             </div>
           </details>
@@ -3242,9 +3245,12 @@ function placeHint(button) {
   const margin = 8;
   let left = rect.left + rect.width / 2 - box.width / 2;
   left = Math.min(Math.max(margin, left), Math.max(margin, innerWidth - box.width - margin));
-  // Below the marker by default, above it when the viewport runs out.
+  // Below the marker by default, above it when the viewport runs out, and
+  // clamped either way: flipping above a marker that is itself off-screen
+  // would put the hint off-screen with it.
   let top = rect.bottom + 6;
-  if (top + box.height > innerHeight - margin) top = Math.max(margin, rect.top - box.height - 6);
+  if (top + box.height > innerHeight - margin) top = rect.top - box.height - 6;
+  top = Math.min(Math.max(margin, top), Math.max(margin, innerHeight - box.height - margin));
   hintLayer.style.left = Math.round(left) + "px";
   hintLayer.style.top = Math.round(top) + "px";
 }
@@ -3264,6 +3270,7 @@ function openHint(button, pinned) {
   // frame is produced.
   void hintLayer.offsetHeight;
   hintLayer.dataset.show = "true";
+  hintLayer.dataset.pinned = pinned ? "true" : "false";
   button.setAttribute("aria-expanded", pinned ? "true" : "false");
   button.setAttribute("aria-describedby", "hintLayer");
 }
@@ -3291,6 +3298,9 @@ document.addEventListener("focusin", (event) => {
   else if (!hintPinned) closeHint(false);
 });
 document.addEventListener("click", (event) => {
+  // Reading a pinned hint means clicking inside it to scroll; that is not a
+  // click elsewhere.
+  if (hintLayer.contains(event.target)) return;
   const button = event.target.closest?.(".hint");
   if (!button) { closeHint(true); return; }
   event.preventDefault();
@@ -3301,8 +3311,10 @@ document.addEventListener("click", (event) => {
    Closing on any scroll looked simpler but dismissed a hint the moment
    momentum scrolling or a focus-driven scrollIntoView fired -- sometimes
    before the reader had seen it. It closes only once the marker is gone. */
-function trackHint() {
+function trackHint(event) {
   if (!hintOwner) return;
+  if (event && hintLayer.contains(event.target)) return; // scrolling the hint itself
+
   const rect = hintOwner.getBoundingClientRect();
   if (rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) closeHint(true);
   else placeHint(hintOwner);
