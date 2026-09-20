@@ -61,6 +61,11 @@ try {
   await page.locator('#retryProxies .chip-field').nth(1).focus();
   assert.equal(await page.locator('#retryProxies .chip-field').nth(1).inputValue(),'socks5h://user:pass@localhost:1081');
   assert.equal(await page.locator('#rejectDegradedModels .chip-tag').count(),2);
+  // A duplicate is refused rather than merged in silence.
+  await page.locator('#rejectDegradedModels .chip-add').fill('gpt-6-astra');
+  await page.locator('#rejectDegradedModels .chip-add').press('Enter');
+  assert.equal(await page.locator('#rejectDegradedModels .chip-tag').count(),2);
+  assert.match(await page.locator('.toast').textContent(),/已存在/);
   await page.locator('label').filter({has:page.locator('#retryDegraded')}).click();
   await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
   assert.equal(await page.locator('#retryProxies').getAttribute('data-disabled'),'1');

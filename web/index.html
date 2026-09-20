@@ -1849,6 +1849,48 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
 .chip-add::placeholder{color:var(--text-mute)}
 .chip-add:disabled{cursor:not-allowed}
 
+/* Workspace tabs as a bordered card header: the strip is the card's head and
+   the active tab is cut out of it, joining the content below by covering the
+   strip's bottom border. The underline the active tab used to carry is gone --
+   the tab itself is the indicator now. */
+.workspace-nav{
+  background:var(--sunk)!important;border-bottom:1px solid var(--line)!important;
+  box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important
+}
+.workspace-nav-inner{gap:0!important;align-items:flex-end!important;padding:0 18px!important}
+.workspace-tab{
+  border:1px solid transparent!important;border-bottom:0!important;margin-bottom:-1px!important;
+  border-radius:8px 8px 0 0!important;padding:0 16px!important;background:transparent!important;
+  color:var(--text-soft)!important;
+  transition:background .15s var(--ease),color .15s var(--ease),border-color .15s var(--ease)
+}
+.workspace-tab:hover:not([aria-current="true"]){background:color-mix(in srgb,var(--surface) 55%,transparent)!important;color:var(--text)!important}
+.workspace-tab[aria-current="true"]{
+  background:var(--surface)!important;border-color:var(--line)!important;color:var(--accent)!important
+}
+.workspace-tab[aria-current="true"]::after{display:none!important}
+
+/* The bottom bar is gone; the tabs stay reachable at the top, so the page no
+   longer reserves a strip of height for it. */
+.mobile-nav{display:none!important}
+@media (max-width:820px){
+  .shell{padding-bottom:20px!important}
+  .toast{bottom:calc(22px + env(safe-area-inset-bottom))!important}
+  .workspace-nav-inner{padding:0 9px!important}
+  .workspace-tab{padding:0 10px!important}
+}
+
+/* Refusing a duplicate needs a visible reason; the toast carries it and this
+   points at the entry that already exists. */
+.chip-dup{border-color:currentColor!important}
+@media (prefers-reduced-motion:no-preference){
+  .chip-dup{animation:chipDup .55s var(--ease)}
+  @keyframes chipDup{
+    0%,100%{box-shadow:0 0 0 0 transparent}
+    35%{box-shadow:0 0 0 3px color-mix(in srgb,currentColor 35%,transparent)}
+  }
+}
+
 </style>
 </head>
 <body data-workspace="rules">
@@ -2125,12 +2167,12 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
         <div class="field" style="flex-basis:100%">
           <label id="rejectDegradedModelsLabel">拦截模型（留空表示全部模型）</label>
           <div class="chips" id="rejectDegradedModels" data-kind="model" data-disabled="1" role="group" aria-labelledby="rejectDegradedModelsLabel"></div>
-          <span class="muted">回车或逗号添加，点标签可直接改，✕ 删除。按实际发出的模型 ID 精确匹配；仅拦截这些模型的疑似降智响应，后台重试也遵循此范围。修改后自动保存。</span>
+          <span class="muted">回车或逗号添加，点标签改，✕ 删除；按模型 ID 精确匹配。</span>
         </div>
         <div class="field" style="flex-basis:100%">
           <label id="retryProxiesLabel">重试 SOCKS 代理（留空直连）</label>
           <div class="chips" id="retryProxies" data-kind="proxy" data-disabled="1" role="group" aria-labelledby="retryProxiesLabel" aria-describedby="retryProxyHint"></div>
-          <span class="muted" id="retryProxyHint">回车添加，点标签可直接改，✕ 删除。每次重试随机选择一个代理，可重复选中；留空不使用任何代理，失败不回退直连。仅影响后台取 state 的补发，由插件发送，不经过 CPA 的指纹处理。未编辑时密码以 *** 掩去，点击输入框即可查看与修改。按凭证自动保存；用户名和密码中的特殊字符需 URL 编码。</span>
+          <span class="muted" id="retryProxyHint">回车添加，点标签改，✕ 删除；每次重试随机选一个，密码未聚焦时掩去。</span>
         </div>
       </div>
     </section>
@@ -2150,11 +2192,6 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
   </main>
 </div>
 
-<nav class="mobile-nav" aria-label="移动端功能">
-  <button data-workspace="rules" aria-current="true"><svg class="i"><use href="#i-swap"/></svg><span>规则</span></button>
-  <button data-workspace="history" aria-current="false"><svg class="i"><use href="#i-clock"/></svg><span>历史</span></button>
-  <button data-workspace="decode" aria-current="false"><svg class="i"><use href="#i-eye"/></svg><span>解码</span></button>
-</nav>
 
 <div class="overlay" id="keyOverlay">
   <div class="dialog">
@@ -3542,17 +3579,40 @@ function commitChip(id, index, raw) {
   const list = [...chipValues[id]];
   if (!value) list.splice(index, 1);
   else if (kind === "proxy" && value.includes(PROXY_MASK)) { renderChips(id); return; }
-  else list[index] = value;
+  else if (list.some((other, at) => at !== index && other === value)) {
+    renderChips(id);
+    flashDuplicate(id, [value]);
+    return;
+  } else list[index] = value;
   setChips(id, list);
   saveDegradedSettings(() => {});
+}
+
+// A duplicate is dropped either way; saying so beats silently swallowing it.
+function flashDuplicate(id, values) {
+  for (const field of $(id).querySelectorAll(".chip-field")) {
+    if (values.includes(chipValues[id][Number(field.dataset.index)])) {
+      const chip = field.closest(".chip-tag");
+      chip.classList.remove("chip-dup");
+      void chip.offsetWidth;
+      chip.classList.add("chip-dup");
+    }
+  }
+  toast(values.length > 1 ? `${values.length} 项已存在，未重复添加` : `${values[0]} 已存在`, true);
 }
 
 function addChips(id, raw) {
   const kind = $(id).dataset.kind;
   const parts = raw.split(CHIP_SPLIT[kind]).map((value) => value.trim()).filter(Boolean);
   if (!parts.length) return;
-  setChips(id, [...chipValues[id], ...parts]);
-  saveDegradedSettings(() => {});
+  const existing = chipValues[id];
+  const dupes = [...new Set(parts.filter((value) => existing.includes(value)))];
+  const fresh = parts.filter((value) => !existing.includes(value));
+  if (fresh.length) {
+    setChips(id, [...existing, ...fresh]);
+    saveDegradedSettings(() => {});
+  }
+  if (dupes.length) flashDuplicate(id, dupes);
 }
 
 for (const id of ["rejectDegradedModels", "retryProxies"]) {
