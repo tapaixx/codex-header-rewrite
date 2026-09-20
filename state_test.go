@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,8 @@ func resetState(t *testing.T) persistence {
 	}
 	state.mu.Lock()
 	state.store = p
+	state.quiescing = false
+	state.retryStop = make(chan struct{})
 	state.writer = newQueuedPersistence(p)
 	state.rules = map[string]headerRule{}
 	state.pending = map[string]*pendingRequest{}
@@ -744,6 +747,67 @@ func TestDegradedStreamIsCutAtTheFirstChunk(t *testing.T) {
 	second := observeStreamHeaders(streamChunkInterceptRequest{RequestID: "r", ChunkIndex: 1, Body: []byte("data: {\"type\":\"response.output_text.delta\"}\n\n")})
 	if !second.DropChunk || len(second.Body) != 0 {
 		t.Fatalf("later chunks should be dropped: %#v", second)
+	}
+}
+
+func TestDegradedModelScopeForBothResponsePaths(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		for _, tc := range []struct {
+			name   string
+			models []string
+			want   bool
+		}{
+			{"all", nil, true},
+			{"match", []string{"gpt-5.6-luna"}, true},
+			{"other", []string{"gpt-6-astra"}, false},
+			{"no-prefix-match", []string{"gpt-5.6"}, false},
+		} {
+			t.Run(fmt.Sprintf("%s/stream=%v", tc.name, stream), func(t *testing.T) {
+				rejectFixture(t, true)
+				state.mu.Lock()
+				rule := state.rules["idx-a"]
+				rule.Enabled = false
+				rule.RejectDegradedModels = tc.models
+				rule.RetryOnDegraded = !tc.want
+				state.rules["idx-a"] = rule
+				state.mu.Unlock()
+				headers := http.Header{turnStateHeader: {fernetToken(0x80, time.Now(), 40)}}
+				var blocked bool
+				if stream {
+					observeStreamHeaders(streamChunkInterceptRequest{RequestID: "r", ChunkIndex: streamChunkHeaderInitIndex, ResponseHeaders: headers})
+					out := observeStreamHeaders(streamChunkInterceptRequest{RequestID: "r", ChunkIndex: 0, Body: []byte("data: {}\n\n")})
+					blocked = len(out.Body) > 0
+				} else {
+					blocked = len(observeResponse(responseInterceptRequest{RequestID: "r", ResponseHeaders: headers, StatusCode: 200}).Body) > 0
+				}
+				if blocked != tc.want {
+					t.Fatalf("blocked=%v want=%v", blocked, tc.want)
+				}
+				state.mu.Lock()
+				scheduled := state.pending["r"].current.retryScheduled
+				state.mu.Unlock()
+				if scheduled {
+					t.Fatal("unmatched model triggered retries")
+				}
+			})
+		}
+	}
+}
+
+func TestModelScopePersistsAndEmptyMeansAll(t *testing.T) {
+	p := resetState(t)
+	rule, err := saveRule(headerRule{AuthIndex: "a", RejectDegradedResponse: true, RejectDegradedModels: []string{" gpt-5.6-luna ", "", "gpt-5.6-luna"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := p.GetRule("a")
+	if err != nil || !ok || len(got.RejectDegradedModels) != 1 || !rejectsDegradedModel(got, "gpt-5.6-luna") || rejectsDegradedModel(got, "gpt-6-astra") {
+		t.Fatalf("stored rule=%#v err=%v", got, err)
+	}
+	rule.RejectDegradedModels = []string{"  "}
+	got, err = saveRule(rule)
+	if err != nil || !rejectsDegradedModel(got, "gpt-6-astra") {
+		t.Fatalf("empty scope=%#v err=%v", got, err)
 	}
 }
 

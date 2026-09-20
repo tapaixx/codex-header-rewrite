@@ -1,0 +1,286 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+)
+
+// A degraded response can be answered by asking the same credential for a
+// fresh turn state: the state arrives in a response header, so a minimal
+// request is enough and the body is never read.
+//
+// The credential is the one that served the rejected response, not whichever
+// one a new request would land on. That matters because the pool is keyed by
+// credential and model: a state minted under a different account is exactly
+// the cross-account echo the guard exists to catch. Pinning the credential
+// means reading its material, which follows the same rules as the test
+// request -- read just in time for one call, never logged, never persisted,
+// never returned to the panel, and only ever sent to the Codex backend.
+const (
+	maxRetryAttempts     = 5
+	defaultRetryAttempts = 2
+	retryPrompt          = "hi"
+	retryGap             = 400 * time.Millisecond
+	retryInFlightLimit   = 4
+)
+
+var retryInFlight = make(chan struct{}, retryInFlightLimit)
+
+// retryOutcome is what one attempt produced. The blob is held only long
+// enough to classify and pool it.
+type retryOutcome struct {
+	statusCode  int
+	blob        string
+	nonDegraded bool
+	err         string
+	plan        string
+	stop        bool
+}
+
+func retryAttemptCount(rule headerRule) int {
+	if rule.RetryAttempts > 0 {
+		return min(rule.RetryAttempts, maxRetryAttempts)
+	}
+	return defaultRetryAttempts
+}
+
+// scheduleDegradedRetry runs the series off the response path so the client is
+// never waiting on it. state.mu must be held by the caller.
+func scheduleDegradedRetry(attempt *pendingAttempt, attempts int) {
+	if state.quiescing || state.store == nil || attempt.AuthID == "" {
+		return
+	}
+	if state.retryStop == nil {
+		state.retryStop = make(chan struct{})
+	}
+	stop := state.retryStop
+	select {
+	case retryInFlight <- struct{}{}:
+	default:
+		return
+	}
+	state.retryWG.Add(1)
+	authIndex, authID := attempt.AuthIndex, attempt.AuthID
+	model := sentModel(attempt.Model, attempt.RequestedModel)
+	label, name, plan := attempt.CredentialLabel, attempt.CredentialName, attempt.CredentialPlan
+	go func() {
+		defer state.retryWG.Done()
+		defer func() { <-retryInFlight }()
+		runDegradedRetry(authIndex, authID, label, name, model, plan, attempts, stop)
+	}()
+}
+
+// runDegradedRetry makes up to attempts requests, stopping at the first
+// non-degraded state, and records the whole series as one history row.
+func runDegradedRetry(authIndex, authID, label, name, model, plan string, attempts int, stop <-chan struct{}) {
+	started := time.Now().UTC()
+	var (
+		used   int
+		last   retryOutcome
+		pooled bool
+		info   turnStateInfo
+	)
+	for used < attempts {
+		if used > 0 {
+			timer := time.NewTimer(retryGap)
+			select {
+			case <-stop:
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		used++
+		last = retryOnce(authIndex, authID, model)
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		if last.stop {
+			break
+		}
+		if last.err != "" || last.blob == "" {
+			continue
+		}
+		state.mu.Lock()
+		if state.quiescing {
+			state.mu.Unlock()
+			return
+		}
+		classified := classifyTurnState(decodeTurnState(last.blob), last.blob, last.plan)
+		classified.Pooled = noteTurnStateMintLocked(last.blob, authIndex, label, model, last.plan)
+		state.mu.Unlock()
+		info = classified
+		if last.nonDegraded {
+			pooled = classified.Pooled
+			break
+		}
+	}
+	recordRetrySeries(retrySeries{
+		authIndex: authIndex, authID: authID, label: label, name: name,
+		model: model, attempts: used, started: started, last: last,
+		pooled: pooled, info: info,
+	})
+}
+
+// retryOnce sends one minimal Codex request and reports only what the
+// response header said. The body is discarded unread.
+func retryOnce(authIndex, authID, model string) retryOutcome {
+	if !retryIdentityMatches(authIndex, authID) {
+		return retryOutcome{err: "credential identity changed or unavailable", stop: true}
+	}
+	document, err := hostAuthGetFunc(authIndex)
+	if err != nil {
+		return retryOutcome{err: "credential is not readable through the host"}
+	}
+	material := parseTestAuthMaterial(document)
+	plan := credentialPlanType(document)
+	if plan == "" {
+		return retryOutcome{err: "credential plan is unknown", stop: true}
+	}
+	if !retryIdentityMatches(authIndex, authID) {
+		return retryOutcome{err: "credential identity changed or unavailable", stop: true}
+	}
+	if material.accessToken == "" {
+		return retryOutcome{err: "credential has no usable access token"}
+	}
+	headers := retryHeaders(material)
+	body, err := json.Marshal(retryPayload(model))
+	if err != nil {
+		return retryOutcome{err: err.Error()}
+	}
+	response, callErr := hostHTTPDoFunc(hostHTTPRequest{
+		Method:      http.MethodPost,
+		URL:         defaultTestURL,
+		Headers:     headers,
+		Body:        body,
+		WireProfile: testWireProfile(headers, true),
+	})
+	if callErr != nil {
+		return retryOutcome{statusCode: response.StatusCode, err: callErr.Error()}
+	}
+	if !retryIdentityMatches(authIndex, authID) {
+		return retryOutcome{err: "credential identity changed during retry", stop: true}
+	}
+	blob := headerTurnState(response.Headers)
+	if blob == "" {
+		return retryOutcome{statusCode: response.StatusCode, err: fmt.Sprintf("no %s in the response (HTTP %d)", turnStateHeader, response.StatusCode)}
+	}
+	nonDegraded, _, knownPlan := nonDegradedTurnState(blob, plan)
+	return retryOutcome{statusCode: response.StatusCode, blob: blob, nonDegraded: knownPlan && nonDegraded, plan: plan}
+}
+
+func retryIdentityMatches(authIndex, authID string) bool {
+	if authID == "" {
+		return false
+	}
+	runtime, err := hostAuthGetRuntimeFunc(authIndex)
+	return err == nil && runtime.Auth.ID == authID && isCodexCredential(runtime.Auth.Provider, runtime.Auth.Type)
+}
+
+// retryHeaders is the smallest set the Codex backend needs. Nothing about the
+// operator or the original request is copied in.
+func retryHeaders(material testAuthMaterial) http.Header {
+	headers := http.Header{
+		"Content-Type": {"application/json"},
+		"Accept":       {"text/event-stream"},
+		"Originator":   {"codex-cli"},
+	}
+	headers.Set("Authorization", "Bearer "+material.accessToken)
+	if material.accountID != "" {
+		headers.Set("Chatgpt-Account-Id", material.accountID)
+	}
+	return headers
+}
+
+func retryPayload(model string) map[string]any {
+	return map[string]any{
+		"model":               model,
+		"instructions":        "You are Codex, a coding agent.",
+		"input":               []any{map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": retryPrompt}}}},
+		"stream":              true,
+		"store":               false,
+		"tools":               []any{},
+		"parallel_tool_calls": false,
+	}
+}
+
+type retrySeries struct {
+	authIndex, authID, label, name, model string
+	attempts                              int
+	started                               time.Time
+	last                                  retryOutcome
+	pooled                                bool
+	info                                  turnStateInfo
+}
+
+var retryRecordSeq struct {
+	sync.Mutex
+	n int64
+}
+
+// recordRetrySeries writes one row for the series, so a run of retries reads
+// as a single event in the history rather than as several requests.
+func recordRetrySeries(s retrySeries) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	writer := state.writer
+	if state.quiescing || writer == nil || s.attempts == 0 {
+		return
+	}
+	retryRecordSeq.Lock()
+	retryRecordSeq.n++
+	id := fmt.Sprintf("retry-%d-%d#1", s.started.UnixNano(), retryRecordSeq.n)
+	retryRecordSeq.Unlock()
+
+	outcome := "failed"
+	if s.pooled {
+		outcome = "succeeded"
+	}
+	record := historyRecord{
+		ID: id, RequestID: id, Attempt: 1,
+		AuthIndex: s.authIndex, AuthID: s.authID,
+		CredentialName: s.name, CredentialLabel: s.label,
+		Model: s.model, RequestedModel: s.model,
+		SourceFormat: "plugin_retry", Stream: true,
+		StartedAt: s.started, CompletedAt: time.Now().UTC(),
+		StatusCode: s.last.statusCode, Outcome: outcome,
+		Error: s.last.err, Origin: originRetry,
+		RetryAttempts: s.attempts,
+	}
+	if s.info.Digest != "" {
+		info := s.info
+		record.TurnStateMinted = &info
+	}
+	writer.Enqueue(record)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// retryEnabledFor reports the attempt count for a credential whose rule asks
+// for retries; zero means the feature is off for it.
+func retryEnabledForLocked(authIndex string) int {
+	rule, ok := state.rules[authIndex]
+	if !ok || !rule.RejectDegradedResponse || !rule.RetryOnDegraded {
+		return 0
+	}
+	if strings.TrimSpace(authIndex) == "" {
+		return 0
+	}
+	return retryAttemptCount(rule)
+}

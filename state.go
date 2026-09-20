@@ -11,6 +11,9 @@ import (
 
 type pluginState struct {
 	mu          sync.Mutex
+	retryStop   chan struct{}
+	retryWG     sync.WaitGroup
+	quiescing   bool
 	store       persistence
 	writer      *queuedPersistence
 	dataPath    string
@@ -43,6 +46,14 @@ func configurePlugin(raw []byte) error {
 		cfg.DataPath = defaultDataPath
 	}
 	state.mu.Lock()
+	changing := state.store != nil && state.dataPath != cfg.DataPath
+	state.mu.Unlock()
+	if changing {
+		if err := quiescePlugin(); err != nil {
+			return err
+		}
+	}
+	state.mu.Lock()
 	defer state.mu.Unlock()
 	if state.store != nil && state.dataPath == cfg.DataPath {
 		return nil
@@ -67,6 +78,8 @@ func configurePlugin(raw []byte) error {
 		return fmt.Errorf("load turn states: %w", err)
 	}
 	state.store = backend
+	state.quiescing = false
+	state.retryStop = make(chan struct{})
 	state.writer = newQueuedPersistence(backend)
 	state.dataPath = cfg.DataPath
 	state.rules = make(map[string]headerRule, len(rules))
@@ -116,6 +129,14 @@ func parsePluginConfig(raw []byte) pluginConfig {
 // lock. The host can re-register this instance after a failed replacement, in
 // which case configurePlugin opens the store again.
 func quiescePlugin() error {
+	state.mu.Lock()
+	state.quiescing = true
+	if state.retryStop != nil {
+		close(state.retryStop)
+		state.retryStop = nil
+	}
+	state.mu.Unlock()
+	state.retryWG.Wait()
 	state.mu.Lock()
 	writer := state.writer
 	store := state.store
@@ -381,13 +402,20 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 	if attempt.injectedDigest != "" && attempt.injectedExpired && info.NonDegraded != nil && !*info.NonDegraded {
 		attempt.TurnStateInvalidated = invalidateTurnStateLocked(attempt.AuthIndex, sentModel(attempt.Model, attempt.RequestedModel), attempt.injectedDigest)
 	}
-	// Withholding is part of the rule, like the guard: it needs the rule
-	// enabled as well as its own flag. The decision is made here, on the
-	// headers, so both the non-stream body and every stream chunk see it.
-	if rule, ok := state.rules[attempt.AuthIndex]; ok && rule.Enabled && rule.RejectDegradedResponse &&
-		info.NonDegraded != nil && !*info.NonDegraded {
+	// Response rejection has its own switch and model scope, independent of
+	// request rewriting. Both streaming and non-streaming use this decision.
+	degraded := info.NonDegraded != nil && !*info.NonDegraded
+	if rule, ok := state.rules[attempt.AuthIndex]; ok && degraded && rejectsDegradedModel(rule, sentModel(attempt.Model, attempt.RequestedModel)) {
 		attempt.rejecting = true
 		attempt.TurnStateRejected = true
+	}
+	// The retry answers the same condition the interception does, but it runs
+	// off the response path and reports as its own history row.
+	if attempt.rejecting && !attempt.retryScheduled {
+		if attempts := retryEnabledForLocked(attempt.AuthIndex); attempts > 0 {
+			attempt.retryScheduled = true
+			scheduleDegradedRetry(attempt, attempts)
+		}
 	}
 }
 func observeStreamHeaders(req streamChunkInterceptRequest) streamChunkInterceptResponse {

@@ -91,13 +91,15 @@ response（header-init / response.intercept_after）
 
 ```text
 response.intercept_after / stream header-init
- -> 铸造判定为疑似降智 且 rule.Enabled && rule.RejectDegradedResponse
+ -> 判定为疑似降智 且 rule.RejectDegradedResponse 且实际发出模型命中范围
     -> attempt.rejecting = true，记 turn_state_rejected
     -> 非流式：Body 换成 {"error":{"type":"degraded_turn_state",...}}，加 X-Codex-Header-Rewrite 头
     -> 流式：header-init 只加标记头；第 1 个数据 chunk 换成 `event: error` 帧；之后每个 chunk DropChunk
 ```
 
 ABI 只允许替换 Headers / Body 与按 chunk 丢弃（`DropChunk`），不能改状态码、不能中止连接，也不会触发宿主的凭证故障转移；上游仍会把响应流完。
+
+范围由 `reject_degraded_models` 指定：空列表匹配全部，非空与 `sentModel(Model, RequestedModel)` 精确比较。响应拦截不依赖请求改写开关。只有被拦截且启用 `retry_on_degraded` 的请求才启动后台最小请求；`retry_attempts` 是最大次数，拿到合格 state 后提前结束。
 
 ## 测试请求
 

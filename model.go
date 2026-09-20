@@ -31,8 +31,15 @@ type headerRule struct {
 	// error and, on a stream, every later chunk is dropped. The status code
 	// cannot be changed from a plugin, so the client sees the error inside a
 	// 200 -- as an `error` event on a stream, as an error object otherwise.
-	RejectDegradedResponse bool      `json:"reject_degraded_response"`
-	UpdatedAt              time.Time `json:"updated_at"`
+	RejectDegradedResponse bool `json:"reject_degraded_response"`
+	// Empty matches all models; otherwise match the exact after-auth model ID.
+	RejectDegradedModels []string `json:"reject_degraded_models,omitempty"`
+	// RetryOnDegraded asks for one minimal request under the same credential
+	// and model after a degraded state is seen, to obtain a non-degraded one
+	// for the pool. RetryAttempts caps how many are made for one response.
+	RetryOnDegraded bool      `json:"retry_on_degraded"`
+	RetryAttempts   int       `json:"retry_attempts,omitempty"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type credentialSnapshot struct {
@@ -102,13 +109,17 @@ type historyRecord struct {
 	TurnStateInvalidated bool `json:"turn_state_invalidated,omitempty"`
 	// TurnStateRejected reports that the response was withheld from the client
 	// because its minted state classified as degraded.
-	TurnStateRejected  bool   `json:"turn_state_rejected,omitempty"`
+	TurnStateRejected bool `json:"turn_state_rejected,omitempty"`
+	// RetryAttempts is how many retries one degraded response triggered; the
+	// whole series is a single record, not one per attempt.
+	RetryAttempts      int    `json:"retry_attempts,omitempty"`
 	TurnStateSessionID string `json:"turn_state_session_id,omitempty"`
 }
 
 const (
-	originLive = "live"
-	originTest = "test"
+	originLive  = "live"
+	originTest  = "test"
+	originRetry = "retry"
 )
 
 type pendingAttempt struct {
@@ -125,6 +136,9 @@ type pendingAttempt struct {
 	// are dropped.
 	rejecting      bool
 	rejectedChunks int
+	// A streamed response calls the mint path on its header chunk and again
+	// per chunk; the retry series must be started once.
+	retryScheduled bool
 }
 
 type pendingRequest struct {
