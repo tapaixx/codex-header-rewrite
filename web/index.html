@@ -1373,7 +1373,6 @@ body[data-workspace="rules"] .overview-strip{display:none!important}
   body[data-workspace="rules"] #ruleStrategyPanel{grid-column:1!important;grid-row:auto!important}
   #ruleStrategyPanel{order:4}
   #diffPanel{position:static!important;order:2}
-  #ruleSummaryPanel{order:3}
   .overview-strip{display:none!important}
   .rule-table-head{display:none!important}
   .hrow{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 34px!important}
@@ -1601,6 +1600,32 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
   .hint::after{width:44px;height:44px}
 }
 
+/* The summary reads as the state of the thing being edited, so it belongs
+   above the editor rather than tucked under it, where it was below the fold
+   on most screens. Same for the state pool: it is the standing answer to
+   "what can be reused right now", while the history below it is the log.
+   Source order was moved to match, so tab order and reading order agree with
+   what is on screen. */
+@media (min-width:821px){
+  body[data-workspace="rules"] #ruleSummaryPanel{grid-column:1/-1!important;grid-row:1!important}
+  body[data-workspace="rules"] #rulePanel{grid-column:1!important;grid-row:2!important}
+  body[data-workspace="rules"] #diffPanel{grid-column:2!important;grid-row:2!important}
+  body[data-workspace="rules"] #ruleStrategyPanel{grid-column:1!important;grid-row:3!important}
+  /* Fixed column counts, not auto-fit: eight tiles into an auto-fit track list
+     lands on seven columns at common widths and strands the eighth alone on a
+     second row. Four-by-two, then one row of eight once there is room. */
+  body[data-workspace="rules"] .summary-grid{
+    grid-template-columns:repeat(4,minmax(0,1fr))!important
+  }
+  body[data-workspace="history"] #turnStatePanel{grid-row:1!important;margin-top:0!important}
+  body[data-workspace="history"] #historyPanel{grid-row:2!important}
+}
+@media (min-width:1180px){
+  body[data-workspace="rules"] .summary-grid{grid-template-columns:repeat(8,minmax(0,1fr))!important}
+  /* A timestamp in a one-eighth column would ellipsise away its own time. */
+  body[data-workspace="rules"] .summary-tile strong.summary-small{white-space:normal;line-height:1.35}
+}
+
 </style>
 </head>
 <body data-workspace="rules">
@@ -1669,6 +1694,24 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
 <div class="shell">
   <main>
    <div class="col" id="colWork">
+    <section class="panel" id="ruleSummaryPanel">
+      <div class="panel-head">
+        <div class="panel-title"><h3>规则摘要</h3><div class="panel-caption">当前凭证、规则数量与运行状态</div></div>
+      </div>
+      <div class="panel-body">
+        <div class="summary-grid">
+          <div class="summary-tile"><span class="summary-icon ok">✓</span><small>规则已启用</small><strong id="summaryRuleStatus">-</strong></div>
+          <div class="summary-tile"><span class="summary-icon">♙</span><small>当前凭证</small><strong id="summaryCredential">-</strong></div>
+          <div class="summary-tile"><span class="summary-icon">☷</span><small>设置 / 覆盖</small><strong id="summarySetCount">0 条</strong></div>
+          <div class="summary-tile"><span class="summary-icon bad">□</span><small>移除 Header</small><strong id="summaryRemoveCount">0 条</strong></div>
+          <div class="summary-tile"><span class="summary-icon warn">!</span><small>State 守卫</small><strong id="summaryGuard">关闭</strong></div>
+          <div class="summary-tile"><span class="summary-icon">◇</span><small>可用模型</small><strong id="summaryModels">-</strong></div>
+          <div class="summary-tile"><span class="summary-icon">◷</span><small>最后更新时间</small><strong class="summary-small" id="summaryUpdated">-</strong></div>
+          <div class="summary-tile"><span class="summary-icon">●</span><small>规则状态</small><strong id="summaryHealth">未加载</strong></div>
+        </div>
+      </div>
+    </section>
+
     <section class="panel" id="rulePanel">
       <div class="panel-head">
         <div class="panel-title">
@@ -1845,21 +1888,13 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
       </div>
     </section>
 
-    <section class="panel" id="ruleSummaryPanel">
-      <div class="panel-head">
-        <div class="panel-title"><h3>规则摘要</h3><div class="panel-caption">当前凭证、规则数量与运行状态</div></div>
+    <section class="panel" id="turnStatePanel">
+      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h3>State 池</h3><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只有不降智 state 才入池：Team 套餐 ≤ 332 字符，个人套餐（非 Team）≤ 292 字符；凭证没有套餐声明时不判定，也不入池。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">1 小时</span>只标记过期。</span></span></span></div></div>
+        <div class="spacer"></div><span class="muted" id="turnStateMeta"></span>
+        <button class="quiet icon" id="turnStateRefresh" title="刷新" aria-label="刷新回合状态"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
       <div class="panel-body">
-        <div class="summary-grid">
-          <div class="summary-tile"><span class="summary-icon ok">✓</span><small>规则已启用</small><strong id="summaryRuleStatus">-</strong></div>
-          <div class="summary-tile"><span class="summary-icon">♙</span><small>当前凭证</small><strong id="summaryCredential">-</strong></div>
-          <div class="summary-tile"><span class="summary-icon">☷</span><small>设置 / 覆盖</small><strong id="summarySetCount">0 条</strong></div>
-          <div class="summary-tile"><span class="summary-icon bad">□</span><small>移除 Header</small><strong id="summaryRemoveCount">0 条</strong></div>
-          <div class="summary-tile"><span class="summary-icon warn">!</span><small>State 守卫</small><strong id="summaryGuard">关闭</strong></div>
-          <div class="summary-tile"><span class="summary-icon">◇</span><small>可用模型</small><strong id="summaryModels">-</strong></div>
-          <div class="summary-tile"><span class="summary-icon">◷</span><small>最后更新时间</small><strong class="summary-small" id="summaryUpdated">-</strong></div>
-          <div class="summary-tile"><span class="summary-icon">●</span><small>规则状态</small><strong id="summaryHealth">未加载</strong></div>
-        </div>
+        <div id="turnStateBody" class="state-pool"></div>
       </div>
     </section>
 
@@ -1877,15 +1912,6 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
           <tbody id="historyBody"></tbody>
         </table>
         <div class="pager" id="pager"></div>
-      </div>
-    </section>
-    <section class="panel" id="turnStatePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h3>State 池</h3><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只有不降智 state 才入池：Team 套餐 ≤ 332 字符，个人套餐（非 Team）≤ 292 字符；凭证没有套餐声明时不判定，也不入池。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">1 小时</span>只标记过期。</span></span></span></div></div>
-        <div class="spacer"></div><span class="muted" id="turnStateMeta"></span>
-        <button class="quiet icon" id="turnStateRefresh" title="刷新" aria-label="刷新回合状态"><svg class="i"><use href="#i-refresh"/></svg></button>
-      </div>
-      <div class="panel-body">
-        <div id="turnStateBody" class="state-pool"></div>
       </div>
     </section>
 
