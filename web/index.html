@@ -1261,24 +1261,19 @@ body[data-workspace="rules"] .shell main{grid-template-columns:minmax(620px,1fr)
 .danger-soft{color:var(--accent)!important;background:#fff!important;border-color:#9fc5ff!important}
 .rule-count{height:20px!important;min-width:22px!important;font-size:10px!important}
 .rule-count-danger{background:var(--gone-weak)!important;color:var(--gone)!important;border-color:#ffd0d3!important}
-.guard-layout{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 14px;align-items:start}
 .field-label{font-size:11px;font-weight:600;color:var(--text-soft)}
 /* One line says what the switch is doing right now; the comparison and the
    caveats live behind the marker at the end of it. */
-.guard-now{
-  display:flex;align-items:baseline;flex-wrap:wrap;gap:7px;margin:0;
-  color:var(--text-soft);font-size:11.5px;line-height:1.6
+/* One switch does not need a collapsible section. The guard is a single row
+   shaped like the other blocks' summaries: icon, title with the live effect
+   underneath, the hint, the switch. */
+.rule-block-flat{
+  display:grid;grid-template-columns:27px minmax(0,1fr) auto auto;align-items:center;
+  gap:8px;min-height:52px;padding:7px 10px
 }
-.guard-state-key{
-  font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:999px;
-  background:var(--sunk);border:1px solid var(--line);color:var(--text-soft);white-space:nowrap;
-  transition:background .18s var(--ease),color .18s var(--ease),border-color .18s var(--ease)
-}
-.rule-block-guard[data-guard="on"] .guard-state-key{
-  background:var(--accent-weak);border-color:transparent;color:var(--accent)
-}
+.rule-block-flat .rule-block-copy small{transition:color .18s var(--ease)}
+.rule-block-guard[data-guard="on"] .rule-block-copy small{color:var(--accent)}
 .guard-switch{white-space:nowrap;align-self:center}
-#guardBadge{font-size:10px!important}
 
 #ruleStrategyPanel{grid-column:1!important;grid-row:2!important}
 #ruleStrategyPanel .panel-head{display:none}
@@ -1381,7 +1376,6 @@ body[data-workspace="rules"] .overview-strip{display:none!important}
   .hrow .hdesc{display:none}
   .hrow button{grid-column:3!important}
   .hrow.single{grid-template-columns:minmax(0,1fr) 34px!important}.hrow.single button{grid-column:2!important}
-  .guard-layout{grid-template-columns:1fr}
   .guard-switch{justify-self:start}
   .strategy-grid{grid-template-columns:1fr!important}
   .strategy-item{min-height:54px!important}
@@ -1744,6 +1738,14 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
   .drawer{width:100vw;border-left:0}
 }
 
+/* The key chip was the toolbar's shock absorber: no nowrap and default
+   flex-shrink, so when the row ran out of room its eight characters folded
+   into three lines inside a 32px pill and were clipped. It holds its width
+   now; the toolbar wraps a little earlier instead of squeezing anything. */
+#keyChip{white-space:nowrap;flex:none}
+#keyChipText{display:inline-block;white-space:nowrap}
+@media (max-width:1080px){.topbar-main{flex-wrap:wrap}}
+
 /* A status strip should not carry a full panel head: stacked title and caption
    took as much height as the tiles they introduce. One line, and tighter. */
 #ruleSummaryPanel .panel-head{min-height:0!important;padding:8px 12px!important}
@@ -1928,17 +1930,12 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
             </div>
           </details>
 
-          <details class="rule-block rule-block-guard" id="guardBlock" data-guard="off" open>
-            <summary>
-              <span class="rule-block-icon"><svg class="i"><use href="#i-alert"/></svg></span>
-              <span class="rule-block-copy"><b>X-Codex-Turn-State 守卫</b><small>摘掉确定用不了的回带 state，避免上游报 401</small></span>
-              <span class="tag flat" id="guardBadge">已关闭</span>
-            </summary>
-            <div class="rule-block-body guard-layout">
-              <div class="guard-now"><span class="guard-state-key" id="guardNowKey">关闭</span><span id="guardNowText"></span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="守卫开关的详细说明">!</button><span class="hint-text"><span class="hint-k">先后顺序</span><span class="hint-v">插件先查 State 池：有「本凭证 + 本模型」的合格 state 就直接<b>覆盖</b>回带值，不经守卫；池子拿不出东西时才轮到守卫。</span><span class="hint-k">开启</span><span class="hint-v">确认来自<b>其他凭证</b>或<b>其他模型</b>的回带 state 会被摘掉，让上游重新签发。</span><span class="hint-k">关闭</span><span class="hint-v">原样透传，只记录、不修改。</span><span class="hint-p">只是<b>过期</b>或<b>来源未知</b>的回带不摘。守卫属于这条规则：「启用改写」关着时不生效。</span><span class="hint-p">跨号回带来自 CPA 默认按请求轮换凭证（round-robin，<code>session-affinity</code> 默认关闭），详见 README。</span></span></span></div>
-              <label class="switch guard-switch"><input type="checkbox" id="ruleStripTurnState"><span>启用守卫</span></label>
-            </div>
-          </details>
+          <div class="rule-block rule-block-guard rule-block-flat" id="guardBlock" data-guard="off">
+            <span class="rule-block-icon"><svg class="i"><use href="#i-alert"/></svg></span>
+            <span class="rule-block-copy"><b>X-Codex-Turn-State 守卫</b><small id="guardNowText"></small></span>
+            <span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="守卫开关的详细说明">!</button><span class="hint-text"><span class="hint-k">先后顺序</span><span class="hint-v">插件先查 State 池：有「本凭证 + 本模型」的合格 state 就直接<b>覆盖</b>回带值，不经守卫；池子拿不出东西时才轮到守卫。</span><span class="hint-k">开启</span><span class="hint-v">确认来自<b>其他凭证</b>或<b>其他模型</b>的回带 state 会被摘掉，让上游重新签发。</span><span class="hint-k">关闭</span><span class="hint-v">原样透传，只记录、不修改。</span><span class="hint-p">只是<b>过期</b>或<b>来源未知</b>的回带不摘。守卫属于这条规则：「启用改写」关着时不生效。</span><span class="hint-p">跨号回带来自 CPA 默认按请求轮换凭证（round-robin，<code>session-affinity</code> 默认关闭），详见 README。</span></span></span>
+            <label class="switch guard-switch"><input type="checkbox" id="ruleStripTurnState"><span>启用守卫</span></label>
+          </div>
         </div>
 
         <div class="notice warn" id="ruleWarn" hidden style="margin-top:10px"><svg class="i"><use href="#i-alert"/></svg><span id="ruleWarnText"></span></div>
@@ -2328,13 +2325,10 @@ function renderRulePreview() {
   $("diffExtra").innerHTML = "";
   renderRuleSummary();
   const guardOn = !!$("ruleStripTurnState")?.checked;
-  $("guardBadge").textContent = !enabled ? "未生效" : (guardOn ? "已开启" : "已关闭");
-  $("guardBadge").className = "tag " + (!enabled ? "flat" : (guardOn ? "ok" : "flat"));
   if ($("guardBlock")) $("guardBlock").dataset.guard = enabled && guardOn ? "on" : "off";
   // The guard is a field of the rule, so the rule's own switch outranks it.
-  // Showing "开启" while the rule is off would claim an effect it cannot have.
+  // Showing an effect while the rule is off would claim one it cannot have.
   if ($("ruleOffNotice")) $("ruleOffNotice").hidden = enabled;
-  if ($("guardNowKey")) $("guardNowKey").textContent = !enabled ? "不生效" : (guardOn ? "开启" : "关闭");
   if ($("guardNowText")) {
     $("guardNowText").textContent = !enabled
       ? "规则未启用，守卫不会摘除任何回带 state"
