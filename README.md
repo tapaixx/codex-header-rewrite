@@ -26,11 +26,33 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 
 ## 安装
 
-两种方式，产物都来自同一个 tag Release。
+### 方式一：直接把本仓库作为插件源
 
-**插件商店**：CLIProxyAPI 从
+仓库根目录的 [`registry.json`](registry.json) 使用 CLIProxyAPI 插件源标准格式，因此不需要先把条目提交到公共插件商店。
+在 CPA 配置里直接添加本仓库的 registry：
+
+```yaml
+plugins:
+  enabled: true
+  dir: "plugins"
+  store-sources:
+    - "https://raw.githubusercontent.com/tapaixx/codex-header-rewrite/main/registry.json"
+  configs:
+    codex-header-rewrite:
+      enabled: true
+      priority: 100
+      data_path: "plugins/data/codex-header-rewrite.db"
+```
+
+刷新插件商店后即可从这个自定义源看到 **Codex Header Rewrite**。修改 `registry.json` 本身不需要重新发版。
+
+> 安装器下载的 Linux 二进制仍来自本仓库的 latest GitHub Release；`registry.json` 负责“发现插件”，不会从 `main` 源码现场编译动态库。
+
+### 方式二：公共插件商店
+
+CLIProxyAPI 从
 [CLIProxyAPI-Plugins-Store](https://github.com/tapaixx/CLIProxyAPI-Plugins-Store)
-的 `registry.json` 读到本仓库，再取最新 Release 里与主机平台匹配的 zip：
+的 `registry.json` 读到本仓库，再取 latest Release 里与主机平台匹配的 zip：
 
 ```text
 codex-header-rewrite_<version>_linux_amd64.zip
@@ -40,7 +62,9 @@ checksums.txt
 
 每个 zip 根目录只有一个 `codex-header-rewrite.so`，由宿主安装器解压并校验。
 
-**手动安装**：下载对应架构的 `.so`，**必须重命名**后放入插件目录。文件名不是随便起的
+### 方式三：手动安装
+
+下载对应架构的 `.so`，**必须重命名**后放入插件目录。文件名不是随便起的
 —— CLIProxyAPI 直接从文件名解析插件 ID 和已安装版本：
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
