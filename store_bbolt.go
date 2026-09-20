@@ -102,6 +102,11 @@ func (p *boltPersistence) SaveTurnState(record persistedTurnState) error {
 	return p.db.Update(func(tx *bolt.Tx) error { return tx.Bucket(turnStatesBucket).Put(key, raw) })
 }
 
+func (p *boltPersistence) DeleteTurnState(authIndex, model string) error {
+	key := []byte(turnStateLatestKey(authIndex, model))
+	return p.db.Update(func(tx *bolt.Tx) error { return tx.Bucket(turnStatesBucket).Delete(key) })
+}
+
 func (p *boltPersistence) ListTurnStates() ([]persistedTurnState, error) {
 	out := []persistedTurnState{}
 	err := p.db.View(func(tx *bolt.Tx) error {

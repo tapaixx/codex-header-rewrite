@@ -15,6 +15,7 @@ type persistence interface {
 	DeleteCredentialData(authIndex string) error
 	KnownAuthIndexes() ([]string, error)
 	SaveTurnState(record persistedTurnState) error
+	DeleteTurnState(authIndex, model string) error
 	ListTurnStates() ([]persistedTurnState, error)
 	Flush() error
 }

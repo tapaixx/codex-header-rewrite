@@ -2773,6 +2773,7 @@ function turnStateTags(record) {
   }
   if (record.turn_state_stripped) tags.push('<span class="tag warn">已摘除</span>');
   if (record.turn_state_injected) tags.push('<span class="tag ok" title="本次请求的 X-Codex-Turn-State 由插件从不降智池注入">已注入</span>');
+  if (record.turn_state_invalidated) tags.push('<span class="tag bad" title="注入的是已过期的池 state，上游铸回的仍是降智 state；这条 state 已从池中移除，不会再注入">注入后仍降智 · 已失效</span>');
   if (record.turn_state_minted?.pooled) tags.push('<span class="tag ok">不降智 · 已入池</span>');
   else if (record.turn_state_minted?.non_degraded === false) tags.push('<span class="tag bad">疑似降智 · 未入池</span>');
   else if (record.turn_state_minted) tags.push('<span class="tag warn">套餐未知 · 未入池</span>');
@@ -2871,7 +2872,9 @@ function turnStateDetail(record) {
     <div class="history-detail-label"><span>X-Codex-Turn-State</span><span>${turnStateTags(record)}</span></div>
     <div class="ts-pair">
       ${injectedBlob
-        ? turnStateRows("发往上游", null, ' <span class="tag ok">插件从池注入</span>', injectedBlob, record.model || "")
+        ? turnStateRows("发往上游", null, record.turn_state_invalidated
+            ? ' <span class="tag bad">插件注入 · 已过期且仍降智，已失效</span>'
+            : ' <span class="tag ok">插件从池注入</span>', injectedBlob, record.model || "")
         : (turnStateRows("客户端回带", record.turn_state_echo, echoExtra, echoBlob, record.turn_state_origin_model || "")
           || absentCard("客户端回带", "本次请求没有携带 X-Codex-Turn-State"))}
       ${turnStateRows("上游返回", record.turn_state_minted, "", mintedBlob, record.model || "")

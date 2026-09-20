@@ -587,6 +587,118 @@ func TestRuleRemovalOfTheStateHeaderIsNotRefilled(t *testing.T) {
 }
 
 // The guard and the pool work together: an unusable echo is replaced rather
+// pooledAt is poolFixture with the mint time chosen by the test, so a state can
+// be placed inside or past the reuse window.
+func pooledAt(t *testing.T, issued time.Time) string {
+	t.Helper()
+	blob := fernetToken(0x80, issued, 1)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true}
+	ok := noteTurnStateMintLocked(blob, "idx-a", "A", "gpt-5.6-luna", "team")
+	state.mu.Unlock()
+	if !ok {
+		t.Fatal("fixture state did not enter the pool")
+	}
+	return blob
+}
+
+func pooledFor(t *testing.T) (turnStateOrigin, bool) {
+	t.Helper()
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	origin, ok := state.turnStateLatest[turnStateLatestKey("idx-a", "gpt-5.6-luna")]
+	return origin, ok
+}
+
+// lastAttempt drains the history writer, the way the persistence tests do,
+// then reads the newest record back from the store.
+func lastAttempt(t *testing.T) historyRecord {
+	t.Helper()
+	state.mu.Lock()
+	writer := state.writer
+	state.writer = nil
+	state.mu.Unlock()
+	if writer != nil {
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := state.store.History("idx-a", 1)
+	if err != nil || len(page.Items) == 0 {
+		t.Fatalf("history: %v items=%d", err, len(page.Items))
+	}
+	return page.Items[0]
+}
+
+// An expired pooled state that went out and came back degraded has stopped
+// carrying the chain. It leaves the pool -- memory and store -- and the
+// attempt says so, so the next request is not handed the same dead state.
+func TestExpiredInjectedStateIsInvalidatedWhenTheResponseIsDegraded(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	stale := pooledAt(t, time.Now().Add(-2*time.Hour))
+	response := injectTestRequest(t, "stale", nil)
+	if response.Headers.Get(turnStateHeader) != stale {
+		t.Fatal("the expired pooled state should still have been injected")
+	}
+	degraded := fernetToken(0x80, time.Now(), 40) // far past the team limit
+	observeResponse(responseInterceptRequest{RequestID: "stale", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {degraded}}})
+	completeRequest(requestCompletion{RequestID: "stale", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+
+	if _, ok := pooledFor(t); ok {
+		t.Fatal("the invalidated state is still in the pool")
+	}
+	persisted, err := state.store.ListTurnStates()
+	if err != nil || len(persisted) != 0 {
+		t.Fatalf("the invalidated state is still persisted: %v %#v", err, persisted)
+	}
+	if got := lastAttempt(t); !got.TurnStateInvalidated || !got.TurnStateInjected {
+		t.Fatalf("attempt should record injection and invalidation: %#v", got)
+	}
+	if next := injectTestRequest(t, "after", nil); next.Headers.Get(turnStateHeader) != "" {
+		t.Fatal("a dead state was injected again")
+	}
+}
+
+// Inside the window the same outcome proves nothing about the pooled state:
+// one degraded turn can have other causes, and the fresh state stays.
+func TestFreshInjectedStateSurvivesADegradedResponse(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	fresh := pooledAt(t, time.Now().Add(-5*time.Minute))
+	injectTestRequest(t, "fresh", nil)
+	observeResponse(responseInterceptRequest{RequestID: "fresh", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {fernetToken(0x80, time.Now(), 40)}}})
+	completeRequest(requestCompletion{RequestID: "fresh", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+	if origin, ok := pooledFor(t); !ok || origin.blob != fresh {
+		t.Fatal("a state inside the window must not be invalidated by one degraded turn")
+	}
+	if got := lastAttempt(t); got.TurnStateInvalidated {
+		t.Fatalf("attempt wrongly flagged: %#v", got)
+	}
+}
+
+// An expired state that came back non-degraded is simply superseded by the new
+// mint, which is the ordinary path; nothing is invalidated.
+func TestExpiredInjectedStateIsSupersededByAGoodResponse(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	pooledAt(t, time.Now().Add(-2*time.Hour))
+	injectTestRequest(t, "renew", nil)
+	good := fernetToken(0x80, time.Now(), 1)
+	observeResponse(responseInterceptRequest{RequestID: "renew", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {good}}})
+	completeRequest(requestCompletion{RequestID: "renew", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+	if origin, ok := pooledFor(t); !ok || origin.blob != good {
+		t.Fatal("the fresh mint should have replaced the expired state")
+	}
+	if got := lastAttempt(t); got.TurnStateInvalidated {
+		t.Fatalf("attempt wrongly flagged: %#v", got)
+	}
+}
+
 // A pooled state protects the outgoing credential on its own. The guard decides
 // whether an unusable echo is dropped; it has no say in whether a usable one is
 // substituted, so a credential whose pool is warm never forwards another

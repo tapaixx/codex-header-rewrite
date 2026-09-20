@@ -86,6 +86,12 @@ func (p *localPersistence) SaveTurnState(r persistedTurnState) error {
 	p.state.TurnStates[turnStateLatestKey(r.AuthIndex, r.Model)] = r
 	return p.save()
 }
+func (p *localPersistence) DeleteTurnState(authIndex, model string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.state.TurnStates, turnStateLatestKey(authIndex, model))
+	return p.save()
+}
 func (p *localPersistence) ListTurnStates() ([]persistedTurnState, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

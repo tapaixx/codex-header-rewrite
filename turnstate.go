@@ -473,6 +473,26 @@ func recentTurnStatesLocked() []turnStateOrigin {
 
 // turnStateForInjectionLocked returns the qualified state scoped to the exact
 // selected credential and after-auth model. Callers hold state.mu.
+// invalidateTurnStateLocked drops the pooled state for a credential and model
+// while it is still the one identified by digest. A newer state pooled in the
+// meantime is left alone: the evidence was about the injected one, not it.
+// Provenance is kept, since the blob may still be echoed and must still be
+// attributable.
+func invalidateTurnStateLocked(authIndex, model, digest string) bool {
+	key := turnStateLatestKey(authIndex, strings.TrimSpace(model))
+	current, ok := state.turnStateLatest[key]
+	if !ok || digest == "" || current.digest != digest {
+		return false
+	}
+	if state.store != nil {
+		if err := state.store.DeleteTurnState(authIndex, strings.TrimSpace(model)); err != nil {
+			return false
+		}
+	}
+	delete(state.turnStateLatest, key)
+	return true
+}
+
 func turnStateForInjectionLocked(authIndex, model, plan string) (turnStateOrigin, bool) {
 	origin, ok := state.turnStateLatest[turnStateLatestKey(authIndex, model)]
 	if !ok || origin.blob == "" {

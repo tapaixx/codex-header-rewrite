@@ -232,8 +232,10 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 	// outranks the pool -- a pinned value stays pinned, and a removal stays
 	// removed rather than being quietly refilled.
 	injected := false
+	var injectedFrom turnStateOrigin
 	if hasRule && rule.Enabled && !ruleMentionsHeader(rule, turnStateHeader) {
 		if pooled, ok := turnStateForInjectionLocked(authIndex, sentModel(req.Model, req.RequestedModel), cred.PlanType); ok {
+			injectedFrom = pooled
 			if updates == nil {
 				updates = make(http.Header)
 			}
@@ -265,6 +267,10 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 		}
 	}
 	pr.current.TurnStateInjected = injected
+	if injected {
+		pr.current.injectedDigest = injectedFrom.digest
+		pr.current.injectedExpired = time.Since(injectedFrom.mintedAt) > turnStateReuseWindow
+	}
 	pr.current.TurnStateSessionID = clientSessionID(req.Headers)
 	state.mu.Unlock()
 	return requestInterceptResponse{Headers: updates, ClearHeaders: clears}, nil
@@ -325,6 +331,14 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 	}
 	info.Pooled = noteTurnStateMintLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel), attempt.CredentialPlan)
 	attempt.TurnStateMinted = &info
+	// A pooled state that was already past the reuse window went out on this
+	// request and the upstream still minted a degraded state: the old state has
+	// stopped carrying the chain, and left in the pool it would go out again on
+	// the next request. A state within the window that produced the same result
+	// is left alone -- one degraded turn is not proof against a fresh state.
+	if attempt.injectedDigest != "" && attempt.injectedExpired && info.NonDegraded != nil && !*info.NonDegraded {
+		attempt.TurnStateInvalidated = invalidateTurnStateLocked(attempt.AuthIndex, sentModel(attempt.Model, attempt.RequestedModel), attempt.injectedDigest)
+	}
 }
 func observeStreamHeaders(req streamChunkInterceptRequest) {
 	state.mu.Lock()

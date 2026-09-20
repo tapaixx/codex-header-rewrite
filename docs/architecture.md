@@ -76,6 +76,15 @@ request.intercept_after
        -> 否则不注入
 ```
 
+```text
+response（header-init / response.intercept_after）
+ -> 铸造判定为疑似降智
+    -> 本次注入的是已过期的池 state（注入时 mintedAt 距今 > 复用窗口）
+       -> 池里该 (凭证 + 模型) 仍是同一 digest -> 删除池项（内存 + bbolt），attempt 记 turn_state_invalidated
+       -> 池里已是更新的 state -> 不动
+    -> 注入的 state 尚在窗口内 -> 不动（单次降智不足为证）
+```
+
 注入与守卫摘除共享同一个 Header：守卫刚把不可复用的回带值排入 ClearHeaders 时，注入会撤回那条移除再写入新值，避免一次响应里同时下发"设置"和"清除"同一 Header 的矛盾指令。命中注入会在 attempt 上记 `turn_state_injected`。
 
 ## 测试请求

@@ -89,8 +89,12 @@ type historyRecord struct {
 	TurnStateStripped     bool           `json:"turn_state_stripped,omitempty"`
 	// TurnStateInjected reports that the plugin supplied the header from the
 	// pool rather than passing through whatever the client sent.
-	TurnStateInjected  bool   `json:"turn_state_injected,omitempty"`
-	TurnStateSessionID string `json:"turn_state_session_id,omitempty"`
+	TurnStateInjected bool `json:"turn_state_injected,omitempty"`
+	// TurnStateInvalidated reports that the injected state was past the reuse
+	// window and the upstream still minted a degraded state, so the pooled
+	// entry was dropped rather than injected again.
+	TurnStateInvalidated bool   `json:"turn_state_invalidated,omitempty"`
+	TurnStateSessionID   string `json:"turn_state_session_id,omitempty"`
 }
 
 const (
@@ -102,6 +106,10 @@ type pendingAttempt struct {
 	historyRecord
 	persisted bool
 	models    modelObserver
+	// Which pooled state went out on this request, and whether it was already
+	// past the reuse window when it did. Read again when the response arrives.
+	injectedDigest  string
+	injectedExpired bool
 }
 
 type pendingRequest struct {
