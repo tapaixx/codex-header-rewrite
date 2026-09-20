@@ -1443,7 +1443,10 @@ body[data-workspace="rules"] .overview-strip{display:none!important}
 body[data-workspace="history"] #historyPanel{grid-row:1}
 body[data-workspace="history"] #turnStatePanel{grid-row:2;margin-top:12px}
 body[data-workspace="history"] #turnStatePanel .state-pool{display:block}
-.pool-table{width:100%}
+/* The pool reuses the history table's styling but not its fixed layout: the
+   base rule fixes every .history-table, which cut the pool into six equal
+   columns and clipped the mint time. */
+.pool-table{width:100%;table-layout:auto}
 .pool-table th{text-align:left;font-size:10.5px;color:var(--text-mute);font-weight:600;padding:5px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
 .pool-table td{padding:5px 9px;border-top:1px solid var(--line);font-size:12px;vertical-align:middle;white-space:nowrap}
 .pool-table tbody tr:first-child td{border-top:0}
@@ -1681,11 +1684,14 @@ body[data-workspace="history"] #historyPanel{grid-row:2!important}
    widths to clip against; whatever is cut off is one click away in the
    drawer. */
 @media (min-width:821px){
-  .history-table{table-layout:fixed;width:100%}
-  .history-time{width:150px}
-  .history-origin{width:52px}
-  .history-latency{width:64px}
-  .history-status{width:64px}
+  /* Widths sit on the header cells: a fixed layout takes column widths from
+     the first row, and the first row is the thead. */
+  #historyPanel .history-table{table-layout:fixed;width:100%}
+  th.history-time{width:164px}
+  .history-time{white-space:nowrap}
+  th.history-origin{width:52px}
+  th.history-latency{width:70px}
+  th.history-status{width:64px}
   .history-summary td{padding:5px 9px!important;overflow:hidden}
   .history-model .chain{flex-wrap:nowrap;font-size:12px;gap:6px;overflow:hidden}
   .history-model .chain>span{white-space:nowrap;flex:none}
@@ -2070,7 +2076,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
           <div class="history-stat warn"><span class="history-stat-icon"><svg class="i"><use href="#i-refresh"/></svg></span><div><div class="history-stat-label">平均延迟</div><div class="history-stat-value num" id="histLatency">-</div><div class="history-stat-note">当前页请求</div></div></div>
         </div>
         <table class="history-table">
-          <thead><tr><th>时间</th><th>来源</th><th>模型：发出 → 上游</th><th>结果</th><th>耗时</th><th style="text-align:right">状态码</th></tr></thead>
+          <thead><tr><th class="history-time">时间</th><th class="history-origin">来源</th><th class="history-model">模型：发出 → 上游</th><th class="history-outcome">结果</th><th class="history-latency">耗时</th><th class="history-status" style="text-align:right">状态码</th></tr></thead>
           <tbody id="historyBody"></tbody>
         </table>
         <div class="pager" id="pager"></div>
@@ -2126,7 +2132,7 @@ function setWorkspace(view, scroll = true) {
   const next = WORKSPACES.has(view) ? view : "rules";
   if (next !== "history") closeHistoryDrawer();
   document.body.dataset.workspace = next;
-  for (const button of document.querySelectorAll("[data-workspace]")) {
+  for (const button of document.querySelectorAll("button[data-workspace]")) {
     button.setAttribute("aria-current", String(button.dataset.workspace === next));
   }
   if (next === "rules" && store.rule) requestAnimationFrame(renderRulePreview);
@@ -3176,7 +3182,12 @@ function openKeyDialog(hint = "") {
 const closeKeyDialog = () => { $("keyOverlay").dataset.open = "false"; };
 
 /* ---------- wiring ---------------------------------------------------- */
-for (const button of document.querySelectorAll("[data-workspace]")) {
+// `button[data-workspace]`, not `[data-workspace]`: the body carries the same
+// attribute to drive the workspace CSS, and a bare attribute selector bound
+// this handler to it too -- every click on the page bubbled into
+// setWorkspace("rules"), whose smooth scroll to the top is what made opening
+// a drawer or toggling a section jump to the top of the page.
+for (const button of document.querySelectorAll("button[data-workspace]")) {
   button.addEventListener("click", () => setWorkspace(button.dataset.workspace));
 }
 $("credentialTrigger").addEventListener("click", () => {
