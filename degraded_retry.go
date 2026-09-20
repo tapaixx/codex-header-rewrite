@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -77,6 +78,15 @@ func scheduleDegradedRetry(attempt *pendingAttempt, attempts int) {
 // runDegradedRetry makes up to attempts requests, stopping at the first
 // non-degraded state, and records the whole series as one history row.
 func runDegradedRetry(authIndex, authID, label, name, model, plan string, attempts int, stop <-chan struct{}) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-stop:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 	started := time.Now().UTC()
 	var (
 		used   int
@@ -100,7 +110,7 @@ func runDegradedRetry(authIndex, authID, label, name, model, plan string, attemp
 		default:
 		}
 		used++
-		last = retryOnce(authIndex, authID, model)
+		last = retryOnce(ctx, authIndex, authID, model)
 		select {
 		case <-stop:
 			return
@@ -135,7 +145,7 @@ func runDegradedRetry(authIndex, authID, label, name, model, plan string, attemp
 
 // retryOnce sends one minimal Codex request and reports only what the
 // response header said. The body is discarded unread.
-func retryOnce(authIndex, authID, model string) retryOutcome {
+func retryOnce(ctx context.Context, authIndex, authID, model string) retryOutcome {
 	if !retryIdentityMatches(authIndex, authID) {
 		return retryOutcome{err: "credential identity changed or unavailable", stop: true}
 	}
@@ -159,18 +169,20 @@ func retryOnce(authIndex, authID, model string) retryOutcome {
 	if err != nil {
 		return retryOutcome{err: err.Error()}
 	}
-	response, callErr := hostHTTPDoFunc(hostHTTPRequest{
-		Method:      http.MethodPost,
-		URL:         defaultTestURL,
-		Headers:     headers,
-		Body:        body,
-		WireProfile: testWireProfile(headers, true),
-	})
+	response, callErr := retryHTTPDoFunc(ctx, hostHTTPRequest{
+		Method:  http.MethodPost,
+		URL:     defaultTestURL,
+		Headers: headers,
+		Body:    body,
+	}, retryProxyFor(authIndex))
 	if callErr != nil {
 		return retryOutcome{statusCode: response.StatusCode, err: callErr.Error()}
 	}
 	if !retryIdentityMatches(authIndex, authID) {
 		return retryOutcome{err: "credential identity changed during retry", stop: true}
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return retryOutcome{statusCode: response.StatusCode, err: fmt.Sprintf("retry returned HTTP %d", response.StatusCode)}
 	}
 	blob := headerTurnState(response.Headers)
 	if blob == "" {

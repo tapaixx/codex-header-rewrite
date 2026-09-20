@@ -37,9 +37,11 @@ type headerRule struct {
 	// RetryOnDegraded asks for one minimal request under the same credential
 	// and model after a degraded state is seen, to obtain a non-degraded one
 	// for the pool. RetryAttempts caps how many are made for one response.
-	RetryOnDegraded bool      `json:"retry_on_degraded"`
-	RetryAttempts   int       `json:"retry_attempts,omitempty"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	RetryOnDegraded bool `json:"retry_on_degraded"`
+	RetryAttempts   int  `json:"retry_attempts,omitempty"`
+	// Empty means direct; each background retry randomly selects one SOCKS URL.
+	RetryProxies []string  `json:"retry_proxies,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type credentialSnapshot struct {

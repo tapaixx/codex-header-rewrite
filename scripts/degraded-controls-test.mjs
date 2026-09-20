@@ -5,7 +5,7 @@ const browser = await chromium.launch({headless:true,executablePath:process.env.
 const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
-let rule = {auth_index:'a',enabled:false,set:{},remove:[],reject_degraded_response:false,retry_on_degraded:true,retry_attempts:4};
+let rule = {auth_index:'a',enabled:false,set:{'X-Fixture':'keep'},remove:['X-Old'],reject_degraded_response:false,retry_on_degraded:true,retry_attempts:4};
 let failSave = false;
 await page.route('http://panel.test/**', async route => {
   const url = new URL(route.request().url());
@@ -27,10 +27,20 @@ try {
   await page.addInitScript(()=>localStorage.setItem('managementKey','fixture'));
   await page.goto('http://panel.test/v0/resource/plugins/codex-header-rewrite/index');
   await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
+  assert.equal(await page.locator('#addSet').isDisabled(),true);
+  assert.equal(await page.locator('#setRows .hv').isDisabled(),true);
+  assert.equal(await page.locator('#addRemove').isDisabled(),true);
+  assert.equal(await page.locator('#ruleStripTurnState').isDisabled(),true);
+  await page.evaluate(()=>{ document.querySelector('#ruleEnabled').click(); });
+  assert.equal(await page.locator('#setRows .hv').isEnabled(),true);
+  await page.evaluate(()=>{ document.querySelector('#ruleEnabled').click(); });
+  assert.equal(await page.locator('#setRows .hv').inputValue(),'keep');
+  assert.equal(await page.locator('#saveRule').isEnabled(),true);
   await page.evaluate(()=>setWorkspace('history',false));
   assert.equal(await page.locator('#retryDegraded').isDisabled(),true);
   assert.equal(await page.locator('#retryAttempts').isDisabled(),true);
   assert.equal(await page.locator('#rejectDegradedModels').isDisabled(),true);
+  assert.equal(await page.locator('#retryProxies').isDisabled(),true);
   assert.equal(await page.locator('label[for="retryAttempts"]').textContent(),'最大重试次数');
   await page.locator('label').filter({has:page.locator('#rejectDegraded')}).click();
   await page.waitForFunction(()=>!document.querySelector('#retryAttempts').disabled);
@@ -42,6 +52,16 @@ try {
   await page.locator('#rejectDegradedModels').blur();
   await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
   assert.deepEqual(rule.reject_degraded_models,['gpt-5.6-luna','gpt-6-astra']);
+  await page.locator('#retryProxies').fill('socks5://localhost:1080\nsocks5h://user:pass@localhost:1081\nsocks5://localhost:1080');
+  await page.locator('#retryProxies').blur();
+  await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
+  assert.deepEqual(rule.retry_proxies,['socks5://localhost:1080','socks5h://user:pass@localhost:1081']);
+  await page.locator('label').filter({has:page.locator('#retryDegraded')}).click();
+  await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
+  assert.equal(await page.locator('#retryProxies').isDisabled(),true);
+  await page.locator('label').filter({has:page.locator('#retryDegraded')}).click();
+  await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
+  assert.equal(await page.locator('#retryProxies').isEnabled(),true);
   await page.locator('label').filter({has:page.locator('#rejectDegraded')}).click();
   await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
   assert.equal(await page.locator('#retryAttempts').isDisabled(),true);
@@ -53,6 +73,13 @@ try {
   assert.equal(await page.locator('#rejectDegraded').isChecked(),false);
   assert.equal(await page.locator('#retryDegraded').isDisabled(),true);
   assert.equal(await page.locator('#retryAttempts').isDisabled(),true);
+  for (const width of [1280,390]) {
+    await page.setViewportSize({width,height:900});
+    await page.screenshot({path:`/tmp/chr-v014-history-${width}.png`,fullPage:true});
+    await page.evaluate(()=>setWorkspace('rules',false));
+    await page.screenshot({path:`/tmp/chr-v014-rules-${width}.png`,fullPage:true});
+    await page.evaluate(()=>setWorkspace('history',false));
+  }
   assert.deepEqual(errors,[]);
   console.log('degraded controls: passed');
 } finally { await browser.close(); }

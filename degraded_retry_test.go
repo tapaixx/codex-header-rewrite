@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -31,11 +32,11 @@ func TestRetryRejectsRotatedIdentityAndUsesCurrentPlan(t *testing.T) {
 	resetState(t)
 	resetTurnStates(t)
 	sent := retryStub(t, "pro", []string{strings.Repeat("x", 300)})
-	out := retryOnce("idx-a", "old-auth", "m")
+	out := retryOnce(context.Background(), "idx-a", "old-auth", "m")
 	if !out.stop || len(*sent) != 0 {
 		t.Fatal("rotated credential was used")
 	}
-	out = retryOnce("idx-a", "auth-a", "m")
+	out = retryOnce(context.Background(), "idx-a", "auth-a", "m")
 	if out.plan != "pro" || out.nonDegraded {
 		t.Fatalf("wrong plan classification: %#v", out)
 	}
@@ -46,7 +47,7 @@ func TestQuiesceWaitsForRetryAndDiscardsItsResult(t *testing.T) {
 	resetTurnStates(t)
 	retryStub(t, "team", nil)
 	entered, release := make(chan struct{}), make(chan struct{})
-	hostHTTPDoFunc = func(hostHTTPRequest) (hostHTTPResponse, error) {
+	retryHTTPDoFunc = func(context.Context, hostHTTPRequest, string) (hostHTTPResponse, error) {
 		close(entered)
 		<-release
 		return hostHTTPResponse{StatusCode: 200, Headers: http.Header{turnStateHeader: {fernetToken(0x80, time.Now(), 1)}}}, nil
@@ -94,7 +95,7 @@ func TestQuiesceWaitsForRetryAndDiscardsItsResult(t *testing.T) {
 // what went out so the request shape can be asserted.
 func retryStub(t *testing.T, plan string, blobs []string) *[]hostHTTPRequest {
 	t.Helper()
-	oldGet, oldDo, oldRuntime := hostAuthGetFunc, hostHTTPDoFunc, hostAuthGetRuntimeFunc
+	oldGet, oldDo, oldRuntime := hostAuthGetFunc, retryHTTPDoFunc, hostAuthGetRuntimeFunc
 	hostAuthGetRuntimeFunc = func(index string) (hostAuthGetRuntimeResponse, error) {
 		return hostAuthGetRuntimeResponse{Auth: hostAuthFileEntry{ID: "auth-a", AuthIndex: index, Provider: "codex"}}, nil
 	}
@@ -106,7 +107,7 @@ func retryStub(t *testing.T, plan string, blobs []string) *[]hostHTTPRequest {
 	hostAuthGetFunc = func(string) (json.RawMessage, error) { return raw, nil }
 	sent := []hostHTTPRequest{}
 	i := 0
-	hostHTTPDoFunc = func(req hostHTTPRequest) (hostHTTPResponse, error) {
+	retryHTTPDoFunc = func(_ context.Context, req hostHTTPRequest, _ string) (hostHTTPResponse, error) {
 		sent = append(sent, req)
 		blob := ""
 		if i < len(blobs) {
@@ -115,7 +116,7 @@ func retryStub(t *testing.T, plan string, blobs []string) *[]hostHTTPRequest {
 		i++
 		return hostHTTPResponse{StatusCode: 200, Headers: http.Header{turnStateHeader: {blob}}, Body: []byte("ignored")}, nil
 	}
-	t.Cleanup(func() { hostAuthGetFunc, hostHTTPDoFunc, hostAuthGetRuntimeFunc = oldGet, oldDo, oldRuntime })
+	t.Cleanup(func() { hostAuthGetFunc, retryHTTPDoFunc, hostAuthGetRuntimeFunc = oldGet, oldDo, oldRuntime })
 	return &sent
 }
 
@@ -199,5 +200,46 @@ func TestRetryAttemptCountHonoursTheRuleAndTheCap(t *testing.T) {
 	}
 	if _, err := validateRule(headerRule{AuthIndex: "idx-a", RetryAttempts: 99}); err == nil {
 		t.Fatal("validation should reject a count above the cap")
+	}
+}
+
+func TestRetrySelectsProxyPerCallAndKeepsCredentialsIsolated(t *testing.T) {
+	resetState(t)
+	retryStub(t, "team", nil)
+	rule, err := saveRule(headerRule{AuthIndex: "idx-a", RetryProxies: []string{"socks5://one:1080", "socks5h://two:1080"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, ok, err := state.store.GetRule("idx-a")
+	if err != nil || !ok || len(persisted.RetryProxies) != 2 {
+		t.Fatalf("proxy settings not saved: %#v %v", persisted, err)
+	}
+	seen := map[string]bool{}
+	retryHTTPDoFunc = func(_ context.Context, _ hostHTTPRequest, proxy string) (hostHTTPResponse, error) {
+		seen[proxy] = true
+		return hostHTTPResponse{StatusCode: 503, Headers: http.Header{turnStateHeader: {"short-but-error"}}}, nil
+	}
+	for i := 0; i < 64; i++ {
+		out := retryOnce(context.Background(), "idx-a", "auth-a", "m")
+		if out.err == "" || out.nonDegraded {
+			t.Fatal("accepted state from error response")
+		}
+	}
+	if len(seen) != 2 || !seen["socks5://one:1080"] || !seen["socks5h://two:1080"] {
+		t.Fatalf("not choosing per call from current credential: %v", seen)
+	}
+	seen = map[string]bool{}
+	_ = retryOnce(context.Background(), "idx-b", "auth-a", "m")
+	if !seen[""] || len(seen) != 1 {
+		t.Fatal("inherited another credential's proxies")
+	}
+	rule.RetryProxies = nil
+	if _, err := saveRule(rule); err != nil {
+		t.Fatal(err)
+	}
+	seen = map[string]bool{}
+	_ = retryOnce(context.Background(), "idx-a", "auth-a", "m")
+	if !seen[""] || len(seen) != 1 {
+		t.Fatal("cleared proxies did not select direct")
 	}
 }

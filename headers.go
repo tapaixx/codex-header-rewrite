@@ -60,6 +60,24 @@ func validateRule(rule headerRule) (headerRule, error) {
 		}
 	}
 	rule.RejectDegradedModels = models
+	proxies := make([]string, 0, len(rule.RetryProxies))
+	seenProxies := map[string]bool{}
+	for i, raw := range rule.RetryProxies {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		proxyURL, err := parseRetryProxy(raw)
+		if err != nil {
+			return rule, fmt.Errorf("retry_proxies[%d]: %w", i+1, err)
+		}
+		value := proxyURL.String()
+		if !seenProxies[value] {
+			proxies = append(proxies, value)
+			seenProxies[value] = true
+		}
+	}
+	rule.RetryProxies = proxies
 	if rule.RetryAttempts < 0 {
 		rule.RetryAttempts = 0
 	}

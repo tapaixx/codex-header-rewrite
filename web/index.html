@@ -1236,7 +1236,9 @@ body[data-workspace="rules"] .shell main{grid-template-columns:minmax(620px,1fr)
 #rulePanel{grid-column:1!important;grid-row:1!important}
 #rulePanel .panel-head{min-height:56px!important}
 #rulePanel .actions{margin-top:8px!important;padding-top:9px!important;position:sticky;bottom:0;background:#fff;z-index:3}
-.rule-blocks{display:grid;gap:8px}
+.rule-blocks{display:grid;gap:8px;border:0;padding:0;margin:0;min-width:0}
+.rule-blocks:disabled{opacity:.5}
+.rule-blocks:disabled input,.rule-blocks:disabled button{cursor:not-allowed}
 .rule-block{border:1px solid var(--line);border-radius:7px;background:#fff;overflow:hidden}
 .rule-block>summary{list-style:none;min-height:52px;display:grid;grid-template-columns:27px minmax(0,1fr) auto;align-items:center;gap:8px;padding:7px 10px;cursor:pointer}
 .rule-block>summary::-webkit-details-marker{display:none}
@@ -1910,8 +1912,8 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
         <label class="switch"><input type="checkbox" id="ruleEnabled"><span>启用改写</span></label>
       </div>
       <div class="panel-body">
-        <div class="notice info" id="ruleOffNotice" hidden style="margin-bottom:10px"><svg class="i"><use href="#i-info"/></svg><span>规则未启用。下面的设置会保存，但不会作用到任何请求上——包括 State 守卫与自动补发。</span></div>
-        <div class="rule-blocks">
+        <div class="notice info" id="ruleOffNotice" hidden style="margin-bottom:10px"><svg class="i"><use href="#i-info"/></svg><span>规则未启用，以下配置已保留但不可编辑，也不执行 Header 改写、State 守卫与自动注入。打开「启用改写」后可编辑，修改后请保存规则。</span></div>
+        <fieldset class="rule-blocks" id="ruleFields" aria-label="Header 改写配置" disabled>
           <details class="rule-block rule-block-set">
             <summary>
               <span class="rule-block-icon"><svg class="i"><use href="#i-plus"/></svg></span>
@@ -1944,7 +1946,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
             <span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="守卫开关的详细说明">!</button><span class="hint-text"><span class="hint-k">先后顺序</span><span class="hint-v">插件先查 State 池：有「本凭证 + 本模型」的合格 state 就直接<b>覆盖</b>回带值，不经守卫；池子拿不出东西时才轮到守卫。</span><span class="hint-k">开启</span><span class="hint-v">确认来自<b>其他凭证</b>或<b>其他模型</b>的回带 state 会被摘掉，让上游重新签发。</span><span class="hint-k">关闭</span><span class="hint-v">原样透传，只记录、不修改。</span><span class="hint-p">只是<b>过期</b>或<b>来源未知</b>的回带不摘。守卫属于这条规则：「启用改写」关着时不生效。</span><span class="hint-p">跨号回带来自 CPA 默认按请求轮换凭证（round-robin，<code>session-affinity</code> 默认关闭），详见 README。</span></span></span>
             <label class="switch guard-switch"><input type="checkbox" id="ruleStripTurnState"><span>启用守卫</span></label>
           </div>
-        </div>
+        </fieldset>
 
         <div class="notice warn" id="ruleWarn" hidden style="margin-top:10px"><svg class="i"><use href="#i-alert"/></svg><span id="ruleWarnText"></span></div>
         <div class="actions">
@@ -2091,6 +2093,11 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
           <label for="rejectDegradedModels">拦截模型（留空表示全部模型）</label>
           <textarea id="rejectDegradedModels" rows="2" disabled placeholder="例如 gpt-5.6-luna，每行一个模型 ID，也可用逗号分隔"></textarea>
           <span class="muted">按实际发出的模型 ID 精确匹配；仅拦截这些模型的疑似降智响应，后台重试也遵循此范围。修改后自动保存。</span>
+        </div>
+        <div class="field" style="flex-basis:100%">
+          <label for="retryProxies">重试 SOCKS 代理（留空直连）</label>
+          <textarea id="retryProxies" rows="3" disabled spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="retryProxyHint" placeholder="每行一个，例如 socks5://127.0.0.1:1080&#10;支持 socks5h://用户名:密码@主机:端口"></textarea>
+          <span class="muted" id="retryProxyHint">每次重试随机选择一个代理，可重复选中；留空不使用任何代理，失败不回退直连。仅影响后台取 state 的补发，由插件发送，不经过 CPA 的指纹处理。按凭证自动保存；用户名和密码中的特殊字符需 URL 编码。</span>
         </div>
       </div>
     </section>
@@ -2242,6 +2249,7 @@ function renderRuleSummary() {
   const setCount = Object.keys(readPairs($("setRows"))).length;
   const removeCount = readNames($("removeRows")).length;
   const enabled = !!$("ruleEnabled")?.checked;
+  $("ruleFields").disabled = !enabled;
   $("summaryRuleStatus").innerHTML = enabled ? '<span class="tag ok">已启用</span>' : '<span class="tag flat">未启用</span>';
   $("summaryCredential").textContent = cred ? credentialDisplayName(cred) : (store.selected || "-");
   $("summarySetCount").textContent = setCount + " 条";
@@ -2587,6 +2595,8 @@ async function selectCredential(authIndex) {
   if ($("rejectDegraded")) $("rejectDegraded").checked = false;
   if ($("retryDegraded")) $("retryDegraded").checked = false;
   if ($("retryAttempts")) $("retryAttempts").value = "2";
+  $("retryProxies").value = "";
+  $("ruleFields").disabled = true;
   $("rejectDegradedModels").value = "";
   syncDegradedControls();
   $("testModelSelect").replaceChildren();
@@ -2679,6 +2689,7 @@ async function loadRule() {
   if ($("retryDegraded")) $("retryDegraded").checked = !!store.rule.retry_on_degraded;
   if ($("retryAttempts")) $("retryAttempts").value = String(store.rule.retry_attempts || 2);
   $("rejectDegradedModels").value = (store.rule.reject_degraded_models || []).join("\n");
+  $("retryProxies").value = (store.rule.retry_proxies || []).join("\n");
   syncDegradedControls();
   $("setRows").replaceChildren();
   for (const [name, value] of Object.entries(store.rule.set || {})) headerRow($("setRows"), name, value);
@@ -2696,7 +2707,7 @@ function renderWarnings(warnings) {
     $("ruleWarnText").innerHTML = `${warnings.map((name) => `<code class="mono">${esc(name)}</code>`).join("、")} 属于 Codex executor 的特殊字段，改写可能在 interceptor 之后被覆盖。`;
   }
 }
-const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), strip_foreign_turn_state: $("ruleStripTurnState").checked, reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts() });
+const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), strip_foreign_turn_state: $("ruleStripTurnState").checked, reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts(), retry_proxies: degradedProxies() });
 
 /* ---------- the header diff -------------------------------------------
    One row per header. The name is written once and the value change is shown
@@ -3486,6 +3497,7 @@ $("keyInput").addEventListener("keydown", (event) => { if (event.key === "Enter"
 $("keyOverlay").addEventListener("click", (event) => { if (event.target === $("keyOverlay")) closeKeyDialog(); });
 const degradedRetryAttempts = () => Math.min(5, Math.max(1, Number($("retryAttempts")?.value) || 2));
 const degradedModels = () => [...new Set($("rejectDegradedModels").value.split(/[,，\n]+/).map(value => value.trim()).filter(Boolean))];
+const degradedProxies = () => [...new Set($("retryProxies").value.split(/\r?\n/).map(value => value.trim()).filter(Boolean))];
 let degradedSaving = false;
 function syncDegradedControls() {
   const ready = !!store.rule && store.rule.auth_index === store.selected && !degradedSaving;
@@ -3498,6 +3510,10 @@ function syncDegradedControls() {
     $(id).parentElement.style.opacity = disabled ? "0.5" : "";
     $(id).title = disabled ? "开启拦截降智响应后可配置" : "";
   }
+  const proxiesDisabled = disabled || !$("retryDegraded").checked;
+  $("retryProxies").disabled = proxiesDisabled;
+  $("retryProxies").parentElement.style.opacity = proxiesDisabled ? "0.5" : "";
+  $("retryProxies").title = proxiesDisabled ? "开启拦截降智响应及拦截后重试后可配置" : "";
 }
 // These are response-side settings, saved on their own rather than with the
 // rule form, so toggling one never carries an unsaved rule edit with it.
@@ -3513,6 +3529,7 @@ async function saveDegradedSettings(revert) {
       reject_degraded_response: !!$("rejectDegraded").checked,
       reject_degraded_models: degradedModels(),
       retry_on_degraded: !!$("retryDegraded").checked,
+      retry_proxies: degradedProxies(),
       retry_attempts: degradedRetryAttempts() } });
     if (epoch !== store.selectionEpoch) return;
     store.rule = payload.rule || store.rule;
@@ -3523,6 +3540,7 @@ async function saveDegradedSettings(revert) {
     $("retryDegraded").checked = !!previous.retry_on_degraded;
     $("retryAttempts").value = String(previous.retry_attempts || 2);
     $("rejectDegradedModels").value = (previous.reject_degraded_models || []).join("\n");
+    $("retryProxies").value = (previous.retry_proxies || []).join("\n");
     fail(error);
   } finally {
     degradedSaving = false;
@@ -3536,6 +3554,7 @@ $("retryAttempts").addEventListener("change", () => {
   saveDegradedSettings(() => {});
 });
 $("rejectDegradedModels").addEventListener("change", () => saveDegradedSettings(() => {}));
+$("retryProxies").addEventListener("change", () => saveDegradedSettings(() => {}));
 $("drawerClose").addEventListener("click", closeHistoryDrawer);
 $("drawerBackdrop").addEventListener("click", closeHistoryDrawer);
 document.addEventListener("click", (event) => {

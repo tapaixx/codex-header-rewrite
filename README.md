@@ -69,7 +69,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.13.0.so` | `codex-header-rewrite` | `0.13.0` |
+| `codex-header-rewrite-v0.14.0.so` | `codex-header-rewrite` | `0.14.0` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -82,7 +82,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.13.0.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.14.0.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -215,6 +215,8 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 **守卫在规则之内**：`strip_foreign_turn_state` 是 `headerRule` 的字段，不是与「启用改写」并列的开关。摘除要求 `rule.Enabled && rule.StripForeignTurnState` 两个都为真；从 State 池补发只要求 `rule.Enabled`，且规则没有手工设置或移除该 Header。规则总开关关闭时，守卫保存着也不生效。
 
+关闭「启用改写」后，设置/覆盖、移除和 State 守卫编辑区置灰且不可编辑，已有值保留；重新打开后可编辑，点击「保存规则」生效。响应侧拦截及后台重试仍由各自开关控制。
+
 **摘除的边界**：规则里的「不可复用时移除 X-Codex-Turn-State」只摘**跨号**和**跨模型**这两种确定不可复用的情况；**过期只提示、不摘除** —— 那个窗口是经验值不是文档约定，猜错会把本来还能用的回合链打断。来源未知时也不动它。
 
 ### 降智响应拦截
@@ -222,6 +224,10 @@ curl -s -H "Authorization: Bearer <management-key>" \
 「请求历史」页的「拦截降智响应」按凭证保存（`reject_degraded_response`），独立于「启用改写」。拦截模型列表 `reject_degraded_models` 留空时匹配全部模型；非空时只按实际发出的模型 ID 精确匹配，不匹配客户端别名或模型前缀。仅当开关启用、模型命中且上游 state 判定为**疑似降智**时，这次响应才**不下发给客户端**：非流式替换为错误对象；流式第一个数据 chunk 换成终止性的 `error` 事件，之后全部丢弃。响应加上 `X-Codex-Header-Rewrite: rejected-degraded-turn-state`，历史里标「已拦截」。
 
 开启拦截后才能配置「拦截后重试取 state」「最大重试次数」和模型列表。后台重试使用同凭证、同模型发送最小 `hi` 请求，最多 1–5 次（默认 2），获得合格 state 后提前结束，并将整轮重试记录为一行历史。重试范围与拦截范围一致；关闭拦截会保留配置值，但不再触发新的重试。后台重试不会重新执行原始用户请求。
+
+**重试 SOCKS 代理（v0.14.0）**：开启拦截与重试后可配置 `retry_proxies`，每行一个 `socks5://host:port` 或 `socks5h://user:password@host:port`，用户名/密码中的特殊字符需 URL 编码。列表按凭证持久化，去空白与重复项；每次重试独立随机选择，允许连续选中相同代理。列表为空时**直接连接**，不继承 CPA、凭证或环境变量代理。代理失败不回退直连，下一次重试重新随机选取。
+
+当前 CPA 的 `host.http.do` 不支持逐请求覆盖代理，因此**仅后台取 state 的补发改由插件自身的 HTTP/1.1 传输发送**，不使用 CPA 的指纹处理；正常业务请求与手动测试路径不变。补发不跟随重定向，只读响应头并关闭响应体，单次超时 30 秒，插件卸载/重载会取消在途补发。只有 2xx 响应中的合格 state 才能入池；代理密码不会写入请求历史或连接错误，但代理配置本身含明文认证信息，应保护管理端访问及数据文件。
 
 两个必须知道的边界：插件**改不了 HTTP 状态码**，所以客户端看到的是 200 里带着错误（流式客户端把 `error` 事件当作失败处理，这是它们本来就支持的路径；非流式客户端如何对待 200 + error 对象取决于客户端）；被拦截的请求**上游已经计了额度**，拦截省下的是一次降智的回答，不是这次调用。
 
