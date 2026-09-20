@@ -292,11 +292,17 @@ func listCredentialViews() ([]credentialView, error) {
 	}
 	state.mu.Unlock()
 	sort.Slice(items, func(i, j int) bool {
-		li := items[i].Label
+		li := items[i].Email
+		if li == "" {
+			li = items[i].Label
+		}
 		if li == "" {
 			li = items[i].Name
 		}
-		lj := items[j].Label
+		lj := items[j].Email
+		if lj == "" {
+			lj = items[j].Label
+		}
 		if lj == "" {
 			lj = items[j].Name
 		}
