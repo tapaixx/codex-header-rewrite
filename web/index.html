@@ -1606,25 +1606,54 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
    "what can be reused right now", while the history below it is the log.
    Source order was moved to match, so tab order and reading order agree with
    what is on screen. */
-@media (min-width:821px){
+@media (min-width:1240px){
+  /* Two columns only where both fit. The declared minimums were 620px and
+     560px, which need 1192px of track before any padding, so the pair
+     overflowed its own container on the widths just under that. Proportional
+     tracks with a zero floor cannot. */
+  body[data-workspace="rules"] .shell main{
+    grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr)!important
+  }
   body[data-workspace="rules"] #ruleSummaryPanel{grid-column:1/-1!important;grid-row:1!important}
   body[data-workspace="rules"] #rulePanel{grid-column:1!important;grid-row:2!important}
   body[data-workspace="rules"] #diffPanel{grid-column:2!important;grid-row:2!important}
   body[data-workspace="rules"] #ruleStrategyPanel{grid-column:1!important;grid-row:3!important}
   /* Fixed column counts, not auto-fit: eight tiles into an auto-fit track list
-     lands on seven columns at common widths and strands the eighth alone on a
-     second row. Four-by-two, then one row of eight once there is room. */
-  body[data-workspace="rules"] .summary-grid{
-    grid-template-columns:repeat(4,minmax(0,1fr))!important
-  }
-  body[data-workspace="history"] #turnStatePanel{grid-row:1!important;margin-top:0!important}
-  body[data-workspace="history"] #historyPanel{grid-row:2!important}
-}
-@media (min-width:1180px){
+     lands on seven columns at common widths and strands the eighth alone. */
   body[data-workspace="rules"] .summary-grid{grid-template-columns:repeat(8,minmax(0,1fr))!important}
   /* A timestamp in a one-eighth column would ellipsise away its own time. */
   body[data-workspace="rules"] .summary-tile strong.summary-small{white-space:normal;line-height:1.35}
 }
+@media (max-width:1239px){
+  /* One column, placed explicitly. `#diffPanel{grid-column:2!important}` is
+     unconditional, so without this it opens an implicit second track here too:
+     that squeezes the real column and, because `-1` counts to the end of the
+     explicit grid only, truncates the summary's `1/-1` span to a fifth of the
+     width it asked for. */
+  body[data-workspace="rules"] .shell main{grid-template-columns:minmax(0,1fr)!important}
+  body[data-workspace="rules"] #ruleSummaryPanel,
+  body[data-workspace="rules"] #rulePanel,
+  body[data-workspace="rules"] #diffPanel,
+  body[data-workspace="rules"] #ruleStrategyPanel{
+    grid-column:1/-1!important;position:static!important;top:auto!important
+  }
+  body[data-workspace="rules"] #ruleSummaryPanel{grid-row:1!important}
+  body[data-workspace="rules"] #rulePanel{grid-row:2!important}
+  body[data-workspace="rules"] #diffPanel{grid-row:3!important}
+  body[data-workspace="rules"] #ruleStrategyPanel{grid-row:4!important}
+  body[data-workspace="rules"] .summary-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+}
+body[data-workspace="history"] #turnStatePanel{grid-row:1!important;margin-top:0!important}
+body[data-workspace="history"] #historyPanel{grid-row:2!important}
+
+/* A status strip should not carry a full panel head: stacked title and caption
+   took as much height as the tiles they introduce. One line, and tighter. */
+#ruleSummaryPanel .panel-head{min-height:0!important;padding:8px 12px!important}
+#ruleSummaryPanel .panel-title{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+#ruleSummaryPanel .panel-caption{margin-top:0!important}
+#ruleSummaryPanel .panel-body{padding-top:9px!important;padding-bottom:10px!important}
+#ruleSummaryPanel .summary-tile{min-height:56px}
+
 /* History detail: every part of it was one weight and one rhythm -- section
    labels, card titles and field names all landed at 12px grey, so nothing said
    which of them contained which. Four levels now, each separated by a
