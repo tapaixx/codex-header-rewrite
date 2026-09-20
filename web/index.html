@@ -1577,10 +1577,13 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
   position:fixed;left:0;top:0;z-index:80;max-width:min(330px,calc(100vw - 24px));
   padding:9px 11px;border-radius:8px;background:#14233a;color:#fff;
   font-size:11.5px;line-height:1.65;text-wrap:pretty;box-shadow:var(--shadow-float);
-  opacity:0;translate:0 4px;pointer-events:none;
-  transition:opacity .14s var(--ease),translate .14s var(--ease)
+  translate:0 5px;pointer-events:none;transition:translate .14s var(--ease)
 }
-.hint-layer[data-show="true"]{opacity:1;translate:0 0}
+/* Visibility is the hidden attribute alone. Fading in from opacity:0 would
+   mean that anywhere the transition does not run -- a suppressed frame, a
+   forced-colors mode -- the hint is open but invisible. Only the slide is
+   animated, so the worst case is a hint sitting 5px low. */
+.hint-layer[data-show="true"]{translate:0 0}
 .hint-layer code{background:rgba(255,255,255,.16);color:inherit;padding:1px 4px;border-radius:4px;white-space:nowrap}
 .hint-layer b{color:#fff}
 /* Hint prose is phrasing content only -- it is authored inside a span, and a
@@ -3130,7 +3133,12 @@ function openHint(button, pinned) {
   hintLayer.innerHTML = text.innerHTML;
   hintLayer.hidden = false;
   placeHint(button);
-  requestAnimationFrame(() => { hintLayer.dataset.show = "true"; placeHint(button); });
+  // Reading a layout property between unhiding and showing gives the browser
+  // the style recalculation the transition needs to run from. A rAF would do
+  // the same, but it ties whether the hint is visible at all to whether a
+  // frame is produced.
+  void hintLayer.offsetHeight;
+  hintLayer.dataset.show = "true";
   button.setAttribute("aria-expanded", pinned ? "true" : "false");
   button.setAttribute("aria-describedby", "hintLayer");
 }
@@ -3164,7 +3172,17 @@ document.addEventListener("click", (event) => {
   if (hintPinned && hintOwner === button) closeHint(true);
   else openHint(button, true);
 });
-addEventListener("scroll", () => closeHint(true), true);
+/* The layer is fixed, so it has to follow its marker while the page moves.
+   Closing on any scroll looked simpler but dismissed a hint the moment
+   momentum scrolling or a focus-driven scrollIntoView fired -- sometimes
+   before the reader had seen it. It closes only once the marker is gone. */
+function trackHint() {
+  if (!hintOwner) return;
+  const rect = hintOwner.getBoundingClientRect();
+  if (rect.bottom < 0 || rect.top > innerHeight || rect.right < 0 || rect.left > innerWidth) closeHint(true);
+  else placeHint(hintOwner);
+}
+addEventListener("scroll", trackHint, { capture: true, passive: true });
 addEventListener("resize", () => closeHint(true));
 
 setWorkspace("rules", false);
