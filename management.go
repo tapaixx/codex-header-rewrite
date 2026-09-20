@@ -29,9 +29,10 @@ const (
 
 type credentialView struct {
 	credentialSnapshot
-	Configurable bool `json:"configurable"`
-	HasRule      bool `json:"has_rule"`
-	HistoryCount int  `json:"history_count"`
+	Email        string `json:"email,omitempty"`
+	Configurable bool   `json:"configurable"`
+	HasRule      bool   `json:"has_rule"`
+	HistoryCount int    `json:"history_count"`
 }
 type cleanupResponse struct {
 	Deleted []string `json:"deleted"`
@@ -269,11 +270,17 @@ func listCredentialViews() ([]credentialView, error) {
 			updates[snap.AuthIndex] = snap
 		}
 		count := 0
-		if store != nil && snap.AuthIndex != "" {
-			count, _ = store.HistoryCount(snap.AuthIndex)
+		email := ""
+		if snap.AuthIndex != "" {
+			if store != nil {
+				count, _ = store.HistoryCount(snap.AuthIndex)
+			}
+			if document, readErr := hostAuthGetFunc(snap.AuthIndex); readErr == nil {
+				email = credentialEmail(document)
+			}
 		}
 		_, hasRule := rules[snap.AuthIndex]
-		items = append(items, credentialView{credentialSnapshot: snap, Configurable: snap.AuthIndex != "", HasRule: hasRule, HistoryCount: count})
+		items = append(items, credentialView{credentialSnapshot: snap, Email: email, Configurable: snap.AuthIndex != "", HasRule: hasRule, HistoryCount: count})
 	}
 	state.mu.Lock()
 	for k, v := range updates {
@@ -285,17 +292,63 @@ func listCredentialViews() ([]credentialView, error) {
 	}
 	state.mu.Unlock()
 	sort.Slice(items, func(i, j int) bool {
-		li := items[i].Label
+		li := items[i].Email
+		if li == "" {
+			li = items[i].Label
+		}
 		if li == "" {
 			li = items[i].Name
 		}
-		lj := items[j].Label
+		lj := items[j].Email
+		if lj == "" {
+			lj = items[j].Label
+		}
 		if lj == "" {
 			lj = items[j].Name
 		}
 		return strings.ToLower(li) < strings.ToLower(lj)
 	})
 	return items, nil
+}
+
+func credentialEmail(document json.RawMessage) string {
+	var object map[string]json.RawMessage
+	if len(document) == 0 || json.Unmarshal(document, &object) != nil {
+		return ""
+	}
+	return credentialEmailObject(object, 0)
+}
+
+func credentialEmailObject(object map[string]json.RawMessage, depth int) string {
+	if object == nil || depth > 2 {
+		return ""
+	}
+	for _, key := range []string{"email", "account", "user_email", "userEmail", "username"} {
+		raw := firstRawField(object, key)
+		if len(raw) == 0 {
+			continue
+		}
+		var value string
+		if json.Unmarshal(raw, &value) == nil {
+			value = strings.TrimSpace(value)
+			if strings.Contains(value, "@") && !strings.Contains(value, " ") {
+				return value
+			}
+		}
+	}
+	for _, key := range []string{"user", "profile", "identity", "id_token", "idToken", "data", "auth"} {
+		raw := firstRawField(object, key)
+		if len(raw) == 0 {
+			continue
+		}
+		var nested map[string]json.RawMessage
+		if json.Unmarshal(raw, &nested) == nil {
+			if email := credentialEmailObject(nested, depth+1); email != "" {
+				return email
+			}
+		}
+	}
+	return ""
 }
 
 func sameCredentialIdentity(existing, current credentialSnapshot) bool {

@@ -168,4 +168,24 @@
 
   <rect x="1274" y="771" width="292" height="70" fill="#fff" stroke="#e3eaf4"/>
   <text x="1295" y="811" class="xs blue">规则</text><text x="1350" y="811" class="xs ink">测试</text><text x="1408" y="811" class="xs ink">历史</text><text x="1466" y="811" class="xs ink">State</text><text x="1521" y="811" class="xs ink">更多</text>
+
+  <!-- 2026-09 workflow refinement: State is part of History; Rules has no embedded feature overview. -->
+  <rect x="20" y="103" width="1200" height="40" fill="#fff" stroke="#e3eaf4"/>
+  <text x="40" y="128" class="s blue">Header 规则</text>
+  <text x="148" y="128" class="s ink">测试请求</text>
+  <text x="242" y="128" class="s ink">请求历史</text>
+  <text x="338" y="128" class="s ink">Turn-State 解码</text>
+  <rect x="37" y="139" width="72" height="2" class="blue"/>
+
+  <rect x="28" y="636" width="1182" height="206" rx="8" fill="#f4f7fb"/>
+  <line x1="36" y1="641" x2="1202" y2="641" class="line"/>
+  <text x="42" y="670" class="s muted">Header 规则页到此结束：测试请求、请求历史与 State 池不嵌入规则页。</text>
+  <text x="42" y="690" class="xs muted">请求历史工作区包含当前凭证的请求历史 + State 池，并提供手动刷新历史按钮。</text>
+
+  <rect x="1274" y="771" width="292" height="70" fill="#fff" stroke="#e3eaf4"/>
+  <text x="1305" y="811" class="xs blue">规则</text>
+  <text x="1376" y="811" class="xs ink">测试</text>
+  <text x="1447" y="811" class="xs ink">历史</text>
+  <text x="1516" y="811" class="xs ink">解码</text>
+
 </svg>

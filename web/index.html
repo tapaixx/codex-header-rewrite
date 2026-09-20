@@ -421,17 +421,16 @@ body[data-workspace="rules"] #diffPanel,
 body[data-workspace="test"] #testPanel,
 body[data-workspace="test"] #diffPanel,
 body[data-workspace="history"] #historyPanel,
-body[data-workspace="state"] #turnStatePanel,
+body[data-workspace="history"] #turnStatePanel,
 body[data-workspace="decode"] #decoderPanel{display:block}
 body[data-workspace="rules"] #rulePanel,
 body[data-workspace="test"] #testPanel{grid-column:1}
 body[data-workspace="rules"] #diffPanel,
 body[data-workspace="test"] #diffPanel{grid-column:2}
 body[data-workspace="history"] .shell main,
-body[data-workspace="state"] .shell main,
 body[data-workspace="decode"] .shell main{grid-template-columns:1fr!important}
 body[data-workspace="history"] #historyPanel,
-body[data-workspace="state"] #turnStatePanel,
+body[data-workspace="history"] #turnStatePanel,
 body[data-workspace="decode"] #decoderPanel{grid-column:1/-1}
 
 /* Rule editor */
@@ -503,8 +502,8 @@ body[data-workspace="decode"] #decoderPanel{grid-column:1/-1}
 #diffCount{font-size:10.5px}
 
 /* State pool */
-body[data-workspace="state"] #turnStatePanel .panel-body{padding:12px}
-body[data-workspace="state"] .state-pool{
+body[data-workspace="history"] #turnStatePanel .panel-body{padding:12px}
+body[data-workspace="history"] .state-pool{
   grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px
 }
 .state-card{gap:7px;padding:10px;border-radius:8px;background:var(--surface)}
@@ -612,7 +611,7 @@ body[data-workspace="decode"] #decoderPanel{max-width:980px;width:100%;margin:0 
   #testPanel .grid2{grid-template-columns:1fr}
   .diff-row{grid-template-columns:24px minmax(105px,.9fr) minmax(0,1.1fr)}
   .diff-row>*{padding:5px}
-  body[data-workspace="state"] .state-pool{grid-template-columns:1fr}
+  body[data-workspace="history"] .state-pool{grid-template-columns:1fr}
   .history-detail-shell{padding:10px 7px}
 }
 
@@ -1318,7 +1317,7 @@ body[data-workspace="rules"] .shell main{grid-template-columns:minmax(620px,1fr)
 .summary-hint svg{width:13px;height:13px}
 
 .overview-strip{display:none;grid-column:1/-1;grid-template-columns:1.25fr 1.1fr .8fr .75fr;gap:10px;margin-top:0}
-body[data-workspace="rules"] .overview-strip{display:grid}
+body[data-workspace="rules"] .overview-strip{display:none!important}
 .overview-card{min-width:0;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .overview-head{height:38px;padding:0 10px;display:flex;align-items:center;border-bottom:1px solid var(--line)}
 .overview-head b{font-size:11.5px}.overview-head button{margin-left:auto;min-height:27px;font-size:9.5px;padding:3px 8px}
@@ -1387,7 +1386,7 @@ body[data-workspace="rules"] .overview-strip{display:grid}
   .diff-footer{display:grid;gap:7px}.diff-actions{margin-left:0}.diff-actions button:first-child{flex:1}
   .summary-grid{grid-template-columns:repeat(3,1fr)}
   .summary-tile{min-height:62px}
-  .mobile-nav{grid-template-columns:repeat(5,1fr)!important}
+  .mobile-nav{grid-template-columns:repeat(4,1fr)!important}
 }
 @media (max-width:520px){
   #rulePanel .panel-head{display:grid!important;grid-template-columns:minmax(0,1fr) auto}
@@ -1430,6 +1429,22 @@ body[data-workspace="rules"] .overview-strip{display:grid}
   #ruleStrategyPanel .panel-body{display:none!important}
 }
 
+
+body[data-workspace="history"] #historyPanel{grid-row:1}
+body[data-workspace="history"] #turnStatePanel{grid-row:2;margin-top:12px}
+body[data-workspace="history"] #turnStatePanel .state-pool{grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px}
+#historyRefresh{color:var(--accent)}
+@media(max-width:820px){
+  body[data-workspace="history"] #turnStatePanel{margin-top:0}
+  .mobile-nav{grid-template-columns:repeat(4,1fr)!important}
+}
+
+
+/* Final workspace separation: Rules contains rules/diff/summary only; History owns State. */
+body[data-workspace="rules"] .overview-strip{display:none!important}
+body[data-workspace="history"] #historyPanel,
+body[data-workspace="history"] #turnStatePanel{display:block!important;grid-column:1/-1!important}
+@media(max-width:820px){.mobile-nav{grid-template-columns:repeat(4,1fr)!important}}
 </style>
 </head>
 <body data-workspace="rules">
@@ -1491,7 +1506,6 @@ body[data-workspace="rules"] .overview-strip{display:grid}
     <button class="workspace-tab" data-workspace="rules" aria-current="true"><svg class="i"><use href="#i-swap"/></svg><span>Header 规则</span></button>
     <button class="workspace-tab" data-workspace="test" aria-current="false"><svg class="i"><use href="#i-flask"/></svg><span>测试请求</span></button>
     <button class="workspace-tab" data-workspace="history" aria-current="false"><svg class="i"><use href="#i-clock"/></svg><span>请求历史</span></button>
-    <button class="workspace-tab" data-workspace="state" aria-current="false"><svg class="i"><use href="#i-key"/></svg><span>State 池</span></button>
     <button class="workspace-tab" data-workspace="decode" aria-current="false"><svg class="i"><use href="#i-eye"/></svg><span>Turn-State 解码</span></button>
   </div>
 </nav>
@@ -1702,19 +1716,8 @@ body[data-workspace="rules"] .overview-strip{display:grid}
       </div>
     </section>
 
-    <section class="panel" id="turnStatePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h3>State 池</h3><div class="panel-caption">管理可复用的 X-Codex-Turn-State</div></div>
-        <div class="spacer"></div><span class="muted" id="turnStateMeta"></span>
-        <button class="quiet icon" id="turnStateRefresh" title="刷新" aria-label="刷新回合状态"><svg class="i"><use href="#i-refresh"/></svg></button>
-      </div>
-      <div class="panel-body">
-        <div id="turnStateBody" class="state-pool"></div>
-        <div class="muted" style="margin-top:8px">只有不降智 state 才入池：Team ≤ 332 字符，Pro ≤ 292 字符。每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">1 小时</span>只标记过期。</div>
-      </div>
-    </section>
-
     <section class="panel" id="historyPanel">
-      <div class="panel-head"><div class="panel-title"><h3>请求历史与诊断</h3><div class="panel-caption">查看请求记录、Header 重写效果和上游模型</div></div><div class="spacer"></div><span class="muted" id="historyMeta"></span><button class="quiet destructive" id="clearHistory"><svg class="i"><use href="#i-trash"/></svg>清空</button></div>
+      <div class="panel-head"><div class="panel-title"><h3>请求历史与诊断</h3><div class="panel-caption">查看当前凭证的请求记录、Header 重写效果和上游模型</div></div><div class="spacer"></div><span class="muted" id="historyMeta"></span><button class="quiet" id="historyRefresh" title="刷新请求历史"><svg class="i" id="historyRefreshIcon"><use href="#i-refresh"/></svg>刷新</button><button class="quiet destructive" id="clearHistory"><svg class="i"><use href="#i-trash"/></svg>清空</button></div>
       <div class="panel-body">
         <div class="history-stats" id="historyStats">
           <div class="history-stat"><span class="history-stat-icon"><svg class="i"><use href="#i-clock"/></svg></span><div><div class="history-stat-label">总记录</div><div class="history-stat-value num" id="histTotal">0</div><div class="history-stat-note">当前凭证</div></div></div>
@@ -1729,34 +1732,18 @@ body[data-workspace="rules"] .overview-strip{display:grid}
         <div class="pager" id="pager"></div>
       </div>
     </section>
+    <section class="panel" id="turnStatePanel">
+      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h3>State 池</h3><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State</div></div>
+        <div class="spacer"></div><span class="muted" id="turnStateMeta"></span>
+        <button class="quiet icon" id="turnStateRefresh" title="刷新" aria-label="刷新回合状态"><svg class="i"><use href="#i-refresh"/></svg></button>
+      </div>
+      <div class="panel-body">
+        <div id="turnStateBody" class="state-pool"></div>
+        <div class="muted" style="margin-top:8px">只有不降智 state 才入池：Team ≤ 332 字符，Pro ≤ 292 字符。每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">1 小时</span>只标记过期。</div>
+      </div>
+    </section>
+
    </div>
-  <section class="overview-strip" id="overviewStrip">
-    <article class="overview-card overview-test">
-      <div class="overview-head"><b>测试请求</b><button class="primary" id="overviewTestBtn" type="button">发送测试请求</button></div>
-      <div class="overview-toolbar"><span class="method-mini">POST</span><span class="overview-endpoint" id="overviewEndpoint">尚未发送</span></div>
-      <div class="overview-tabs"><span class="active">请求头</span><span>请求体</span><span>响应结果</span></div>
-      <div class="overview-split"><pre id="overviewTestHeaders">{}</pre><div class="overview-response"><small>响应结果</small><div><span class="tag flat" id="overviewTestStatus">待发送</span> <span class="muted" id="overviewTestLatency">耗时 —</span></div><code id="overviewResponseHeader">尚未发送测试请求</code></div></div>
-    </article>
-
-    <article class="overview-card overview-history">
-      <div class="overview-head"><b>请求历史</b><button class="quiet destructive" id="overviewHistoryBtn" type="button">清空历史</button></div>
-      <div class="overview-kpis"><span><small>总记录</small><strong id="overviewHistoryTotal">0</strong></span><span class="ok"><small>成功率</small><strong id="overviewSuccess">—</strong></span><span class="bad"><small>401 错误</small><strong id="overviewErrors">0</strong></span><span><small>平均延迟</small><strong id="overviewLatency">—</strong></span></div>
-      <table class="overview-table"><thead><tr><th>时间</th><th>方法</th><th>URL</th><th>状态</th><th>耗时</th></tr></thead><tbody id="overviewHistoryRows"></tbody></table>
-    </article>
-
-    <article class="overview-card overview-state">
-      <div class="overview-head"><b>State 池</b><button class="primary" id="overviewStateBtn" type="button">刷新 State</button></div>
-      <div class="overview-state-title">可用 State <span class="tag ok" id="overviewStateCount">0</span></div>
-      <div id="overviewStateList" class="overview-state-list"><div class="empty">暂无可用 State</div></div>
-    </article>
-
-    <article class="overview-card overview-decode">
-      <div class="overview-head"><b>Turn-State 解码</b></div>
-      <div class="overview-decode-input"><input id="overviewDecodeInput" placeholder="输入 Turn-State"><button class="primary" id="overviewDecodeBtn" type="button">解码</button></div>
-      <div class="overview-decode-label">解码结果</div>
-      <pre id="overviewDecodeOutput">{ }</pre>
-    </article>
-  </section>
   </main>
 </div>
 
@@ -1764,7 +1751,6 @@ body[data-workspace="rules"] .overview-strip{display:grid}
   <button data-workspace="rules" aria-current="true"><svg class="i"><use href="#i-swap"/></svg><span>规则</span></button>
   <button data-workspace="test" aria-current="false"><svg class="i"><use href="#i-flask"/></svg><span>测试</span></button>
   <button data-workspace="history" aria-current="false"><svg class="i"><use href="#i-clock"/></svg><span>历史</span></button>
-  <button data-workspace="state" aria-current="false"><svg class="i"><use href="#i-key"/></svg><span>State</span></button>
   <button data-workspace="decode" aria-current="false"><svg class="i"><use href="#i-eye"/></svg><span>解码</span></button>
 </nav>
 
@@ -1793,7 +1779,7 @@ const store = {
 };
 
 
-const WORKSPACES = new Set(["rules", "test", "history", "state", "decode"]);
+const WORKSPACES = new Set(["rules", "test", "history", "decode"]);
 function setWorkspace(view, scroll = true) {
   const next = WORKSPACES.has(view) ? view : "rules";
   document.body.dataset.workspace = next;
@@ -1815,12 +1801,10 @@ function openCredentialMenu() {
   requestAnimationFrame(() => $("credentialSearch").focus());
 }
 function credentialDisplayName(cred) {
-  return cred?.label || cred?.name || cred?.auth_index || "未选择";
+  return cred?.email || cred?.label || cred?.name || cred?.auth_index || "未选择";
 }
 function credentialShort(cred) {
-  const raw = String(cred?.auth_index || credentialDisplayName(cred));
-  if (raw.length <= 12) return raw;
-  return raw.slice(0, 5) + "…" + raw.slice(-4);
+  return credentialDisplayName(cred);
 }
 function renderCredentialMenu() {
   const list = $("credentialMenuList");
@@ -1828,7 +1812,7 @@ function renderCredentialMenu() {
   $("credentialCurrent").textContent = current ? credentialShort(current) + (store.creds[0]?.auth_index === current.auth_index ? "（默认）" : "") : "没有 Codex 凭证";
   const query = String(store.credentialFilter || "").trim().toLowerCase();
   const items = store.creds.filter((cred) => {
-    const haystack = [cred.auth_index, cred.label, cred.name].filter(Boolean).join(" ").toLowerCase();
+    const haystack = [cred.email, cred.auth_index, cred.label, cred.name].filter(Boolean).join(" ").toLowerCase();
     return !query || haystack.includes(query);
   });
   list.replaceChildren();
@@ -1847,7 +1831,7 @@ function renderCredentialMenu() {
     const env = isDefault ? "默认" : (cred.has_rule ? "有规则" : "无规则");
     const count = Number(cred.history_count || 0);
     button.innerHTML = '<span class="dot"></span>' +
-      '<strong>' + esc(credentialShort(cred)) + '</strong>' +
+      '<strong>' + esc(credentialDisplayName(cred)) + '</strong>' +
       '<span class="env">' + esc(env) + '</span>' +
       '<span class="status">' + count + ' 条历史</span>';
     button.title = credentialDisplayName(cred) + " · " + cred.auth_index;
@@ -1876,7 +1860,7 @@ function renderRuleSummary() {
   const removeCount = readNames($("removeRows")).length;
   const enabled = !!$("ruleEnabled")?.checked;
   $("summaryRuleStatus").innerHTML = enabled ? '<span class="tag ok">已启用</span>' : '<span class="tag flat">未启用</span>';
-  $("summaryCredential").textContent = cred ? ((cred.label || cred.name || cred.auth_index) + " · " + cred.auth_index) : (store.selected || "—");
+  $("summaryCredential").textContent = cred ? credentialDisplayName(cred) : (store.selected || "—");
   $("summarySetCount").textContent = setCount + " 条";
   $("summaryRemoveCount").textContent = removeCount + " 条";
   $("summaryGuard").innerHTML = $("ruleStripTurnState")?.checked ? '<span class="tag ok">已开启</span>' : '<span class="tag flat">关闭</span>';
@@ -2187,17 +2171,8 @@ async function selectCredential(authIndex) {
   $("testModelSelect").replaceChildren();
   $("testModel").value = "";
   $("decodeInput").value = "";
-  $("overviewDecodeInput").value = "";
-  $("overviewDecodeOutput").textContent = "{}";
-  $("overviewTestHeaders").textContent = "尚未预览或发送；请打开测试请求配置";
-  $("overviewEndpoint").textContent = "尚未发送";
-  $("overviewResponseHeader").textContent = "尚未发送测试请求";
-  $("overviewTestStatus").textContent = "待发送";
-  $("overviewTestStatus").className = "tag flat";
-  $("overviewTestLatency").textContent = "耗时 —";
   for (const control of $("rulePanel").querySelectorAll("input,button,select")) control.disabled = control.id !== "reloadRule";
   renderHistoryStats(0);
-  renderOverviewStates([]);
   renderRuleSummary();
   $("testHeaderRows").replaceChildren();
   syncAttachSwitch();
@@ -2502,24 +2477,6 @@ function renderHistoryStats(total) {
   $("histSuccessRate").textContent = rate === null ? "—" : (rate + "%");
   $("histAuthErrors").textContent = String(authErrors);
   $("histLatency").textContent = avg === null ? "—" : (avg >= 1000 ? ((avg / 1000).toFixed(1) + " s") : (avg + " ms"));
-  $("overviewHistoryTotal").textContent = String(total || 0);
-  $("overviewSuccess").textContent = rate === null ? "—" : (rate + "%");
-  $("overviewErrors").textContent = String(items.filter((record) => Number(record.status_code) === 401).length);
-  $("overviewLatency").textContent = avg === null ? "—" : (avg >= 1000 ? ((avg / 1000).toFixed(1) + " s") : (avg + " ms"));
-  const rows = $("overviewHistoryRows");
-  rows.replaceChildren();
-  for (const record of items.slice(0, 5)) {
-    const row = document.createElement("tr");
-    const method = record.method || (record.origin === "test" ? "POST" : "—");
-    const url = record.endpoint || record.path || "/v1/...";
-    const latency = Number(record.latency_ms);
-    row.innerHTML = '<td>' + esc(new Date(record.started_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"})) + '</td>' +
-      '<td><span style="color:var(--accent);font-weight:700">' + esc(method) + '</span></td>' +
-      '<td class="mono">' + esc(url) + '</td>' +
-      '<td>' + outcomeTag(record.outcome) + '</td>' +
-      '<td>' + (Number.isFinite(latency) ? (latency >= 1000 ? (latency / 1000).toFixed(1) + "s" : latency + "ms") : "—") + '</td>';
-    rows.append(row);
-  }
 }
 function historySkeleton() {
   $("historyBody").innerHTML = Array.from({ length: 4 }, () =>
@@ -2632,23 +2589,6 @@ function showRecord(record, summaryRow) {
 
 
 /* State pool: one non-degraded state per credential and model, newest first. */
-function renderOverviewStates(items) {
-  items = items.filter((item) => item.auth_index === store.selected && !item.expired);
-  $("overviewStateCount").textContent = String(items.length);
-  const list = $("overviewStateList");
-  list.replaceChildren();
-  if (!items.length) {
-    list.innerHTML = '<div class="empty" style="padding:12px 0">暂无可用 State</div>';
-    return;
-  }
-  for (const item of items.slice(0, 5)) {
-    const age = Math.max(0, Math.round(Number(item.age_seconds || 0) / 60));
-    const row = document.createElement("div");
-    row.className = "overview-state-row";
-    row.innerHTML = '<span class="dot"></span><code>' + esc(item.state || item.digest || "state") + '</code><small>' + age + ' 分钟前</small>';
-    list.append(row);
-  }
-}
 async function loadTurnStates() {
   const body = $("turnStateBody");
   const epoch = store.selectionEpoch;
@@ -2659,10 +2599,11 @@ async function loadTurnStates() {
     if (epoch !== store.selectionEpoch) return;
     const items = (payload.turn_states || []).filter((item) => item.auth_index === authIndex);
     store.turnStates = items;
-    renderOverviewStates(items);
+    const current = store.creds.find((item) => item.auth_index === authIndex);
+    const identity = current ? credentialDisplayName(current) : authIndex;
     const window = payload.reuse_window_seconds || 3600;
     $("turnStateWindow").textContent = `${Math.round(window / 60)} 分钟`;
-    $("turnStateMeta").textContent = items.length ? `${items.length} 条` : "";
+    $("turnStateMeta").textContent = identity + " · " + items.length + " 条";
     body.replaceChildren();
     if (!items.length) {
       body.innerHTML = '<div class="empty">还没有不降智 state 入池</div>';
@@ -2783,8 +2724,6 @@ async function runTest(dryRun) {
 }
 function renderTestResult(result, dryRun) {
   if (!result) return;
-  $("overviewEndpoint").textContent = result.endpoint || "端点未返回";
-  $("overviewTestHeaders").textContent = JSON.stringify(result.after_headers || {}, null, 2);
   renderDiff(result.before_headers, result.after_headers, dryRun ? "预览，未发送请求" : `测试请求 ${new Date().toLocaleTimeString()}`);
   const tags = [outcomeTag(result.outcome)];
   if (!dryRun) {
@@ -2809,16 +2748,6 @@ function renderTestResult(result, dryRun) {
   $("testOutcome").innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${tags.join("")}</div>${chain}${notes}${errors}
     <div class="muted" style="margin-top:9px">${esc(result.method || "POST")} ${esc(result.endpoint || "")}</div>`;
   renderResponseHeaders(dryRun ? null : result.response_headers);
-  const overviewStatus = $("overviewResponseHeader");
-  if (overviewStatus) {
-    const responseEntries = Object.entries(result.response_headers || {});
-    overviewStatus.textContent = responseEntries.length
-      ? responseEntries.slice(0, 3).map(([name, values]) => name + ": " + (Array.isArray(values) ? values.join(", ") : values)).join("\n")
-      : (dryRun ? "预览模式：未发送请求" : "没有可展示的 Response Header");
-    $("overviewTestStatus").textContent = dryRun ? "预览" : String(result.status_code || result.outcome || "—");
-    $("overviewTestStatus").className = "tag " + (dryRun ? "flat" : (result.outcome === "succeeded" ? "ok" : "bad"));
-    $("overviewTestLatency").textContent = dryRun ? "未发送" : ("耗时 " + (result.latency_ms ?? "—") + " ms");
-  }
   $("diffPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
@@ -2878,6 +2807,22 @@ $("deleteRule").addEventListener("click", async () => {
     await Promise.all([loadRule(), loadCredentials()]);
     toast("规则已删除");
   } catch (error) { fail(error); }
+});
+$("historyRefresh").addEventListener("click", async () => {
+  if (!store.selected) return;
+  const button = $("historyRefresh");
+  const icon = $("historyRefreshIcon");
+  button.disabled = true;
+  icon.classList.add("spin");
+  try {
+    await Promise.all([loadHistory(store.page || 1), loadTurnStates()]);
+    toast("请求历史与 State 池已刷新");
+  } catch (error) {
+    fail(error);
+  } finally {
+    button.disabled = false;
+    icon.classList.remove("spin");
+  }
 });
 $("clearHistory").addEventListener("click", async () => {
   if (!store.selected || !confirm("清空该凭证的全部请求历史？")) return;
@@ -2952,18 +2897,6 @@ $("formatDiffBtn").addEventListener("click", () => {
   renderCodeCompare(store.diffBefore, store.diffAfter, $("diffSource").textContent || "");
   toast("已格式化 Header 预览");
 });
-$("overviewTestBtn").textContent = "配置并测试";
-$("overviewTestBtn").addEventListener("click", () => setWorkspace("test"));
-$("overviewHistoryBtn").addEventListener("click", () => $("clearHistory").click());
-$("overviewStateBtn").addEventListener("click", () => loadTurnStates().catch(fail));
-$("overviewDecodeBtn").addEventListener("click", async () => {
-  const token = $("overviewDecodeInput").value.trim();
-  if (!token) { toast("先输入 Turn-State", true); return; }
-  try {
-    const payload = await api("/turn-state/decode", { method: "POST", body: { token } });
-    $("overviewDecodeOutput").textContent = JSON.stringify(payload.info || {}, null, 2);
-  } catch (error) { fail(error); }
-});
 $("previewBtn").addEventListener("click", () => runTest(true));
 $("sendBtn").addEventListener("click", () => runTest(false));
 $("keyBtn").addEventListener("click", () => openKeyDialog());
@@ -2991,7 +2924,6 @@ $("diffPanel").dataset.mobileView = "after";
 if (globalThis.matchMedia?.("(max-width:820px)").matches) {
   for (const block of document.querySelectorAll(".rule-block")) block.removeAttribute("open");
 }
-$("overviewTestHeaders").textContent = "尚未预览或发送；请打开测试请求配置";
 renderDiff(null, null, "");
 if (currentKey()) loadCredentials().catch(fail);
 else openKeyDialog();
