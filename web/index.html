@@ -2132,16 +2132,36 @@ function extractKey(value) {
   if (!current || typeof current !== "object") return "";
   return current.managementKey || current.state?.managementKey || (typeof current.value === "string" ? current.value : "");
 }
+/* Reading window.localStorage throws, rather than returning undefined, when the
+   document is sandboxed without allow-same-origin or the host blocks storage.
+   Optional chaining does not help: the getter itself is what throws. A panel
+   embedded that way still works, it just has nowhere to remember a key. */
+const memoryStorage = new Map();
+function safeStorage(kind) {
+  try {
+    const store = globalThis[kind];
+    store.getItem("");
+    return store;
+  } catch {
+    return {
+      getItem: (name) => (memoryStorage.has(kind + ":" + name) ? memoryStorage.get(kind + ":" + name) : null),
+      setItem: (name, value) => memoryStorage.set(kind + ":" + name, String(value)),
+      removeItem: (name) => memoryStorage.delete(kind + ":" + name),
+    };
+  }
+}
+const sessionStore = () => safeStorage("sessionStorage");
 function hostKey() {
+  const store = safeStorage("localStorage");
   for (const name of ["cli-proxy-auth", "managementKey"]) {
-    const key = extractKey(globalThis.localStorage?.getItem?.(name) || "");
+    const key = extractKey(store.getItem(name) || "");
     if (key) return key;
   }
   return "";
 }
-const currentKey = () => hostKey() || sessionStorage.getItem(SESSION_KEY) || "";
+const currentKey = () => hostKey() || sessionStore().getItem(SESSION_KEY) || "";
 function renderKeyChip() {
-  const source = hostKey() ? "宿主" : (sessionStorage.getItem(SESSION_KEY) ? "本页" : "");
+  const source = hostKey() ? "宿主" : (sessionStore().getItem(SESSION_KEY) ? "本页" : "");
   $("keyChip").hidden = !source;
   $("keyChipText").textContent = source ? "管理密钥：已连接" : "管理密钥：未连接";
 }
@@ -2174,7 +2194,7 @@ async function request(url, options = {}) {
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
   if (response.status === 401 || response.status === 403) {
-    sessionStorage.removeItem(SESSION_KEY);
+    sessionStore().removeItem(SESSION_KEY);
     renderKeyChip();
     openKeyDialog(hostKey() ? "宿主保存的密钥被拒绝，请确认宿主管理面板仍处于登录状态，或在此填写密钥。" : "");
     throw new Error("管理密钥无效或权限不足");
@@ -2891,7 +2911,7 @@ function renderTestResult(result, dryRun) {
 function openKeyDialog(hint = "") {
   if (hint) $("keyDialogHint").textContent = hint;
   $("keyOverlay").dataset.open = "true";
-  $("keyInput").value = sessionStorage.getItem(SESSION_KEY) || "";
+  $("keyInput").value = sessionStore().getItem(SESSION_KEY) || "";
   $("keyInput").focus();
 }
 const closeKeyDialog = () => { $("keyOverlay").dataset.open = "false"; };
@@ -3040,7 +3060,7 @@ $("keyCancel").addEventListener("click", closeKeyDialog);
 $("keyConnect").addEventListener("click", () => {
   const key = $("keyInput").value.trim();
   if (!key) return;
-  sessionStorage.setItem(SESSION_KEY, key);
+  sessionStore().setItem(SESSION_KEY, key);
   renderKeyChip();
   closeKeyDialog();
   loadCredentials().catch(fail);
