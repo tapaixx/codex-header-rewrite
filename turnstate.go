@@ -39,7 +39,8 @@ const (
 	turnStateMaxEntries  = 512
 	turnStateSweepPeriod = 128
 	teamStateMaxChars    = 332
-	proStateMaxChars     = 292
+	// Every plan that is not a team plan shares the shorter personal limit.
+	personalStateMaxChars = 292
 )
 
 // turnStateInfo is the non-secret envelope of one observed blob. Digest is a
@@ -63,15 +64,12 @@ type turnStateInfo struct {
 	Pooled      bool      `json:"pooled,omitempty"`
 }
 
+// normalizePlanType keeps whatever plan the credential claims, lowercased.
+// The threshold split is team vs. everything else, so the set of personal plan
+// names does not have to be enumerated here: an unrecognised name is still a
+// plan, and only a missing claim is unknown.
 func normalizePlanType(plan string) string {
-	switch strings.ToLower(strings.TrimSpace(plan)) {
-	case "team":
-		return "team"
-	case "pro":
-		return "pro"
-	default:
-		return ""
-	}
+	return strings.ToLower(strings.TrimSpace(plan))
 }
 
 // credentialPlanType reads only the plan claim from the credential's ID token.
@@ -141,17 +139,20 @@ func rawFieldFold(object map[string]json.RawMessage, name string) json.RawMessag
 	return nil
 }
 
-// nonDegradedTurnState applies the observed inclusive wire-text thresholds.
-// An unknown plan cannot prove that a state is non-degraded, so it never enters
-// the pool.
+// nonDegradedTurnState applies the observed inclusive wire-text thresholds:
+// a team plan may run to 332 characters, every personal (non-team) plan to 292.
+// A credential that claims no plan at all cannot prove that a state is
+// non-degraded, so it never enters the pool -- guessing the shorter limit would
+// mark a valid team state as degraded, and guessing the longer one would pool a
+// degraded personal state.
 func nonDegradedTurnState(blob, plan string) (nonDegraded bool, maxChars int, knownPlan bool) {
 	switch normalizePlanType(plan) {
+	case "":
+		return false, 0, false
 	case "team":
 		maxChars = teamStateMaxChars
-	case "pro":
-		maxChars = proStateMaxChars
 	default:
-		return false, 0, false
+		maxChars = personalStateMaxChars
 	}
 	return len(blob) <= maxChars, maxChars, true
 }

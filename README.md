@@ -215,7 +215,7 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 ### 不降智 State 池
 
-每个新收到的 state 都先按凭证套餐分类：Team 长度 **≤ 332** 字符、Pro 长度 **≤ 292** 字符是不降智；超限值只留在历史并标为疑似降智，套餐未知也不入池。合格 state 每拿到一次就铸造一次，同一「凭证 + 模型」只保留时间最新的一条；乱序到达不会让旧值覆盖新值。
+每个新收到的 state 都先按凭证套餐分类：Team 套餐长度 **≤ 332** 字符、个人套餐（非 Team，如 Pro / Plus）长度 **≤ 292** 字符是不降智；超限值只留在历史并标为疑似降智。阈值只分 Team 与非 Team 两档，所以插件不必穷举个人套餐的名字，没见过的套餐名一律按 292 判。凭证完全没有套餐声明时既不判定也不入池：按短阈值猜会把合格的 Team state 误判成降智，按长阈值猜会把降智的个人 state 放进池子。合格 state 每拿到一次就铸造一次，同一「凭证 + 模型」只保留时间最新的一条；乱序到达不会让旧值覆盖新值。
 
 数据来自 `GET /codex-header-rewrite/turn-states`。面板同时显示凭证名称、稳定的 `auth_index`、模型、长度/阈值，并可在原行展开 state 具体值。池把原始 state 持久化在配置的 bbolt `data_path`（CPA 工作目录为 `/CLIProxyAPI` 时，默认落在 `/CLIProxyAPI/plugins/data/codex-header-rewrite.db`），因此 CPA 重建、重启或插件更新后会恢复；插件目录随容器更新被整体替换时，应把 `/CLIProxyAPI/plugins/data` 挂到持久卷。
 

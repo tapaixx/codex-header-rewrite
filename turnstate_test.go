@@ -60,9 +60,18 @@ func TestNonDegradedStateLimitsAreInclusivePerPlan(t *testing.T) {
 	}{
 		{plan: "team", chars: 332, want: true, max: 332, known: true},
 		{plan: "team", chars: 333, want: false, max: 332, known: true},
+		{plan: "Team", chars: 333, want: false, max: 332, known: true},
 		{plan: "pro", chars: 292, want: true, max: 292, known: true},
 		{plan: "pro", chars: 293, want: false, max: 292, known: true},
-		{plan: "unknown", chars: 1, want: false, max: 0, known: false},
+		// Every personal plan shares the shorter limit, including names the
+		// plugin has never seen; a team state of the same length is still fine.
+		{plan: "plus", chars: 292, want: true, max: 292, known: true},
+		{plan: "plus", chars: 293, want: false, max: 292, known: true},
+		{plan: "enterprise", chars: 300, want: false, max: 292, known: true},
+		{plan: "team", chars: 300, want: true, max: 332, known: true},
+		// Only a missing claim is unknown, and unknown never enters the pool.
+		{plan: "", chars: 1, want: false, max: 0, known: false},
+		{plan: "   ", chars: 1, want: false, max: 0, known: false},
 	}
 	for _, tt := range tests {
 		got, max, known := nonDegradedTurnState(strings.Repeat("x", tt.chars), tt.plan)
