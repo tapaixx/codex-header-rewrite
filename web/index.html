@@ -1453,6 +1453,7 @@ body[data-workspace="history"] #turnStatePanel .state-pool{display:block}
 .pool-row[aria-selected="true"] td{background:var(--accent-weak)}
 .pool-row[aria-selected="true"] td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
 .pool-row:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.ts-block-absent{opacity:.75}
 .drawer .pool-state-value{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px;line-height:1.5}
 @media (max-width:820px){.pool-scroll{overflow-x:auto}}
 #historyRefresh{color:var(--accent)}
@@ -2718,7 +2719,7 @@ function diffHTML(before, after, emptyText = "暂无 Header 数据", animate = f
   }
   return { count: changed.length, hasRows: true, html: `<div class="diff">
     ${changed.map((row, index) => diffRowHTML(row, index, animate)).join("")}
-    ${unchanged.length ? `<details${changed.length ? "" : " open"}>
+    ${unchanged.length ? `<details>
       <summary>未改动的 ${unchanged.length} 个 Header</summary>
       ${unchanged.map((row, index) => diffRowHTML(row, index, false)).join("")}
     </details>` : ""}
@@ -2785,9 +2786,13 @@ function turnStateAge(info) {
   return `${Math.round(seconds / 3600)} 小时前`;
 }
 function turnStateRows(label, info, extra = "", blob = "", model = "") {
-  const decode = blob ? `<button class="btn-xs" data-blob="${esc(blob)}" title="自动送到解码器并显示结果"><svg class="i" style="width:12px;height:12px"><use href="#i-eye"/></svg>解码 state</button>` : "";
   if (!info) {
-    return blob ? `<div class="ts-block"><div class="ts-title">${esc(label)}${extra}<span style="flex:1"></span>${decode}</div></div>` : "";
+    if (!blob) return "";
+    // Decoded after the drawer opens; see decodePendingCards.
+    return `<div class="ts-block" data-decode-blob="${esc(blob)}" data-label="${esc(label)}" data-model="${esc(model)}">
+      <div class="ts-title">${esc(label)}${extra}</div>
+      <div class="ts-body"><div class="muted">解码中…</div></div>
+    </div>`;
   }
   const issued = info.issued_at && !info.issued_at.startsWith("0001")
     ? `${new Date(info.issued_at).toLocaleString()}<span class="muted"> · ${turnStateAge(info)}</span>` : "未能读出";
@@ -2804,7 +2809,7 @@ function turnStateRows(label, info, extra = "", blob = "", model = "") {
   // whether its length clears the plan's bar, then what the envelope decodes
   // to. A single thirteen-row list gave all of that the same weight.
   return `<div class="ts-block">
-    <div class="ts-title">${esc(label)}${extra}<span style="flex:1"></span>${decode}</div>
+    <div class="ts-title">${esc(label)}${extra}</div>
     <div class="ts-body">
       <dl class="ts-grid">
         <dt>摘要</dt><dd class="mono">${esc(info.digest || "-")}</dd>
@@ -2831,10 +2836,32 @@ function turnStateRows(label, info, extra = "", blob = "", model = "") {
     </div>
   </div>`;
 }
+function absentCard(label, text) {
+  return `<div class="ts-block ts-block-absent"><div class="ts-title">${esc(label)}</div><div class="ts-body"><div class="muted">${esc(text)}</div></div></div>`;
+}
+// Cards recorded with a blob but no parsed envelope decode themselves once the
+// drawer is open, so the reader sees the same fields either way.
+async function decodePendingCards(container) {
+  for (const card of container.querySelectorAll("[data-decode-blob]")) {
+    const blob = card.dataset.decodeBlob;
+    try {
+      const payload = await api("/turn-state/decode", { method: "POST", body: { token: blob } });
+      if (!card.isConnected) return;
+      const extra = card.querySelector(".ts-title")?.innerHTML.replace(esc(card.dataset.label), "") || "";
+      card.outerHTML = turnStateRows(card.dataset.label, payload.info || {}, extra, "", card.dataset.model);
+    } catch (error) {
+      if (card.isConnected) card.querySelector(".ts-body").innerHTML = `<div class="muted">解码失败：${esc(error.message || String(error))}</div>`;
+    }
+  }
+}
 function turnStateDetail(record) {
   const echoBlob = pickHeader(record.before_headers, "x-codex-turn-state") || "";
   const mintedBlob = pickHeader(record.response_headers, "x-codex-turn-state") || "";
-  if (!record.turn_state_echo && !record.turn_state_minted && !echoBlob && !mintedBlob) return "";
+  // A state the plugin injected exists only in the rewritten headers: the
+  // client sent none and the upstream may have returned none, yet a state
+  // went out on this request and the reader should see which.
+  const injectedBlob = record.turn_state_injected ? (pickHeader(record.after_headers, "x-codex-turn-state") || "") : "";
+  if (!record.turn_state_echo && !record.turn_state_minted && !echoBlob && !mintedBlob && !injectedBlob) return "";
   const origin = record.turn_state_origin_label || record.turn_state_origin_index;
   const echoExtra = record.turn_state_cross_account === true
     ? ` <span class="tag bad">来自 ${esc(origin || "其他凭证")}</span>`
@@ -2843,8 +2870,12 @@ function turnStateDetail(record) {
   return `<div class="history-detail-section">
     <div class="history-detail-label"><span>X-Codex-Turn-State</span><span>${turnStateTags(record)}</span></div>
     <div class="ts-pair">
-      ${turnStateRows("客户端回带", record.turn_state_echo, echoExtra, echoBlob, record.turn_state_origin_model || "")}
-      ${turnStateRows("上游返回", record.turn_state_minted, "", mintedBlob, record.model || "")}
+      ${injectedBlob
+        ? turnStateRows("发往上游", null, ' <span class="tag ok">插件从池注入</span>', injectedBlob, record.model || "")
+        : (turnStateRows("客户端回带", record.turn_state_echo, echoExtra, echoBlob, record.turn_state_origin_model || "")
+          || absentCard("客户端回带", "本次请求没有携带 X-Codex-Turn-State"))}
+      ${turnStateRows("上游返回", record.turn_state_minted, "", mintedBlob, record.model || "")
+        || absentCard("上游返回", "响应没有返回 X-Codex-Turn-State")}
     </div>
     ${session}
   </div>`;
@@ -3101,6 +3132,7 @@ function showRecord(record) {
       ${responseHeadersHTML(record.response_headers)}
     </div>
   </div>`);
+  decodePendingCards($("drawerBody"));
 }
 
 
@@ -3376,33 +3408,6 @@ $("cleanupBtn").addEventListener("click", async () => {
 });
 $("decodeBtn").addEventListener("click", () => decodeTurnState());
 $("turnStateRefresh").addEventListener("click", () => loadTurnStates());
-$("turnStateBody").addEventListener("click", async (event) => {
-  const copy = event.target.closest?.("[data-copy-state]");
-  if (copy) {
-    try {
-      await navigator.clipboard.writeText(copy.dataset.copyState);
-      toast("State 已复制");
-    } catch {
-      toast("浏览器不允许自动复制，请直接选中具体值", true);
-    }
-    return;
-  }
-  const decode = event.target.closest?.("[data-blob]");
-  if (!decode) return;
-  $("decodeInput").value = decode.dataset.blob;
-  setWorkspace("decode", false);
-  requestAnimationFrame(() => $("decoderPanel").scrollIntoView({ behavior: "smooth", block: "nearest" }));
-  decodeTurnState();
-});
-$("historyBody").addEventListener("click", (event) => {
-  const trigger = event.target.closest?.("[data-blob]");
-  if (!trigger) return;
-  event.stopPropagation();
-  $("decodeInput").value = trigger.dataset.blob;
-  setWorkspace("decode", false);
-  requestAnimationFrame(() => $("decoderPanel").scrollIntoView({ behavior: "smooth", block: "nearest" }));
-  decodeTurnState();
-});
 $("diffExample").addEventListener("change", () => renderRulePreview());
 $("diffExampleSwitch").addEventListener("click", () => {
   $("diffExample").value = $("diffExample").value === "chat" ? "responses" : "chat";
