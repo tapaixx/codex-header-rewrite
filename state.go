@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -302,12 +303,12 @@ func removeHeaderNameFold(names []string, target string) []string {
 	return out
 }
 
-func observeResponse(req responseInterceptRequest) {
+func observeResponse(req responseInterceptRequest) responseInterceptResponse {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	pr := state.pending[req.RequestID]
 	if pr == nil || pr.current == nil {
-		return
+		return responseInterceptResponse{}
 	}
 	pr.current.ResponseHeaders = redactHeaders(req.ResponseHeaders)
 	pr.current.StatusCode = req.StatusCode
@@ -315,6 +316,47 @@ func observeResponse(req responseInterceptRequest) {
 	// The body is read here only to learn which model the upstream served. The
 	// model name is kept; the body itself is not stored anywhere.
 	pr.current.models.observeBody(req.Body)
+	if pr.current.rejecting {
+		return responseInterceptResponse{
+			Headers: rejectionHeaders("application/json"),
+			Body:    rejectionBody(pr.current.TurnStateMinted),
+		}
+	}
+	return responseInterceptResponse{}
+}
+
+// rejectionHeaders marks a withheld response so the client and the operator
+// can tell it apart from an upstream error. The status code is out of reach.
+func rejectionHeaders(contentType string) http.Header {
+	return http.Header{
+		"Content-Type":           {contentType},
+		"X-Codex-Header-Rewrite": {"rejected-degraded-turn-state"},
+	}
+}
+
+func rejectionMessage(info *turnStateInfo) string {
+	if info != nil && info.MaxChars > 0 {
+		return fmt.Sprintf("codex-header-rewrite withheld this response: the upstream X-Codex-Turn-State classifies as degraded (%d characters, limit %d for this plan). Retry the request.", info.Chars, info.MaxChars)
+	}
+	return "codex-header-rewrite withheld this response: the upstream X-Codex-Turn-State classifies as degraded. Retry the request."
+}
+
+// rejectionBody is the non-stream replacement: an error object in the shape
+// the Responses API uses for failures.
+func rejectionBody(info *turnStateInfo) []byte {
+	body, _ := json.Marshal(map[string]any{"error": map[string]any{
+		"type": "degraded_turn_state", "code": "turn_state_degraded", "message": rejectionMessage(info), "param": nil,
+	}})
+	return body
+}
+
+// rejectionEvent is the stream replacement: a terminal `error` event, which
+// Codex clients treat as the end of the response.
+func rejectionEvent(info *turnStateInfo) []byte {
+	data, _ := json.Marshal(map[string]any{
+		"type": "error", "code": "turn_state_degraded", "message": rejectionMessage(info), "param": nil, "sequence_number": 0,
+	})
+	return []byte("event: error\ndata: " + string(data) + "\n\n")
 }
 
 // noteTurnStateMintLocked2 classifies an upstream response state, mints it into
@@ -339,20 +381,41 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 	if attempt.injectedDigest != "" && attempt.injectedExpired && info.NonDegraded != nil && !*info.NonDegraded {
 		attempt.TurnStateInvalidated = invalidateTurnStateLocked(attempt.AuthIndex, sentModel(attempt.Model, attempt.RequestedModel), attempt.injectedDigest)
 	}
+	// Withholding is part of the rule, like the guard: it needs the rule
+	// enabled as well as its own flag. The decision is made here, on the
+	// headers, so both the non-stream body and every stream chunk see it.
+	if rule, ok := state.rules[attempt.AuthIndex]; ok && rule.Enabled && rule.RejectDegradedResponse &&
+		info.NonDegraded != nil && !*info.NonDegraded {
+		attempt.rejecting = true
+		attempt.TurnStateRejected = true
+	}
 }
-func observeStreamHeaders(req streamChunkInterceptRequest) {
+func observeStreamHeaders(req streamChunkInterceptRequest) streamChunkInterceptResponse {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	pr := state.pending[req.RequestID]
 	if pr == nil || pr.current == nil {
-		return
+		return streamChunkInterceptResponse{}
 	}
 	if req.ChunkIndex == streamChunkHeaderInitIndex {
 		pr.current.ResponseHeaders = redactHeaders(req.ResponseHeaders)
 		noteTurnStateMintLocked2(pr.current, req.ResponseHeaders)
-		return
+		if pr.current.rejecting {
+			return streamChunkInterceptResponse{Headers: rejectionHeaders("text/event-stream")}
+		}
+		return streamChunkInterceptResponse{}
+	}
+	if pr.current.rejecting {
+		// The first payload chunk becomes the terminal error; nothing of the
+		// upstream body reaches the client after that.
+		pr.current.rejectedChunks++
+		if pr.current.rejectedChunks == 1 {
+			return streamChunkInterceptResponse{Body: rejectionEvent(pr.current.TurnStateMinted)}
+		}
+		return streamChunkInterceptResponse{DropChunk: true}
 	}
 	pr.current.models.observeCallback(req.Body)
+	return streamChunkInterceptResponse{}
 }
 func completeRequest(c requestCompletion) {
 	state.mu.Lock()

@@ -25,8 +25,14 @@ type headerRule struct {
 	// StripForeignTurnState removes an echoed X-Codex-Turn-State when this
 	// plugin knows it came from a different credential. Detection alone only
 	// reports the contradiction; this is what stops it reaching the upstream.
-	StripForeignTurnState bool      `json:"strip_foreign_turn_state"`
-	UpdatedAt             time.Time `json:"updated_at"`
+	StripForeignTurnState bool `json:"strip_foreign_turn_state"`
+	// RejectDegradedResponse withholds a response whose minted
+	// X-Codex-Turn-State classifies as degraded: the body is replaced with an
+	// error and, on a stream, every later chunk is dropped. The status code
+	// cannot be changed from a plugin, so the client sees the error inside a
+	// 200 -- as an `error` event on a stream, as an error object otherwise.
+	RejectDegradedResponse bool      `json:"reject_degraded_response"`
+	UpdatedAt              time.Time `json:"updated_at"`
 }
 
 type credentialSnapshot struct {
@@ -93,8 +99,11 @@ type historyRecord struct {
 	// TurnStateInvalidated reports that the injected state was past the reuse
 	// window and the upstream still minted a degraded state, so the pooled
 	// entry was dropped rather than injected again.
-	TurnStateInvalidated bool   `json:"turn_state_invalidated,omitempty"`
-	TurnStateSessionID   string `json:"turn_state_session_id,omitempty"`
+	TurnStateInvalidated bool `json:"turn_state_invalidated,omitempty"`
+	// TurnStateRejected reports that the response was withheld from the client
+	// because its minted state classified as degraded.
+	TurnStateRejected  bool   `json:"turn_state_rejected,omitempty"`
+	TurnStateSessionID string `json:"turn_state_session_id,omitempty"`
 }
 
 const (
@@ -110,6 +119,12 @@ type pendingAttempt struct {
 	// past the reuse window when it did. Read again when the response arrives.
 	injectedDigest  string
 	injectedExpired bool
+	// rejecting is set when the response headers classified as degraded and
+	// the rule asks for such responses to be withheld; rejectedChunks counts
+	// stream chunks seen since, so the first carries the error and the rest
+	// are dropped.
+	rejecting      bool
+	rejectedChunks int
 }
 
 type pendingRequest struct {

@@ -87,6 +87,18 @@ response（header-init / response.intercept_after）
 
 注入与守卫摘除共享同一个 Header：守卫刚把不可复用的回带值排入 ClearHeaders 时，注入会撤回那条移除再写入新值，避免一次响应里同时下发"设置"和"清除"同一 Header 的矛盾指令。命中注入会在 attempt 上记 `turn_state_injected`。
 
+## 降智响应拦截
+
+```text
+response.intercept_after / stream header-init
+ -> 铸造判定为疑似降智 且 rule.Enabled && rule.RejectDegradedResponse
+    -> attempt.rejecting = true，记 turn_state_rejected
+    -> 非流式：Body 换成 {"error":{"type":"degraded_turn_state",...}}，加 X-Codex-Header-Rewrite 头
+    -> 流式：header-init 只加标记头；第 1 个数据 chunk 换成 `event: error` 帧；之后每个 chunk DropChunk
+```
+
+ABI 只允许替换 Headers / Body 与按 chunk 丢弃（`DropChunk`），不能改状态码、不能中止连接，也不会触发宿主的凭证故障转移；上游仍会把响应流完。
+
 ## 测试请求
 
 测试请求不走 CPA 的 provider executor 转发链路，而是插件调用 CPA 宿主的 `host.http.do`：

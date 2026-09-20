@@ -1575,6 +1575,7 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
    stays in the DOM, so it is still searchable and reachable by keyboard; it
    just stops pushing the controls apart until it is asked for. */
 .hint-wrap{display:inline-flex;align-items:center;margin-left:5px}
+.history-switch{font-size:12px;font-weight:600;white-space:nowrap;margin-right:2px}
 .hint{
   all:unset;position:relative;box-sizing:border-box;display:inline-grid;place-items:center;
   width:16px;height:16px;border-radius:50%;flex:none;vertical-align:-3px;
@@ -2077,7 +2078,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
     </section>
 
     <section class="panel" id="historyPanel">
-      <div class="panel-head"><div class="panel-title"><h3>请求历史与诊断</h3><div class="panel-caption">查看当前凭证的请求记录、Header 重写效果和上游模型</div></div><div class="spacer"></div><span class="muted" id="historyMeta"></span><button class="quiet" id="historyRefresh" title="刷新请求历史"><svg class="i" id="historyRefreshIcon"><use href="#i-refresh"/></svg>刷新</button><button class="quiet destructive" id="clearHistory"><svg class="i"><use href="#i-trash"/></svg>清空</button></div>
+      <div class="panel-head"><div class="panel-title"><h3>请求历史与诊断</h3><div class="panel-caption">查看当前凭证的请求记录、Header 重写效果和上游模型</div></div><div class="spacer"></div><label class="switch history-switch"><input type="checkbox" id="rejectDegraded"><span>降智响应拦截</span></label><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="降智响应拦截的说明">!</button><span class="hint-text"><span class="hint-k">开启</span><span class="hint-v">上游返回的 <code>X-Codex-Turn-State</code> 判定为<b>疑似降智</b>时，这次响应<b>不下发</b>给客户端：非流式换成错误对象，流式在第一个数据块换成终止性的 <code>error</code> 事件、其余全部丢弃。历史标「已拦截」。</span><span class="hint-k">关闭</span><span class="hint-v">照常下发，只在历史里标「疑似降智」。</span><span class="hint-p">按凭证保存在规则里，和守卫一样要「启用改写」开着才生效。插件改不了 HTTP 状态码，客户端看到的是 200 里带错误；被拦截的这次调用上游已经计了额度。</span></span></span><span class="muted" id="historyMeta"></span><button class="quiet" id="historyRefresh" title="刷新请求历史"><svg class="i" id="historyRefreshIcon"><use href="#i-refresh"/></svg>刷新</button><button class="quiet destructive" id="clearHistory"><svg class="i"><use href="#i-trash"/></svg>清空</button></div>
       <div class="panel-body">
         <div class="history-stats" id="historyStats">
           <div class="history-stat"><span class="history-stat-icon"><svg class="i"><use href="#i-clock"/></svg></span><div><div class="history-stat-label">总记录</div><div class="history-stat-value num" id="histTotal">0</div><div class="history-stat-note">当前凭证</div></div></div>
@@ -2565,6 +2566,7 @@ async function selectCredential(authIndex) {
   for (const id of ["ruleUpdated", "historyMeta", "turnStateMeta", "diffSource", "modelHint"]) $(id).textContent = "";
   $("ruleEnabled").checked = false;
   $("ruleStripTurnState").checked = false;
+  if ($("rejectDegraded")) $("rejectDegraded").checked = false;
   $("testModelSelect").replaceChildren();
   $("testModel").value = "";
   $("decodeInput").value = "";
@@ -2651,6 +2653,7 @@ async function loadRule() {
   for (const control of $("rulePanel").querySelectorAll("input,button,select")) control.disabled = false;
   $("ruleEnabled").checked = !!store.rule.enabled;
   $("ruleStripTurnState").checked = !!store.rule.strip_foreign_turn_state;
+  if ($("rejectDegraded")) $("rejectDegraded").checked = !!store.rule.reject_degraded_response;
   $("setRows").replaceChildren();
   for (const [name, value] of Object.entries(store.rule.set || {})) headerRow($("setRows"), name, value);
   $("removeRows").replaceChildren();
@@ -2667,7 +2670,7 @@ function renderWarnings(warnings) {
     $("ruleWarnText").innerHTML = `${warnings.map((name) => `<code class="mono">${esc(name)}</code>`).join("、")} 属于 Codex executor 的特殊字段，改写可能在 interceptor 之后被覆盖。`;
   }
 }
-const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), strip_foreign_turn_state: $("ruleStripTurnState").checked });
+const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), strip_foreign_turn_state: $("ruleStripTurnState").checked, reject_degraded_response: !!$("rejectDegraded")?.checked });
 
 /* ---------- the header diff -------------------------------------------
    One row per header. The name is written once and the value change is shown
@@ -2773,6 +2776,7 @@ function turnStateTags(record) {
   }
   if (record.turn_state_stripped) tags.push('<span class="tag warn">已摘除</span>');
   if (record.turn_state_injected) tags.push('<span class="tag ok" title="本次请求的 X-Codex-Turn-State 由插件从不降智池注入">已注入</span>');
+  if (record.turn_state_rejected) tags.push('<span class="tag bad" title="上游返回的 state 判定为降智，本次响应未下发给客户端">已拦截 · 未下发</span>');
   if (record.turn_state_invalidated) tags.push('<span class="tag bad" title="注入的是已过期的池 state，上游铸回的仍是降智 state；这条 state 已从池中移除，不会再注入">注入后仍降智 · 已失效</span>');
   if (record.turn_state_minted?.pooled) tags.push('<span class="tag ok">不降智 · 已入池</span>');
   else if (record.turn_state_minted?.non_degraded === false) tags.push('<span class="tag bad">疑似降智 · 未入池</span>');
@@ -3121,6 +3125,10 @@ function showRecord(record) {
       <div class="metaline"><span>Request ID ${esc(record.request_id || "-")}</span>
         <span>${esc(record.source_format || "-")}</span><span>${record.stream ? "流式" : "非流式"}</span></div>
     </div>
+    ${record.turn_state_rejected ? `<div class="history-detail-section history-detail-error">
+      <div class="history-detail-label"><span>已拦截</span></div>
+      <div class="muted">上游返回的 X-Codex-Turn-State 判定为疑似降智，插件把这次响应替换成了错误，没有下发给客户端。上游侧这次调用已经计了额度。</div>
+    </div>` : ""}
     ${record.error ? `<div class="history-detail-section history-detail-error">
       <div class="history-detail-label"><span>上游错误</span><span>${record.status_code ? `HTTP ${esc(String(record.status_code))}` : ""}</span></div>
       <pre class="history-error-full">${esc(prettyError(record.error))}</pre>
@@ -3449,6 +3457,18 @@ $("keyConnect").addEventListener("click", () => {
 });
 $("keyInput").addEventListener("keydown", (event) => { if (event.key === "Enter") $("keyConnect").click(); });
 $("keyOverlay").addEventListener("click", (event) => { if (event.target === $("keyOverlay")) closeKeyDialog(); });
+$("rejectDegraded").addEventListener("change", async () => {
+  const box = $("rejectDegraded");
+  if (!store.selected || !store.rule) { box.checked = false; toast("先选择一个凭证", true); return; }
+  try {
+    const payload = await api("/rule", { method: "PUT", body: { ...store.rule, auth_index: store.selected, reject_degraded_response: box.checked } });
+    store.rule = payload.rule || store.rule;
+    toast(box.checked ? (store.rule.enabled ? "已开启降智响应拦截" : "已保存；「启用改写」关着时拦截不生效") : "已关闭降智响应拦截");
+  } catch (error) {
+    box.checked = !box.checked;
+    fail(error);
+  }
+});
 $("drawerClose").addEventListener("click", closeHistoryDrawer);
 $("drawerBackdrop").addEventListener("click", closeHistoryDrawer);
 document.addEventListener("click", (event) => {

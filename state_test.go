@@ -699,6 +699,71 @@ func TestExpiredInjectedStateIsSupersededByAGoodResponse(t *testing.T) {
 	}
 }
 
+func rejectFixture(t *testing.T, reject bool) {
+	t.Helper()
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, RejectDegradedResponse: reject}
+	state.mu.Unlock()
+	if _, err := interceptAfter(requestInterceptRequest{RequestID: "r", Model: "gpt-5.6-luna", Metadata: map[string]any{"selected_auth_index": "idx-a", "selected_auth_id": "auth-a"}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// With the flag on, a non-stream response whose minted state is degraded is
+// replaced by an error object and marked, and the attempt records it.
+func TestDegradedNonStreamResponseIsWithheldWhenTheRuleAsks(t *testing.T) {
+	rejectFixture(t, true)
+	degraded := fernetToken(0x80, time.Now(), 40)
+	out := observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {degraded}}, Body: []byte(`{"id":"resp"}`)})
+	if !strings.Contains(string(out.Body), `"turn_state_degraded"`) || out.Headers.Get("X-Codex-Header-Rewrite") != "rejected-degraded-turn-state" {
+		t.Fatalf("response not withheld: %s %v", out.Body, out.Headers)
+	}
+	completeRequest(requestCompletion{RequestID: "r", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+	if got := lastAttempt(t); !got.TurnStateRejected {
+		t.Fatalf("attempt should record the rejection: %#v", got)
+	}
+}
+
+// On a stream the decision is taken on the header chunk: the first payload
+// chunk becomes a terminal error event and every later chunk is dropped.
+func TestDegradedStreamIsCutAtTheFirstChunk(t *testing.T) {
+	rejectFixture(t, true)
+	degraded := fernetToken(0x80, time.Now(), 40)
+	head := observeStreamHeaders(streamChunkInterceptRequest{RequestID: "r", ChunkIndex: streamChunkHeaderInitIndex, ResponseHeaders: http.Header{turnStateHeader: {degraded}}})
+	if head.Headers.Get("X-Codex-Header-Rewrite") == "" || head.DropChunk {
+		t.Fatalf("header chunk should only be marked: %#v", head)
+	}
+	first := observeStreamHeaders(streamChunkInterceptRequest{RequestID: "r", ChunkIndex: 0, Body: []byte("data: {\"type\":\"response.created\"}\n\n")})
+	if !strings.HasPrefix(string(first.Body), "event: error\n") || !strings.Contains(string(first.Body), `"turn_state_degraded"`) || first.DropChunk {
+		t.Fatalf("first chunk should carry the error event: %#v", first)
+	}
+	second := observeStreamHeaders(streamChunkInterceptRequest{RequestID: "r", ChunkIndex: 1, Body: []byte("data: {\"type\":\"response.output_text.delta\"}\n\n")})
+	if !second.DropChunk || len(second.Body) != 0 {
+		t.Fatalf("later chunks should be dropped: %#v", second)
+	}
+}
+
+// The flag off, or a state that is not degraded, leaves the response alone.
+func TestResponsesPassThroughWithoutTheFlagOrWithoutDegradation(t *testing.T) {
+	rejectFixture(t, false)
+	degraded := fernetToken(0x80, time.Now(), 40)
+	if out := observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {degraded}}}); len(out.Body) != 0 || len(out.Headers) != 0 {
+		t.Fatalf("flag off must pass through: %#v", out)
+	}
+	rejectFixture(t, true)
+	good := fernetToken(0x80, time.Now(), 1)
+	if out := observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {good}}}); len(out.Body) != 0 || len(out.Headers) != 0 {
+		t.Fatalf("a non-degraded state must pass through: %#v", out)
+	}
+	if chunk := observeStreamHeaders(streamChunkInterceptRequest{RequestID: "r", ChunkIndex: 0, Body: []byte("data: x\n\n")}); chunk.DropChunk || len(chunk.Body) != 0 {
+		t.Fatalf("chunks of an accepted stream must pass through: %#v", chunk)
+	}
+}
+
 // A pooled state protects the outgoing credential on its own. The guard decides
 // whether an unusable echo is dropped; it has no say in whether a usable one is
 // substituted, so a credential whose pool is warm never forwards another

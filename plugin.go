@@ -45,15 +45,13 @@ func handleMethod(method string, raw []byte) ([]byte, error) {
 		if err := json.Unmarshal(raw, &req); err != nil {
 			return nil, err
 		}
-		observeResponse(req)
-		return okEnvelope(responseInterceptResponse{})
+		return okEnvelope(observeResponse(req))
 	case methodResponseInterceptStreamChunk:
 		var req streamChunkInterceptRequest
 		if err := json.Unmarshal(raw, &req); err != nil {
 			return nil, err
 		}
-		observeStreamHeaders(req)
-		return okEnvelope(streamChunkInterceptResponse{})
+		return okEnvelope(observeStreamHeaders(req))
 	case methodManagementRegister:
 		return okEnvelope(registerManagement())
 	case methodManagementHandle:

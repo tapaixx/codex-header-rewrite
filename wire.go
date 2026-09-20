@@ -157,6 +157,8 @@ type streamChunkInterceptResponse struct {
 	Headers      http.Header
 	Body         []byte
 	ClearHeaders []string
+	// DropChunk skips delivery of this chunk; the host honours it per chunk.
+	DropChunk bool
 }
 
 type managementRegistration struct {
