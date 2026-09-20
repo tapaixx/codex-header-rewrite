@@ -1522,6 +1522,32 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
 .switch input:focus-visible+span::before{outline:2px solid var(--focus);outline-offset:2px}
 .switch input:disabled+span{opacity:.55;cursor:not-allowed}
 
+/* Single column on narrow screens, for every workspace.
+   `#diffPanel{grid-column:2!important}` above is unconditional, so the
+   breakpoint's unweighted reset lost to it and the diff panel was pushed into
+   an implicit second track the viewport has no room for -- the test workspace
+   scrolled sideways and clipped. Placement is reset by ID here so it outranks
+   that rule, and the panel stops sticking because there is no column left to
+   stick beside. */
+@media (max-width:820px){
+  #rulePanel,#testPanel,#diffPanel,#historyPanel,#turnStatePanel,
+  #decoderPanel,#ruleSummaryPanel,#ruleStrategyPanel{
+    grid-column:1!important;grid-row:auto!important;
+    position:static!important;top:auto!important
+  }
+  /* The head packs a title, a count and a provenance note onto one row. That
+     row has no width to give on a phone, so the heading was tearing into
+     three lines beside a two-line note. Stack them instead: heading, then the
+     count and note sharing the line below. */
+  #diffPanel .panel-head{flex-wrap:wrap;row-gap:6px}
+  #diffPanel .panel-title{flex:1 1 100%}
+  #diffPanel .panel-head .spacer{display:none}
+  #diffPanel #diffSource{flex:1 1 auto;text-align:right}
+  /* Clear the fixed bottom nav -- at 22px the toast sat on top of it and hid
+     the middle tabs for as long as it showed. */
+  .toast{bottom:calc(74px + env(safe-area-inset-bottom))!important}
+}
+
 </style>
 </head>
 <body data-workspace="rules">
