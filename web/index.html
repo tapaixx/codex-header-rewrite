@@ -1442,7 +1442,17 @@ body[data-workspace="rules"] .overview-strip{display:none!important}
 
 body[data-workspace="history"] #historyPanel{grid-row:1}
 body[data-workspace="history"] #turnStatePanel{grid-row:2;margin-top:12px}
-body[data-workspace="history"] #turnStatePanel .state-pool{grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px}
+body[data-workspace="history"] #turnStatePanel .state-pool{display:block}
+.pool-table{width:100%}
+.pool-table th{text-align:left;font-size:10.5px;color:var(--text-mute);font-weight:600;padding:5px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
+.pool-table td{padding:5px 9px;border-top:1px solid var(--line);font-size:12px;vertical-align:middle;white-space:nowrap}
+.pool-table tbody tr:first-child td{border-top:0}
+.pool-model-cell{font-size:12px}
+.pool-actions,.pool-actions-head{text-align:right!important}
+.pool-actions .btn-xs{margin-left:5px}
+.pool-value-row td{background:var(--sunk);white-space:normal}
+.pool-value-row .pool-state-value{margin:0}
+@media (max-width:820px){.pool-scroll{overflow-x:auto}}
 #historyRefresh{color:var(--accent)}
 @media(max-width:820px){
   body[data-workspace="history"] #turnStatePanel{margin-top:0}
@@ -1651,6 +1661,32 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
 body[data-workspace="history"] #turnStatePanel{grid-row:1!important;margin-top:0!important}
 body[data-workspace="history"] #historyPanel{grid-row:2!important}
 
+/* One record, one line. The chain and the verdict chips used to wrap freely,
+   which made every row two or three lines tall and pushed most of the page
+   below the fold. Fixed table layout gives the two flexible columns hard
+   widths to clip against; whatever is cut off is one click away in the
+   drawer. */
+@media (min-width:821px){
+  .history-table{table-layout:fixed;width:100%}
+  .history-time{width:150px}
+  .history-origin{width:52px}
+  .history-latency{width:64px}
+  .history-status{width:64px}
+  .history-summary td{padding:5px 9px!important;overflow:hidden}
+  .history-model .chain{flex-wrap:nowrap;font-size:12px;gap:6px;overflow:hidden}
+  .history-model .chain>span{white-space:nowrap;flex:none}
+  .history-model .chain>span:not(.tag):not(.arrow){flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;min-width:36px}
+  /* A chip sliced at the cell edge reads as a bug; overflowing content fades
+     out instead, and the full set is in the drawer. */
+  .history-outcome{
+    white-space:nowrap;
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);
+    mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)
+  }
+  .history-outcome .tag{vertical-align:middle}
+  .history-error-preview{display:inline-block;max-width:160px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
+}
+
 /* The detail opens beside the table instead of inside it. An inline detail
    row pushed every record below it down a full screen, so opening one meant
    losing the list; a drawer keeps the list where it was. Visibility is the
@@ -1669,7 +1705,11 @@ body[data-workspace="history"] #historyPanel{grid-row:2!important}
 /* The shell's sunk background and accent edge marked it out inside the table;
    the drawer is already its own surface. */
 .drawer .history-detail-shell{padding:0;background:none!important;border-left:0!important}
-body[data-drawer="open"]{overflow:hidden}
+/* Locking the page with overflow:hidden collapsed the viewport's scroll range
+   and snapped it to the top the moment the drawer opened. Fixing the body at
+   its current offset keeps the pixels where they were; the offset is put back
+   on close. overflow-y:scroll keeps the scrollbar so nothing reflows. */
+body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
 @media (max-width:820px){
   .drawer{width:100vw;border-left:0}
 }
@@ -2905,7 +2945,11 @@ function closeHistoryDrawer() {
   drawer.dataset.show = "false";
   drawer.hidden = true;
   $("drawerBackdrop").hidden = true;
-  delete document.body.dataset.drawer;
+  if (document.body.dataset.drawer) {
+    delete document.body.dataset.drawer;
+    document.body.style.top = "";
+    window.scrollTo(0, store.drawerScrollY || 0);
+  }
 }
 function showRecord(record) {
   if (store.selectedRecord === record.id) { closeHistoryDrawer(); return; }
@@ -2937,7 +2981,11 @@ function showRecord(record) {
   drawer.hidden = false;
   void drawer.offsetHeight;
   drawer.dataset.show = "true";
-  document.body.dataset.drawer = "open";
+  if (!document.body.dataset.drawer) {
+    store.drawerScrollY = window.scrollY;
+    document.body.style.top = `-${store.drawerScrollY}px`;
+    document.body.dataset.drawer = "open";
+  }
   $("drawerClose").focus({ preventScroll: true });
 }
 
@@ -2963,25 +3011,26 @@ async function loadTurnStates() {
       body.innerHTML = '<div class="empty">还没有不降智 state 入池</div>';
       return;
     }
-    for (const item of items) {
-      const row = document.createElement("article");
-      row.className = "state-card";
+    // A list, not cards: the pool is homogeneous rows of the same few fields,
+    // and cards spent a screen on what a table says in a line per state.
+    const rows = items.map((item, index) => {
       const minted = new Date(item.minted_at);
       const age = Math.max(0, Math.round((item.age_seconds || 0) / 60));
-      row.innerHTML = `<div class="state-card-head"><div class="state-card-title">
-          <div class="pool-credential"><b>${esc(item.label || item.auth_index)}</b><span class="mono muted">${esc(item.auth_index)}</span></div>
-          <div data-label="模型" class="pool-model mono">${esc(item.model || "未记录")}</div>
-        </div>${item.expired ? '<span class="tag warn">已过期</span>' : '<span class="tag ok">不降智</span>'}</div>
-        <div class="state-card-meta"><span class="tag flat">${esc(item.plan_type || "未知套餐")}</span>
-          <span class="num">${item.chars || "-"} / ≤ ${item.max_chars || "-"} 字符</span>
-          <span class="num">${esc(minted.toLocaleString())} · ${age} 分钟前</span>
-        </div>
-        <details class="pool-state"><summary>查看具体值</summary>
-          <div class="pool-state-value mono">${esc(item.state || "未保存原值")}</div>
-          ${item.state ? `<div class="pool-state-actions"><button class="btn-xs" data-copy-state="${esc(item.state)}">复制</button><button class="btn-xs" data-blob="${esc(item.state)}"><svg class="i" style="width:12px;height:12px"><use href="#i-eye"/></svg>解码</button></div>` : ""}
-        </details>`;
-      body.append(row);
-    }
+      return `<tr class="pool-row">
+        <td class="mono pool-model-cell">${esc(item.model || "未记录")}</td>
+        <td><span class="tag flat">${esc(item.plan_type || "未知套餐")}</span></td>
+        <td class="num">${item.chars || "-"} / ≤ ${item.max_chars || "-"} 字符</td>
+        <td class="num">${esc(minted.toLocaleString())} · ${age} 分钟前</td>
+        <td>${item.expired ? '<span class="tag warn">已过期</span>' : '<span class="tag ok">不降智</span>'}</td>
+        <td class="pool-actions">${item.state
+          ? `<button class="btn-xs" data-toggle-value="${index}">值</button><button class="btn-xs" data-copy-state="${esc(item.state)}">复制</button><button class="btn-xs" data-blob="${esc(item.state)}">解码</button>`
+          : '<span class="muted">未保存原值</span>'}</td>
+      </tr>
+      <tr class="pool-value-row" data-value-row="${index}" hidden><td colspan="6"><div class="pool-state-value mono">${esc(item.state || "")}</div></td></tr>`;
+    }).join("");
+    body.innerHTML = `<div class="pool-scroll"><table class="history-table pool-table">
+      <thead><tr><th>模型</th><th>套餐</th><th>长度 / 阈值</th><th>铸造时间</th><th>状态</th><th class="pool-actions-head">操作</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
   } catch (error) {
     if (epoch === store.selectionEpoch) body.innerHTML = `<div class="empty">${esc(error.message || String(error))}</div>`;
   }
@@ -3265,6 +3314,12 @@ $("keyConnect").addEventListener("click", () => {
 });
 $("keyInput").addEventListener("keydown", (event) => { if (event.key === "Enter") $("keyConnect").click(); });
 $("keyOverlay").addEventListener("click", (event) => { if (event.target === $("keyOverlay")) closeKeyDialog(); });
+$("turnStateBody").addEventListener("click", (event) => {
+  const toggle = event.target.closest?.("[data-toggle-value]");
+  if (!toggle) return;
+  const valueRow = $("turnStateBody").querySelector(`[data-value-row="${toggle.dataset.toggleValue}"]`);
+  if (valueRow) valueRow.hidden = !valueRow.hidden;
+});
 $("drawerClose").addEventListener("click", closeHistoryDrawer);
 $("drawerBackdrop").addEventListener("click", closeHistoryDrawer);
 document.addEventListener("click", (event) => {
