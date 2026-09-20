@@ -1,13 +1,20 @@
 {
-  "id": "codex-header-rewrite",
-  "name": "codex-header-rewrite",
-  "version": "0.10.0",
-  "repository": "https://github.com/tapaixx/codex-header-rewrite",
-  "license": "MIT",
-  "platforms": {
-    "linux": [
-      "amd64",
-      "arm64"
-    ]
-  }
+  "schema_version": 1,
+  "plugins": [
+    {
+      "id": "codex-header-rewrite",
+      "name": "Codex Header Rewrite",
+      "description": "Per-credential Codex request Header rewrite rules, request-history diagnostics, X-Codex-Turn-State guard/state pool, and test tools for CLIProxyAPI.",
+      "author": "tapaixx",
+      "repository": "https://github.com/tapaixx/codex-header-rewrite",
+      "homepage": "https://github.com/tapaixx/codex-header-rewrite",
+      "license": "MIT",
+      "tags": [
+        "Management",
+        "Codex",
+        "Headers",
+        "Diagnostics"
+      ]
+    }
+  ]
 }
