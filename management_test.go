@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
