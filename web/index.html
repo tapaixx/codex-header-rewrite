@@ -1973,8 +1973,13 @@ html{-webkit-tap-highlight-color:transparent}
    size across breakpoints (36px, then 31px) while the glyph stayed at 18px,
    so the mark's proportions shifted with the viewport — it looked like the
    icon was moving inside its own tile. A ratio cannot drift. */
-.lockup .mark{flex:none;place-items:center}
-.lockup .mark svg{width:56%!important;height:56%!important}
+/* The tile only became a grid inside a narrow-width media query, so on a wide
+   screen it was an inline span and the glyph sat on the text baseline at its
+   left edge. And it carried no colour of its own, so `currentColor` resolved
+   to the top bar's grey text against a blue tile. Both are set here, at every
+   width. */
+.lockup .mark{display:grid!important;place-items:center;flex:none;color:#fff}
+.lockup .mark svg{width:56%!important;height:56%!important;display:block}
 
 </style>
 </head>
@@ -3082,6 +3087,27 @@ function turnStateDetail(record) {
 function prettyError(text) {
   try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
 }
+// History records carry no latency of their own -- the plugin stores when a
+// request started and when it finished, and nothing in between. Deriving it
+// here also gives every record already in the database a duration, which a
+// new stored field could only have done for future ones.
+const ZERO_TIME = "0001";
+function recordLatency(record) {
+  const stored = Number(record.latency_ms);
+  if (Number.isFinite(stored) && stored >= 0) return stored;
+  const started = record.started_at, completed = record.completed_at;
+  if (!started || !completed || started.startsWith(ZERO_TIME) || completed.startsWith(ZERO_TIME)) return null;
+  const elapsed = new Date(completed).getTime() - new Date(started).getTime();
+  // A request that never completed, or a clock that stepped backwards, has no
+  // duration to report; saying nothing beats reporting a negative one.
+  return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : null;
+}
+function formatLatency(ms) {
+  if (ms === null) return "-";
+  if (ms >= 60000) return `${(ms / 60000).toFixed(1)} min`;
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${Math.round(ms)} ms`;
+}
 function modelChain(record) {
   const sent = record.model || record.sent_model || "";
   const upstream = record.upstream_model || "";
@@ -3143,7 +3169,7 @@ async function loadHistory(page = 1) {
       <td class="history-origin"><span class="tag ${record.origin === "retry" ? "warn" : "flat"}">${record.origin === "test" ? "测试" : (record.origin === "retry" ? "重试" : "线上")}</span></td>
       <td class="history-model">${modelChain(record)}</td>
       <td class="history-outcome"><span class="history-outcome-wrap">${outcomeTag(record.outcome)}${turnStateTags(record)}</span></td>
-      <td class="history-latency num">${Number.isFinite(Number(record.latency_ms)) ? (Number(record.latency_ms) >= 1000 ? (Number(record.latency_ms) / 1000).toFixed(1) + " s" : record.latency_ms + " ms") : "-"}</td>
+      <td class="history-latency num">${formatLatency(recordLatency(record))}</td>
       <td class="history-status num" style="text-align:right">${record.status_code || "-"}</td>`;
     row.addEventListener("click", () => showRecord(record, row));
     row.addEventListener("keydown", (event) => {
