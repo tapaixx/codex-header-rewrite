@@ -1261,30 +1261,21 @@ body[data-workspace="rules"] .shell main{grid-template-columns:minmax(620px,1fr)
 .rule-count-danger{background:var(--gone-weak)!important;color:var(--gone)!important;border-color:#ffd0d3!important}
 .guard-layout{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 14px;align-items:start}
 .field-label{font-size:11px;font-weight:600;color:var(--text-soft)}
-/* Both outcomes are written out and the live one is lit, because the switch
-   label alone never said what changes when it flips. */
-.guard-states{display:grid;gap:6px}
-.guard-state{
-  display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;
-  padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--sunk);
-  color:var(--text-mute);font-size:11.5px;line-height:1.55;
-  transition:background .18s var(--ease),border-color .18s var(--ease),color .18s var(--ease)
+/* One line says what the switch is doing right now; the comparison and the
+   caveats live behind the marker at the end of it. */
+.guard-now{
+  display:flex;align-items:baseline;flex-wrap:wrap;gap:7px;margin:0;
+  color:var(--text-soft);font-size:11.5px;line-height:1.6
 }
 .guard-state-key{
   font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:999px;
-  background:var(--surface);border:1px solid var(--line);color:var(--text-soft);white-space:nowrap
+  background:var(--sunk);border:1px solid var(--line);color:var(--text-soft);white-space:nowrap;
+  transition:background .18s var(--ease),color .18s var(--ease),border-color .18s var(--ease)
 }
-.rule-block-guard[data-guard="on"] .guard-state[data-state="on"],
-.rule-block-guard[data-guard="off"] .guard-state[data-state="off"]{
-  background:var(--surface);border-color:var(--accent);color:var(--text)
-}
-.rule-block-guard[data-guard="on"] .guard-state[data-state="on"] .guard-state-key,
-.rule-block-guard[data-guard="off"] .guard-state[data-state="off"] .guard-state-key{
+.rule-block-guard[data-guard="on"] .guard-state-key{
   background:var(--accent-weak);border-color:transparent;color:var(--accent)
 }
-.guard-note{grid-column:1/-1;margin-top:1px}
 .guard-switch{white-space:nowrap;align-self:center}
-.guard-info{margin:0 10px 10px!important}
 #guardBadge{font-size:10px!important}
 
 #ruleStrategyPanel{grid-column:1!important;grid-row:2!important}
@@ -1333,8 +1324,6 @@ body[data-workspace="rules"] .shell main{grid-template-columns:minmax(620px,1fr)
 .summary-tile strong .tag{font-size:10px!important;padding:1px 6px!important}
 .summary-small{font-size:9px!important}
 .status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--set);margin-right:4px}
-.summary-hint{margin-top:8px;min-height:34px;border-radius:6px;background:#edf5ff;color:#3773bd;display:flex;align-items:center;gap:6px;padding:7px 9px;font-size:10px}
-.summary-hint svg{width:13px;height:13px}
 
 .overview-strip{display:none;grid-column:1/-1;grid-template-columns:1.25fr 1.1fr .8fr .75fr;gap:10px;margin-top:0}
 body[data-workspace="rules"] .overview-strip{display:none!important}
@@ -1568,6 +1557,47 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
   .toast{bottom:calc(74px + env(safe-area-inset-bottom))!important}
 }
 
+/* Explanations sit behind a marker instead of occupying the panel. The prose
+   stays in the DOM, so it is still searchable and reachable by keyboard; it
+   just stops pushing the controls apart until it is asked for. */
+.hint-wrap{display:inline-flex;align-items:center;margin-left:5px}
+.hint{
+  all:unset;position:relative;box-sizing:border-box;display:inline-grid;place-items:center;
+  width:16px;height:16px;border-radius:50%;flex:none;vertical-align:-3px;
+  background:var(--sunk);border:1px solid var(--line);color:var(--text-mute);
+  font:700 10px/1 inherit;cursor:help;
+  transition:background .15s var(--ease),color .15s var(--ease),border-color .15s var(--ease)
+}
+/* The marker is 16px because it sits inside running text; the target is not. */
+.hint::after{content:"";position:absolute;left:50%;top:50%;translate:-50% -50%;width:34px;height:34px}
+.hint:hover,.hint[aria-expanded="true"]{background:var(--accent-weak);border-color:transparent;color:var(--accent)}
+.hint:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.hint-text{display:none}
+.hint-layer{
+  position:fixed;left:0;top:0;z-index:80;max-width:min(330px,calc(100vw - 24px));
+  padding:9px 11px;border-radius:8px;background:#14233a;color:#fff;
+  font-size:11.5px;line-height:1.65;text-wrap:pretty;box-shadow:var(--shadow-float);
+  opacity:0;translate:0 4px;pointer-events:none;
+  transition:opacity .14s var(--ease),translate .14s var(--ease)
+}
+.hint-layer[data-show="true"]{opacity:1;translate:0 0}
+.hint-layer code{background:rgba(255,255,255,.16);color:inherit;padding:1px 4px;border-radius:4px;white-space:nowrap}
+.hint-layer b{color:#fff}
+/* Hint prose is phrasing content only -- it is authored inside a span, and a
+   block element there would make the parser close that span early. Layout is
+   applied here instead. */
+.hint-layer .hint-k{
+  display:inline-block;margin-bottom:3px;font-size:10px;font-weight:600;
+  padding:1px 6px;border-radius:999px;background:rgba(255,255,255,.14)
+}
+.hint-layer .hint-v{display:block;margin-bottom:8px}
+.hint-layer .hint-p{display:block;margin-top:8px;color:rgba(255,255,255,.76)}
+.hint-layer .hint-v:last-child,.hint-layer .hint-p:last-child{margin-bottom:0}
+@media (max-width:820px){
+  /* Touch has no hover, so the marker has to be tappable on its own. */
+  .hint::after{width:44px;height:44px}
+}
+
 </style>
 </head>
 <body data-workspace="rules">
@@ -1681,20 +1711,9 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
               <span class="tag flat" id="guardBadge">已关闭</span>
             </summary>
             <div class="rule-block-body guard-layout">
-              <div class="guard-states">
-                <div class="guard-state" data-state="on">
-                  <span class="guard-state-key">开启</span>
-                  <span>回带的 state 确认来自<b>其他凭证</b>或<b>其他模型</b>时，把 <code class="mono">X-Codex-Turn-State</code> 从这次请求里摘掉，让上游重新签发一个。</span>
-                </div>
-                <div class="guard-state" data-state="off">
-                  <span class="guard-state-key">关闭</span>
-                  <span>客户端带什么就原样发什么。来源照常记录、历史照常标注，只是不改这次请求。</span>
-                </div>
-              </div>
+              <div class="guard-now"><span class="guard-state-key" id="guardNowKey">关闭</span><span id="guardNowText"></span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="守卫开关的详细说明">!</button><span class="hint-text"><span class="hint-k">开启</span><span class="hint-v">回带的 state 确认来自<b>其他凭证</b>或<b>其他模型</b>时，把 <code>X-Codex-Turn-State</code> 从这次请求里摘掉，让上游重新签发一个。</span><span class="hint-k">关闭</span><span class="hint-v">客户端带什么就原样发什么。来源照常记录、历史照常标注，只是不改这次请求。</span><span class="hint-p">开启后这两种也不摘：只是<b>超过复用窗口</b>（1 小时是经验值，摘错会打断还能用的回合），或<b>来源未知</b>（插件没见过签发它的那次响应）。</span><span class="hint-p">这个开关只管摘除。从 State 池<b>补发</b>由「启用改写」控制：规则开着、且没手工设置或移除该 Header 时，池里有合格 state 就会补。</span></span></span></div>
               <label class="switch guard-switch"><input type="checkbox" id="ruleStripTurnState"><span>启用守卫</span></label>
-              <div class="muted guard-note">开启后也<b>不会</b>摘除这两种：只是<b>超过复用窗口</b>（1 小时是经验值，摘错会打断还能用的回合），或<b>来源未知</b>（插件没见过签发它的那次响应）。</div>
             </div>
-            <div class="notice info guard-info" id="injectNotice"><svg class="i"><use href="#i-info"/></svg><span>这个开关只管<b>摘除</b>。从 State 池<b>补发</b>是另一回事：由上方「启用改写」控制，只要该凭证的规则开着、且没手工设置或移除 <code class="mono">X-Codex-Turn-State</code>，池里有合格 state 就会补。</span></div>
           </details>
         </div>
 
@@ -1731,7 +1750,7 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
     </section>
 
     <section class="panel" id="testPanel">
-      <div class="panel-head"><svg class="i"><use href="#i-flask"/></svg><div class="panel-title"><h3>测试请求</h3><div class="panel-caption">发送测试请求，预览实际 Header 并验证连通性</div></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-flask"/></svg><div class="panel-title"><h3>测试请求</h3><div class="panel-caption">发送测试请求，预览实际 Header 并验证连通性<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="测试请求怎么发出">!</button><span class="hint-text"><span class="hint-v">预览只在插件内解析 Header，<b>不发请求</b>。</span><span class="hint-v">发送时插件调用 CPA 的 <code>host.http.do</code>，请求从 CPA 的代理感知传输层发出；Codex 端点还会使用稳定的 HTTP/1.1 Header 线级配置。</span><span class="hint-p">它不经过 Codex executor，因此线上请求仍可能被 executor 覆盖特殊字段。</span></span></span></div></div></div>
       <div class="panel-body">
         <div class="grid2">
           <div class="field">
@@ -1757,15 +1776,13 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
         <details style="margin-top:18px">
           <summary class="muted" style="cursor:pointer">高级：端点与原始请求体</summary>
           <div class="field" style="margin-top:14px">
-            <label for="testEndpoint">端点</label>
+            <label for="testEndpoint">端点<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="端点填写规则">!</button><span class="hint-text"><span class="hint-v">留空即用 Codex 后端。可填任意 <code>https</code> 地址；<code>http</code> 仅限 localhost。</span></span></span></label>
             <input id="testEndpoint" class="mono" spellcheck="false">
-            <span class="muted">留空即用 Codex 后端。可填任意 https 地址；http 仅限 localhost。</span>
           </div>
           <label class="switch"><input type="checkbox" id="testAttach" checked><span>附带该凭证（access token 与账号 ID）</span></label>
           <div class="notice warn" id="attachWarn" hidden style="margin-top:10px"><svg class="i"><use href="#i-alert"/></svg><span>该地址不是 Codex 后端。勾选后，这个凭证的 access token 与账号 ID 会发送到该地址。</span></div>
           <div class="field" style="margin-top:14px"><label for="testBody">原始 JSON 请求体（填写后覆盖上面的模型与提示词）</label><textarea id="testBody" spellcheck="false" placeholder='{"model":"…","input":[],"stream":true}'></textarea></div>
         </details>
-        <div class="notice info" style="margin-top:16px"><svg class="i"><use href="#i-info"/></svg><span>预览只在插件内解析 Header，不发请求。发送时插件调用 CPA 的 <code class="mono">host.http.do</code>，请求从 CPA 的代理感知传输层发出；Codex 端点还会使用稳定的 HTTP/1.1 Header 线级配置。它不经过 Codex executor，因此线上请求仍可能被 executor 覆盖特殊字段。</span></div>
         <div class="actions">
           <div class="spacer"></div>
           <button id="previewBtn"><svg class="i"><use href="#i-eye"/></svg>预览 Header</button>
@@ -1776,14 +1793,13 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
     </section>
 
     <section class="panel" id="decoderPanel">
-      <div class="panel-head"><svg class="i"><use href="#i-key"/></svg><div class="panel-title"><h3>Turn-State 解码</h3><div class="panel-caption">解析 Fernet 信封元信息，不解密密文</div></div><div class="spacer"></div><span class="muted">只读信封，不解密</span></div>
+      <div class="panel-head"><svg class="i"><use href="#i-key"/></svg><div class="panel-title"><h3>Turn-State 解码</h3><div class="panel-caption">解析 Fernet 信封元信息，不解密密文<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="解码读出什么">!</button><span class="hint-text"><span class="hint-v">只读 Fernet 信封：版本、签发时间与结构。</span><span class="hint-p">密文不解密，插件也不需要密钥。</span></span></span></div></div></div>
       <div class="panel-body">
         <div class="field">
           <label for="decodeInput">X-Codex-Turn-State</label>
           <textarea id="decodeInput" spellcheck="false" placeholder="粘贴 blob，或在历史详情里点「解码」直接带入"></textarea>
         </div>
         <div class="actions" style="margin-top:0">
-          <span class="muted">Fernet 信封：版本、签发时间与结构；密文不解密，也不需要密钥。</span>
           <div class="spacer"></div>
           <button class="primary" id="decodeBtn"><svg class="i"><use href="#i-eye"/></svg>解码</button>
         </div>
@@ -1841,7 +1857,6 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
           <div class="summary-tile"><span class="summary-icon">◷</span><small>最后更新时间</small><strong class="summary-small" id="summaryUpdated">-</strong></div>
           <div class="summary-tile"><span class="summary-icon">●</span><small>规则状态</small><strong id="summaryHealth">未加载</strong></div>
         </div>
-        <div class="summary-hint"><svg class="i"><use href="#i-info"/></svg><span>右侧预览基于示例请求生成；实际请求可能包含更多或更少的 Headers。</span></div>
       </div>
     </section>
 
@@ -1862,13 +1877,12 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
       </div>
     </section>
     <section class="panel" id="turnStatePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h3>State 池</h3><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State</div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h3>State 池</h3><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只有不降智 state 才入池：Team 套餐 ≤ 332 字符，个人套餐（非 Team）≤ 292 字符；凭证没有套餐声明时不判定，也不入池。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">1 小时</span>只标记过期。</span></span></span></div></div>
         <div class="spacer"></div><span class="muted" id="turnStateMeta"></span>
         <button class="quiet icon" id="turnStateRefresh" title="刷新" aria-label="刷新回合状态"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
       <div class="panel-body">
         <div id="turnStateBody" class="state-pool"></div>
-        <div class="muted" style="margin-top:8px">只有不降智 state 才入池：Team 套餐 ≤ 332 字符，个人套餐（非 Team）≤ 292 字符；凭证没有套餐声明时不判定，也不入池。每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">1 小时</span>只标记过期。</div>
       </div>
     </section>
 
@@ -2094,6 +2108,12 @@ function renderRulePreview() {
   $("guardBadge").textContent = guardOn ? "已开启" : "已关闭";
   $("guardBadge").className = "tag " + (guardOn ? "ok" : "flat");
   if ($("guardBlock")) $("guardBlock").dataset.guard = guardOn ? "on" : "off";
+  if ($("guardNowKey")) $("guardNowKey").textContent = guardOn ? "开启" : "关闭";
+  if ($("guardNowText")) {
+    $("guardNowText").textContent = guardOn
+      ? "摘掉确认来自其他凭证或其他模型的回带 state"
+      : "回带的 state 原样透传，只记录不修改";
+  }
 }
 /* ---------- management key ----------------------------------------------
    The host keeps its key in localStorage behind an enc::v1/enc::v2 envelope.
@@ -2543,7 +2563,7 @@ function turnStateAge(info) {
 function turnStateRows(label, info, extra = "", blob = "", model = "") {
   const decode = blob ? `<button class="btn-xs" data-blob="${esc(blob)}" title="自动送到解码器并显示结果"><svg class="i" style="width:12px;height:12px"><use href="#i-eye"/></svg>解码 state</button>` : "";
   if (!info) {
-    return blob ? `<div class="ts-block"><div class="ts-title">${esc(label)}${extra}<span style="flex:1"></span>${decode}</div><div class="muted">历史记录只有原始 blob，点击按钮即可自动解析，不需要复制粘贴。</div></div>` : "";
+    return blob ? `<div class="ts-block"><div class="ts-title">${esc(label)}${extra}<span style="flex:1"></span>${decode}</div></div>` : "";
   }
   const issued = info.issued_at && !info.issued_at.startsWith("0001")
     ? `${new Date(info.issued_at).toLocaleString()}<span class="muted"> · ${turnStateAge(info)}</span>` : "未能读出";
@@ -3071,8 +3091,81 @@ document.addEventListener("click", (event) => {
   if (!$("credentialSwitcher").contains(event.target)) closeCredentialMenu();
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") { closeKeyDialog(); closeCredentialMenu(); }
+  if (event.key === "Escape") { closeHint(true); closeKeyDialog(); closeCredentialMenu(); }
 });
+
+/* One floating layer for every hint marker. A per-hint popover would be
+   clipped: the rule blocks and panels both crop their overflow, and a tooltip
+   that is cut in half is worse than no tooltip. Hover opens it on a pointer,
+   focus opens it on a keyboard, and a click pins it, which is the only thing
+   that works on a touch screen. */
+const hintLayer = document.createElement("div");
+hintLayer.className = "hint-layer";
+hintLayer.id = "hintLayer";
+hintLayer.hidden = true;
+hintLayer.setAttribute("role", "tooltip");
+document.body.appendChild(hintLayer);
+let hintOwner = null;
+let hintPinned = false;
+
+function placeHint(button) {
+  const rect = button.getBoundingClientRect();
+  const box = hintLayer.getBoundingClientRect();
+  const margin = 8;
+  let left = rect.left + rect.width / 2 - box.width / 2;
+  left = Math.min(Math.max(margin, left), Math.max(margin, innerWidth - box.width - margin));
+  // Below the marker by default, above it when the viewport runs out.
+  let top = rect.bottom + 6;
+  if (top + box.height > innerHeight - margin) top = Math.max(margin, rect.top - box.height - 6);
+  hintLayer.style.left = Math.round(left) + "px";
+  hintLayer.style.top = Math.round(top) + "px";
+}
+
+function openHint(button, pinned) {
+  const text = button.parentElement?.querySelector(".hint-text");
+  if (!text) return;
+  if (hintOwner && hintOwner !== button) hintOwner.setAttribute("aria-expanded", "false");
+  hintOwner = button;
+  hintPinned = !!pinned;
+  hintLayer.innerHTML = text.innerHTML;
+  hintLayer.hidden = false;
+  placeHint(button);
+  requestAnimationFrame(() => { hintLayer.dataset.show = "true"; placeHint(button); });
+  button.setAttribute("aria-expanded", pinned ? "true" : "false");
+  button.setAttribute("aria-describedby", "hintLayer");
+}
+
+function closeHint(force) {
+  if (!hintOwner || (hintPinned && !force)) return;
+  hintOwner.setAttribute("aria-expanded", "false");
+  hintOwner.removeAttribute("aria-describedby");
+  hintOwner = null;
+  hintPinned = false;
+  hintLayer.dataset.show = "false";
+  hintLayer.hidden = true;
+}
+
+document.addEventListener("pointerover", (event) => {
+  const button = event.target.closest?.(".hint");
+  if (button && !hintPinned) openHint(button, false);
+});
+document.addEventListener("pointerout", (event) => {
+  if (event.target.closest?.(".hint") && !hintPinned) closeHint(false);
+});
+document.addEventListener("focusin", (event) => {
+  const button = event.target.closest?.(".hint");
+  if (button) openHint(button, false);
+  else if (!hintPinned) closeHint(false);
+});
+document.addEventListener("click", (event) => {
+  const button = event.target.closest?.(".hint");
+  if (!button) { closeHint(true); return; }
+  event.preventDefault();
+  if (hintPinned && hintOwner === button) closeHint(true);
+  else openHint(button, true);
+});
+addEventListener("scroll", () => closeHint(true), true);
+addEventListener("resize", () => closeHint(true));
 
 setWorkspace("rules", false);
 renderKeyChip();
