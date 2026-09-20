@@ -205,6 +205,28 @@ func TestLiveStreamRecordsTheModelTheUpstreamServed(t *testing.T) {
 	}
 }
 
+func TestLiveCallbackModelReachesHistory(t *testing.T) {
+	p := resetState(t)
+	state.mu.Lock()
+	state.credentials["idx-callback"] = credentialSnapshot{AuthIndex: "idx-callback", Provider: "codex"}
+	state.mu.Unlock()
+	_, err := interceptAfter(requestInterceptRequest{RequestID: "callback-model", Model: "asked", Metadata: map[string]any{"selected_auth_index": "idx-callback"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	observeStreamHeaders(streamChunkInterceptRequest{RequestID: "callback-model", ChunkIndex: 0, Body: []byte(`data: {"type":"response.created","response":{"model":"initial"}}`)})
+	observeStreamHeaders(streamChunkInterceptRequest{RequestID: "callback-model", ChunkIndex: 1, Body: []byte(`data: {"type":"response.completed","response":{"model":"actual"}}`)})
+	completeRequest(requestCompletion{RequestID: "callback-model", Outcome: "succeeded", StatusCode: 200})
+	shutdownPlugin()
+	page, err := p.History("idx-callback", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].UpstreamModel != "actual" || page.Items[0].ModelMismatch == nil || !*page.Items[0].ModelMismatch {
+		t.Fatalf("history=%#v", page.Items)
+	}
+}
+
 func TestNonStreamingResponseBodyIsReadForTheModelOnly(t *testing.T) {
 	p := resetState(t)
 	state.mu.Lock()

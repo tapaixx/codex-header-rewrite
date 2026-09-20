@@ -338,7 +338,7 @@ func observeStreamHeaders(req streamChunkInterceptRequest) {
 		noteTurnStateMintLocked2(pr.current, req.ResponseHeaders)
 		return
 	}
-	pr.current.models.observeStream(req.Body)
+	pr.current.models.observeCallback(req.Body)
 }
 func completeRequest(c requestCompletion) {
 	state.mu.Lock()

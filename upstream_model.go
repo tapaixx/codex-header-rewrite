@@ -75,10 +75,14 @@ func (o *modelObserver) observePayload(payload []byte, eventType string) {
 		return
 	}
 	var declared struct {
+		Type     string `json:"type"`
 		Model    string `json:"model"`
 		Response struct {
 			Model string `json:"model"`
 		} `json:"response"`
+		Message struct {
+			Model string `json:"model"`
+		} `json:"message"`
 	}
 	if err := json.Unmarshal(payload, &declared); err != nil {
 		return
@@ -87,7 +91,38 @@ func (o *modelObserver) observePayload(payload []byte, eventType string) {
 	if model == "" {
 		model = declared.Model
 	}
+	if model == "" {
+		model = declared.Message.Model
+	}
+	if declared.Type != "" {
+		eventType = declared.Type
+	}
 	o.observe(model, eventType == "" || isTerminalModelEvent(eventType))
+}
+
+// CPA callbacks may contain a complete JSON event or data line without SSE
+// separators. Only consume independently valid JSON at that boundary; partial
+// data continues through the byte-stream parser.
+func (o *modelObserver) observeCallback(chunk []byte) {
+	if o == nil {
+		return
+	}
+	if len(bytes.TrimSpace(o.residual)) == 0 {
+		payload := bytes.TrimSpace(chunk)
+		if bytes.HasPrefix(payload, []byte("data:")) {
+			payload = bytes.TrimSpace(payload[5:])
+		}
+		if bytes.Equal(payload, []byte("[DONE]")) {
+			o.residual = nil
+			return
+		}
+		if json.Valid(payload) {
+			o.residual = nil
+			o.observePayload(payload, "chunk")
+			return
+		}
+	}
+	o.observeStream(chunk)
 }
 
 // observeBody reads a complete response body, whether it is an SSE stream that
@@ -120,6 +155,8 @@ func (o *modelObserver) observeStream(chunk []byte) {
 		data = append(o.residual, chunk...)
 		o.residual = nil
 	}
+	// Normalize after combining residual data so split CRLF pairs are handled.
+	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
 	for {
 		index := bytes.Index(data, []byte("\n\n"))
 		if index < 0 {

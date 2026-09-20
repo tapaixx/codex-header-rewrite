@@ -2505,10 +2505,13 @@ function modelChain(record) {
   const parts = [];
   if (requested && requested !== sent) parts.push(`<span>${esc(requested)}</span><span class="arrow">→</span>`);
   parts.push(`<span>${esc(sent || "未知")}</span>`, '<span class="arrow">→</span>');
-  parts.push(upstream ? `<span>${esc(upstream)}</span>` : '<span class="tag flat">未声明</span>');
+  // "Not read" rather than "not declared": a missing model can equally mean the
+  // payload never carried one, never arrived, or could not be parsed, and the
+  // plugin cannot tell those apart.
+  parts.push(upstream ? `<span>${esc(upstream)}</span>` : '<span class="tag flat" title="插件没有读取到模型：可能未提供、未收到或无法解析">未获取到</span>');
   if (record.model_mismatch === true) parts.push('<span class="tag bad">模型不一致</span>');
   else if (record.model_mismatch === false) parts.push('<span class="tag ok">一致</span>');
-  if (record.model_conflict) parts.push('<span class="tag warn">上游声明冲突</span>');
+  if (record.model_conflict) parts.push('<span class="tag warn" title="同一次响应里出现互相矛盾的模型声明">上游声明冲突</span>');
   return `<div class="chain">${parts.join("")}</div>`;
 }
 const OUTCOMES = {

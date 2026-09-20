@@ -2,6 +2,45 @@ package main
 
 import "testing"
 
+func TestCallbackModelsWithoutSSEDelimiters(t *testing.T) {
+	for _, prefix := range []string{"", "data: "} {
+		var o modelObserver
+		o.observeCallback([]byte(prefix + `{"type":"response.created","response":{"model":"early"}}`))
+		o.observeCallback([]byte(prefix + `{"type":"response.completed","response":{"model":"final"}}`))
+		o.observeCallback([]byte(prefix + `{"type":"response.in_progress","response":{"model":"late"}}`))
+		o.flushStream()
+		if o.model() != "final" || !o.conflicted() {
+			t.Fatalf("prefix %q: model=%q conflict=%v", prefix, o.model(), o.conflicted())
+		}
+	}
+}
+
+func TestClaudeAndCRLFModels(t *testing.T) {
+	for _, body := range []string{
+		"event: message_start\ndata: {\"message\":{\"model\":\"actual\"}}\n\n",
+		"data: {\"response\":{\"model\":\"actual\"}}\r\n\r\ndata: [DONE]\r\n\r\n",
+	} {
+		var o modelObserver
+		// One-byte chunks exercise CRLF split across boundaries.
+		for i := range body {
+			o.observeStream([]byte(body[i : i+1]))
+		}
+		o.flushStream()
+		if o.model() != "actual" {
+			t.Fatalf("model=%q for %q", o.model(), body)
+		}
+	}
+}
+
+func TestCallbackPreservesSplitFrames(t *testing.T) {
+	var o modelObserver
+	o.observeCallback([]byte("data: {\"response\":{\"mo"))
+	o.observeCallback([]byte("del\":\"actual\"}}\n\n"))
+	if o.model() != "actual" {
+		t.Fatalf("model=%q", o.model())
+	}
+}
+
 func TestTerminalDeclarationWinsOverEarlierFrames(t *testing.T) {
 	var o modelObserver
 	o.observeStream([]byte("event: response.created\ndata: {\"response\":{\"model\":\"gpt-5.6-luna\"}}\n\n"))

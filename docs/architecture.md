@@ -29,7 +29,7 @@ CPA 替换版本化 `.so` 时先对旧实例调用 `plugin.quiesce`，再注册�
 
 ## 上游模型观测
 
-上游实际服务的模型只出现在响应载荷里：Codex Responses 流式事件用 `response.model`，非流式响应体用 `model`。Response Header 里没有这个信息，所以只看 Header 无法发现「请求 A 模型、上游给了 B 模型」。
+模型观测读取响应载荷中的 `response.model`、Claude 的 `message.model` 和顶层 `model`。CPA 的线上回调位于格式转换之后，模型字段可能由宿主补写；记录表示响应报告的模型，并不证明底层实际服务模型。回调入口先识别独立完整 JSON/data 行，其他数据交给支持 LF/CRLF 和跨块帧的 SSE 解析器；JSON `type` 也用于终局判定。未读到字段显示“未获取到”，不认定上游未声明。
 
 观测器按帧读取 SSE：
 
