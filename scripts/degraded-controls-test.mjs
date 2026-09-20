@@ -39,8 +39,8 @@ try {
   await page.evaluate(()=>setWorkspace('history',false));
   assert.equal(await page.locator('#retryDegraded').isDisabled(),true);
   assert.equal(await page.locator('#retryAttempts').isDisabled(),true);
-  assert.equal(await page.locator('#rejectDegradedModels').isDisabled(),true);
-  assert.equal(await page.locator('#retryProxies').isDisabled(),true);
+  assert.equal(await page.locator('#rejectDegradedModels').getAttribute('data-disabled'),'1');
+  assert.equal(await page.locator('#retryProxies').getAttribute('data-disabled'),'1');
   assert.equal(await page.locator('label[for="retryAttempts"]').textContent(),'最大重试次数');
   await page.locator('label').filter({has:page.locator('#rejectDegraded')}).click();
   await page.waitForFunction(()=>!document.querySelector('#retryAttempts').disabled);
@@ -48,25 +48,30 @@ try {
   assert.equal(await page.locator('#retryAttempts').inputValue(),'4');
   assert.equal(rule.reject_degraded_response,true);
   assert.equal(rule.enabled,false); // Independent of the request rewriting switch.
-  await page.locator('#rejectDegradedModels').fill('gpt-5.6-luna, gpt-6-astra\ngpt-5.6-luna');
-  await page.locator('#rejectDegradedModels').blur();
+  await page.locator('#rejectDegradedModels .chip-add').fill('gpt-5.6-luna, gpt-6-astra, gpt-5.6-luna');
+  await page.locator('#rejectDegradedModels .chip-add').press('Enter');
   await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
   assert.deepEqual(rule.reject_degraded_models,['gpt-5.6-luna','gpt-6-astra']);
-  await page.locator('#retryProxies').fill('socks5://localhost:1080\nsocks5h://user:pass@localhost:1081\nsocks5://localhost:1080');
-  await page.locator('#retryProxies').blur();
+  await page.locator('#retryProxies .chip-add').fill('socks5://localhost:1080 socks5h://user:pass@localhost:1081 socks5://localhost:1080');
+  await page.locator('#retryProxies .chip-add').press('Enter');
   await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
   assert.deepEqual(rule.retry_proxies,['socks5://localhost:1080','socks5h://user:pass@localhost:1081']);
+  // The password is masked on screen; focusing that chip reveals it.
+  assert.equal(await page.locator('#retryProxies .chip-field').nth(1).inputValue(),'socks5h://user:***@localhost:1081');
+  await page.locator('#retryProxies .chip-field').nth(1).focus();
+  assert.equal(await page.locator('#retryProxies .chip-field').nth(1).inputValue(),'socks5h://user:pass@localhost:1081');
+  assert.equal(await page.locator('#rejectDegradedModels .chip-tag').count(),2);
   await page.locator('label').filter({has:page.locator('#retryDegraded')}).click();
   await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
-  assert.equal(await page.locator('#retryProxies').isDisabled(),true);
+  assert.equal(await page.locator('#retryProxies').getAttribute('data-disabled'),'1');
   await page.locator('label').filter({has:page.locator('#retryDegraded')}).click();
   await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
-  assert.equal(await page.locator('#retryProxies').isEnabled(),true);
+  assert.equal(await page.locator('#retryProxies').getAttribute('data-disabled'),'');
   await page.locator('label').filter({has:page.locator('#rejectDegraded')}).click();
   await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
   assert.equal(await page.locator('#retryAttempts').isDisabled(),true);
   assert.equal(rule.retry_attempts,4);
-  assert.equal(await page.locator('#rejectDegradedModels').isDisabled(),true);
+  assert.equal(await page.locator('#rejectDegradedModels').getAttribute('data-disabled'),'1');
   failSave=true;
   await page.locator('label').filter({has:page.locator('#rejectDegraded')}).click();
   await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
