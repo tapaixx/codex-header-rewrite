@@ -1873,7 +1873,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
       <div class="panel-body">
         <div class="notice info" id="ruleOffNotice" hidden style="margin-bottom:10px"><svg class="i"><use href="#i-info"/></svg><span>规则未启用。下面的设置会保存，但不会作用到任何请求上——包括 State 守卫与自动补发。</span></div>
         <div class="rule-blocks">
-          <details class="rule-block rule-block-set" open>
+          <details class="rule-block rule-block-set">
             <summary>
               <span class="rule-block-icon"><svg class="i"><use href="#i-plus"/></svg></span>
               <span class="rule-block-copy"><b>设置 / 覆盖 Header</b><small>添加或覆盖请求头，会覆盖原始值</small></span>
@@ -1886,7 +1886,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
             </div>
           </details>
 
-          <details class="rule-block rule-block-remove" open>
+          <details class="rule-block rule-block-remove">
             <summary>
               <span class="rule-block-icon"><svg class="i"><use href="#i-x"/></svg></span>
               <span class="rule-block-copy"><b>移除 Header</b><small>从请求中移除指定的请求头</small></span>
@@ -1906,7 +1906,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
               <span class="tag flat" id="guardBadge">已关闭</span>
             </summary>
             <div class="rule-block-body guard-layout">
-              <div class="guard-now"><span class="guard-state-key" id="guardNowKey">关闭</span><span id="guardNowText"></span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="守卫开关的详细说明">!</button><span class="hint-text"><span class="hint-k">先后顺序</span><span class="hint-v">轮到某个凭证时，插件先看<b>它自己的 State 池</b>：有「该凭证 + 当前模型」的合格 state 就<b>直接覆盖</b>回带值，这一步不经过守卫。只有池子拿不出东西时，才轮到守卫决定摘掉还是放行。</span><span class="hint-k">开启</span><span class="hint-v">池子补不上、且回带的 state 确认来自<b>其他凭证</b>或<b>其他模型</b>时，把 <code>X-Codex-Turn-State</code> 摘掉，让上游重新签发一个。</span><span class="hint-k">关闭</span><span class="hint-v">池子补不上就原样发出去。来源照常记录、历史照常标注，只是不改这次请求。</span><span class="hint-p">所以外来 state 真正会发到上游，只剩这几种情况：该凭证<b>没有规则或规则关着</b>；池里还没有它这个模型的 state（刚装插件、刚换号、刚换模型）且守卫关着；或者插件<b>没见过签发它的那次响应</b>，无法证明它是外来的。</span><span class="hint-p">守卫是<b>这条规则的一部分</b>，不是和「启用改写」并列的开关：规则总开关关掉时，守卫存着也不生效。摘除要「启用改写」+「启用守卫」两个都开；覆盖只要「启用改写」，且没手工设置或移除这个 Header。</span><span class="hint-p">为什么会有跨号回带：<b>账号不是客户端选的</b>。CPA 的 <code>routing.strategy</code> 默认 round-robin，按请求轮换凭证，<code>session-affinity</code> 默认关闭；换号后客户端并不知情，仍把上一轮的 state 原样带回来。跨模型同理——state 绑在铸造它的模型上。</span><span class="hint-p">开启后这两种也不摘：只是<b>超过复用窗口</b>（1 小时是经验值），或<b>来源未知</b>。</span></span></span></div>
+              <div class="guard-now"><span class="guard-state-key" id="guardNowKey">关闭</span><span id="guardNowText"></span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="守卫开关的详细说明">!</button><span class="hint-text"><span class="hint-k">先后顺序</span><span class="hint-v">插件先查 State 池：有「本凭证 + 本模型」的合格 state 就直接<b>覆盖</b>回带值，不经守卫；池子拿不出东西时才轮到守卫。</span><span class="hint-k">开启</span><span class="hint-v">确认来自<b>其他凭证</b>或<b>其他模型</b>的回带 state 会被摘掉，让上游重新签发。</span><span class="hint-k">关闭</span><span class="hint-v">原样透传，只记录、不修改。</span><span class="hint-p">只是<b>过期</b>或<b>来源未知</b>的回带不摘。守卫属于这条规则：「启用改写」关着时不生效。</span><span class="hint-p">跨号回带来自 CPA 默认按请求轮换凭证（round-robin，<code>session-affinity</code> 默认关闭），详见 README。</span></span></span></div>
               <label class="switch guard-switch"><input type="checkbox" id="ruleStripTurnState"><span>启用守卫</span></label>
             </div>
           </details>
