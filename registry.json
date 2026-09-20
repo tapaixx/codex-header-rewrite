@@ -14,7 +14,8 @@
         "Codex",
         "Headers",
         "Diagnostics"
-      ]
+      ],
+      "logo": "https://raw.githubusercontent.com/tapaixx/codex-header-rewrite/main/web/icon.svg"
     }
   ]
 }

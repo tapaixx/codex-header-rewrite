@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0d1520" media="(prefers-color-scheme: dark)">
 <title>Codex Header Rewrite</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Codex Header Rewrite">  and sent on. Same stroke language as the panel's icon set %E2%80%94 24 grid, round caps and joins, no fills. --> <defs> <linearGradient id="chr-mark" x1="0" y1="0" x2="1" y2="1"> <stop offset="0" stop-color="#3189ff"/> <stop offset="1" stop-color="#1769ef"/> </linearGradient> </defs> <rect width="32" height="32" rx="8" fill="url(#chr-mark)"/> <g transform="translate(4 4)" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"> <path d="M5.5 4.5v15"/> <path d="M5.5 12h8.5"/> <path d="m15 7.5 4.5 4.5-4.5 4.5"/> </g> </svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32' role='img' aria-label='Codex Header Rewrite'> <defs> <linearGradient id='chr-mark' x1='0' y1='0' x2='1' y2='1'> <stop offset='0' stop-color='%233189ff'/> <stop offset='1' stop-color='%231769ef'/> </linearGradient> </defs> <rect width='32' height='32' rx='8' fill='url(%23chr-mark)'/> <g transform='translate(4 4)' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'> <path d='M5.5 4.5v15'/> <path d='M5.5 12h8.5'/> <path d='m15 7.5 4.5 4.5-4.5 4.5'/> </g> </svg>">
 <style>
 /* Radius system (documented, applied everywhere):
    controls 8px, panels 12px, tags/pills full.
@@ -1968,6 +1968,13 @@ html{-webkit-tap-highlight-color:transparent}
 
 /* The product name is a heading now and wraps like one. */
 .lockup h1{text-wrap:balance}
+
+/* The glyph is sized as a share of its tile, not in pixels. The tile changes
+   size across breakpoints (36px, then 31px) while the glyph stayed at 18px,
+   so the mark's proportions shifted with the viewport — it looked like the
+   icon was moving inside its own tile. A ratio cannot drift. */
+.lockup .mark{flex:none;place-items:center}
+.lockup .mark svg{width:56%!important;height:56%!important}
 
 </style>
 </head>

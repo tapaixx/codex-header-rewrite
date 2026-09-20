@@ -6,7 +6,7 @@ import (
 )
 
 func pluginRegistration() registration {
-	return registration{SchemaVersion: schemaVersion, Metadata: metadata{Name: pluginName, Version: pluginVersion, Author: "tapaixx", GitHubRepository: "https://github.com/tapaixx/codex-header-rewrite", ConfigFields: []configField{{Name: "data_path", Type: "string", Description: "bbolt data path. Defaults to plugins/data/codex-header-rewrite.db"}}}, Capabilities: registrationCapabilities{RequestInterceptor: true, RequestLifecyclePlugin: true, ResponseInterceptor: true, StreamChunkInterceptor: true, ManagementAPI: true}}
+	return registration{SchemaVersion: schemaVersion, Metadata: metadata{Name: pluginName, Version: pluginVersion, Author: "tapaixx", GitHubRepository: "https://github.com/tapaixx/codex-header-rewrite", Logo: pluginLogo, ConfigFields: []configField{{Name: "data_path", Type: "string", Description: "bbolt data path. Defaults to plugins/data/codex-header-rewrite.db"}}}, Capabilities: registrationCapabilities{RequestInterceptor: true, RequestLifecyclePlugin: true, ResponseInterceptor: true, StreamChunkInterceptor: true, ManagementAPI: true}}
 }
 
 func handleMethod(method string, raw []byte) ([]byte, error) {

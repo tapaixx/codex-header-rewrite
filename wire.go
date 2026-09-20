@@ -55,7 +55,9 @@ type metadata struct {
 	Version          string
 	Author           string
 	GitHubRepository string
-	ConfigFields     []configField
+	// Logo is the display asset management clients show for this plugin.
+	Logo         string
+	ConfigFields []configField
 }
 
 type configField struct {

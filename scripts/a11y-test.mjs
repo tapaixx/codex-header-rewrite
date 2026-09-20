@@ -34,6 +34,19 @@ assert.ok(!r.headings.includes('H3'),'headings stop at h2: '+r.headings.join(','
 assert.equal(r.headings[0],'H1');
 assert.equal(r.themes,2); assert.equal(r.touch,'manipulation'); assert.equal(r.tap,'rgba(0, 0, 0, 0)');
 assert.equal(r.iconBtnNoLabel,0);
+// The favicon is an inline data URI built from web/icon.svg; a malformed one
+// closes its own href and spills the rest of the SVG into the markup.
+const fav = await p.evaluate(async ()=>{
+  const link=document.querySelector('link[rel="icon"]');
+  if (!link) return {missing:true};
+  const img=new Image();
+  const loaded=await new Promise(res=>{img.onload=()=>res(true);img.onerror=()=>res(false);img.src=link.href;});
+  return {loaded,w:img.naturalWidth,h:img.naturalHeight,
+    stray:document.head.innerHTML.includes('-->')||document.body.innerText.includes('-->')};
+});
+assert.ok(fav.loaded,'favicon decodes to an image');
+assert.equal(fav.w,32); assert.equal(fav.h,32);
+assert.equal(fav.stray,false,'no markup leaked out of the favicon href');
 assert.deepEqual(errs,[]);
 console.log('a11y passed; skip →',target,'; headings',[...new Set(r.headings)].join(','));
 await b.close();
