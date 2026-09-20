@@ -1,15 +1,14 @@
 name: Release
 
-# Tag pushes still publish exactly as before. In addition, a main-branch
-# commit named "release: vX.Y.Z" is published only after the CI workflow for
-# that exact commit succeeds. This keeps releases gated by CI without needing
-# a long-lived release branch.
+# Tag pushes publish directly as before. A main-branch commit named
+# "release: vX.Y.Z" publishes only after CI for that exact commit succeeds.
+# This keeps releases CI-gated without requiring a long-lived release branch.
 on:
   push:
     tags:
-      - v*
+      - 'v*'
   workflow_run:
-    workflows: ["CI"]
+    workflows: ['CI']
     types: [completed]
 
 permissions:
@@ -51,58 +50,7 @@ jobs:
               *) printf 'workflow_run release requires commit subject: release: vX.Y.Z\n' >&2; exit 1 ;;
             esac
           fi
-          if ! printf '%s\n' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?
-      - name: Install release toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross unzip zip
-
-      - name: Resolve module dependencies
-        run: go mod tidy
-
-      - name: Prepare release directory
-        run: mkdir -p "$RELEASE_DIR"
-
-      - name: Build Linux amd64 plugin
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.pluginVersion=${VERSION}" -buildmode=c-shared -o "$RELEASE_DIR/codex-header-rewrite-linux-amd64.so" .
-
-      - name: Build Linux arm64 plugin
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w -X main.pluginVersion=${VERSION}" -buildmode=c-shared -o "$RELEASE_DIR/codex-header-rewrite-linux-arm64.so" .
-
-      - name: Discard generated C headers
-        run: rm -f "$RELEASE_DIR"/*.h
-
-      - name: Package release assets
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: scripts/package-release.sh "$VERSION" "$RELEASE_DIR"
-
-      - name: Smoke-test release layout
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: scripts/package_release_test.sh "$RELEASE_DIR" "$VERSION"
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          target_commitish: ${{ steps.version.outputs.target }}
-          name: Codex Header Rewrite ${{ steps.version.outputs.tag }}
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-          files: |
-            ${{ github.workspace }}/.release/codex-header-rewrite_${{ steps.version.outputs.version }}_linux_amd64.zip
-            ${{ github.workspace }}/.release/codex-header-rewrite_${{ steps.version.outputs.version }}_linux_arm64.zip
-            ${{ github.workspace }}/.release/checksums.txt
-            ${{ github.workspace }}/.release/codex-header-rewrite-linux-amd64.so
-            ${{ github.workspace }}/.release/codex-header-rewrite-linux-arm64.so
-            ${{ github.workspace }}/.release/codex-header-rewrite-linux-amd64.so.sha256
-            ${{ github.workspace }}/.release/codex-header-rewrite-linux-arm64.so.sha256
-; then
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
             printf 'invalid release tag: %s\n' "$tag" >&2
             exit 1
           fi
@@ -147,8 +95,9 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Codex Header Rewrite ${{ github.ref_name }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ steps.version.outputs.target }}
+          name: Codex Header Rewrite ${{ steps.version.outputs.tag }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
