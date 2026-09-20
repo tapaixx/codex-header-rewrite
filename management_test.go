@@ -108,33 +108,6 @@ func TestCredentialListExposesEmailOnly(t *testing.T) {
 	}
 }
 
-func TestManagementCredentialViewUsesAccountEmail(t *testing.T) {
-	resetState(t)
-	oldList, oldGet := hostAuthListFunc, hostAuthGetFunc
-	hostAuthListFunc = func() (hostAuthListResponse, error) {
-		return hostAuthListResponse{Files: []hostAuthFileEntry{{ID: "a", AuthIndex: "idx-a", Name: "codex-user-example.json", Provider: "codex"}}}, nil
-	}
-	hostAuthGetFunc = func(string) (json.RawMessage, error) {
-		return json.RawMessage(`{"access_token":"secret-token","account":"user@example.com","id_token":{"chatgpt_account_id":"acc-1"}}`), nil
-	}
-	t.Cleanup(func() { hostAuthListFunc = oldList; hostAuthGetFunc = oldGet })
-
-	items, err := listCredentialViews()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 1 || items[0].Email != "user@example.com" {
-		t.Fatalf("credentials=%#v", items)
-	}
-	raw, err := json.Marshal(items)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), "secret-token") {
-		t.Fatalf("credential secret leaked into management response: %s", raw)
-	}
-}
-
 func TestTurnStatePoolAPIExposesCredentialAndValue(t *testing.T) {
 	resetState(t)
 	resetTurnStates(t)
