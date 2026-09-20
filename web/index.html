@@ -1259,11 +1259,31 @@ body[data-workspace="rules"] .shell main{grid-template-columns:minmax(620px,1fr)
 .danger-soft{color:var(--accent)!important;background:#fff!important;border-color:#9fc5ff!important}
 .rule-count{height:20px!important;min-width:22px!important;font-size:10px!important}
 .rule-count-danger{background:var(--gone-weak)!important;color:var(--gone)!important;border-color:#ffd0d3!important}
-.guard-layout{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center}
+.guard-layout{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 14px;align-items:start}
 .field-label{font-size:11px;font-weight:600;color:var(--text-soft)}
-.guard-layout select{width:min(230px,100%);margin-top:5px}
-.guard-note{margin-top:5px}
-.guard-switch{white-space:nowrap}
+/* Both outcomes are written out and the live one is lit, because the switch
+   label alone never said what changes when it flips. */
+.guard-states{display:grid;gap:6px}
+.guard-state{
+  display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;
+  padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--sunk);
+  color:var(--text-mute);font-size:11.5px;line-height:1.55;
+  transition:background .18s var(--ease),border-color .18s var(--ease),color .18s var(--ease)
+}
+.guard-state-key{
+  font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--line);color:var(--text-soft);white-space:nowrap
+}
+.rule-block-guard[data-guard="on"] .guard-state[data-state="on"],
+.rule-block-guard[data-guard="off"] .guard-state[data-state="off"]{
+  background:var(--surface);border-color:var(--accent);color:var(--text)
+}
+.rule-block-guard[data-guard="on"] .guard-state[data-state="on"] .guard-state-key,
+.rule-block-guard[data-guard="off"] .guard-state[data-state="off"] .guard-state-key{
+  background:var(--accent-weak);border-color:transparent;color:var(--accent)
+}
+.guard-note{grid-column:1/-1;margin-top:1px}
+.guard-switch{white-space:nowrap;align-self:center}
 .guard-info{margin:0 10px 10px!important}
 #guardBadge{font-size:10px!important}
 
@@ -1654,21 +1674,27 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
             </div>
           </details>
 
-          <details class="rule-block rule-block-guard" open>
+          <details class="rule-block rule-block-guard" id="guardBlock" data-guard="off" open>
             <summary>
               <span class="rule-block-icon"><svg class="i"><use href="#i-alert"/></svg></span>
-              <span class="rule-block-copy"><b>X-Codex-Turn-State 守卫</b><small>自动修复 / 保护 X-Codex-Turn-State，防止 401 错误</small></span>
-              <span class="tag warn" id="guardBadge">已启用</span>
+              <span class="rule-block-copy"><b>X-Codex-Turn-State 守卫</b><small>摘掉确定用不了的回带 state，避免上游报 401</small></span>
+              <span class="tag flat" id="guardBadge">已关闭</span>
             </summary>
             <div class="rule-block-body guard-layout">
-              <div>
-                <label class="field-label" for="guardMode">守卫模式</label>
-                <select id="guardMode" disabled><option>自动修复（推荐）</option></select>
-                <div class="muted guard-note">检测到无效的 X-Codex-Turn-State 时自动使用可用的 state 进行替换。</div>
+              <div class="guard-states">
+                <div class="guard-state" data-state="on">
+                  <span class="guard-state-key">开启</span>
+                  <span>回带的 state 确认来自<b>其他凭证</b>或<b>其他模型</b>时，把 <code class="mono">X-Codex-Turn-State</code> 从这次请求里摘掉，让上游重新签发一个。</span>
+                </div>
+                <div class="guard-state" data-state="off">
+                  <span class="guard-state-key">关闭</span>
+                  <span>客户端带什么就原样发什么。来源照常记录、历史照常标注，只是不改这次请求。</span>
+                </div>
               </div>
               <label class="switch guard-switch"><input type="checkbox" id="ruleStripTurnState"><span>启用守卫</span></label>
+              <div class="muted guard-note">开启后也<b>不会</b>摘除这两种：只是<b>超过复用窗口</b>（1 小时是经验值，摘错会打断还能用的回合），或<b>来源未知</b>（插件没见过签发它的那次响应）。</div>
             </div>
-            <div class="notice info guard-info" id="injectNotice"><svg class="i"><use href="#i-info"/></svg><span>只有开启规则的凭证才会从 State 池补 <code class="mono">X-Codex-Turn-State</code>；手工设置或移除时，以手工规则为准。</span></div>
+            <div class="notice info guard-info" id="injectNotice"><svg class="i"><use href="#i-info"/></svg><span>这个开关只管<b>摘除</b>。从 State 池<b>补发</b>是另一回事：由上方「启用改写」控制，只要该凭证的规则开着、且没手工设置或移除 <code class="mono">X-Codex-Turn-State</code>，池里有合格 state 就会补。</span></div>
           </details>
         </div>
 
@@ -1966,7 +1992,7 @@ function renderRuleSummary() {
   $("summaryCredential").textContent = cred ? credentialDisplayName(cred) : (store.selected || "-");
   $("summarySetCount").textContent = setCount + " 条";
   $("summaryRemoveCount").textContent = removeCount + " 条";
-  $("summaryGuard").innerHTML = $("ruleStripTurnState")?.checked ? '<span class="tag ok">已开启</span>' : '<span class="tag flat">关闭</span>';
+  $("summaryGuard").innerHTML = $("ruleStripTurnState")?.checked ? '<span class="tag ok">已开启</span>' : '<span class="tag flat">已关闭</span>';
   $("summaryModels").textContent = store.models.length ? (store.models.length + " 个") : "未获取";
   $("summaryUpdated").textContent = rule.updated_at && !String(rule.updated_at).startsWith("0001") ? new Date(rule.updated_at).toLocaleString() : "尚未保存";
 }
@@ -2064,8 +2090,10 @@ function renderRulePreview() {
   renderCodeCompare(before, after, enabled ? "示例 · 仅手工 Set/Remove；自动 State 注入以请求历史为准" : "规则未启用 · 示例预览");
   $("diffExtra").innerHTML = "";
   renderRuleSummary();
-  $("guardBadge").textContent = $("ruleStripTurnState")?.checked ? "已启用" : "未启用";
-  $("guardBadge").className = "tag " + ($("ruleStripTurnState")?.checked ? "warn" : "flat");
+  const guardOn = !!$("ruleStripTurnState")?.checked;
+  $("guardBadge").textContent = guardOn ? "已开启" : "已关闭";
+  $("guardBadge").className = "tag " + (guardOn ? "ok" : "flat");
+  if ($("guardBlock")) $("guardBlock").dataset.guard = guardOn ? "on" : "off";
 }
 /* ---------- management key ----------------------------------------------
    The host keeps its key in localStorage behind an enc::v1/enc::v2 envelope.
