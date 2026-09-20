@@ -587,6 +587,32 @@ func TestRuleRemovalOfTheStateHeaderIsNotRefilled(t *testing.T) {
 }
 
 // The guard and the pool work together: an unusable echo is replaced rather
+// A pooled state protects the outgoing credential on its own. The guard decides
+// whether an unusable echo is dropped; it has no say in whether a usable one is
+// substituted, so a credential whose pool is warm never forwards another
+// credential's state even with the guard switched off.
+func TestPooledStateReplacesForeignEchoWithTheGuardOff(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	foreign := fernetToken(0x80, time.Now(), 3)
+	state.mu.Lock()
+	state.credentials["idx-b"] = credentialSnapshot{AuthIndex: "idx-b", AuthID: "auth-b", Provider: "codex", Name: "b.json"}
+	noteTurnStateMintLocked(foreign, "idx-b", "B", "gpt-5.6-luna", "team")
+	state.mu.Unlock()
+	pooled := poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true, StripForeignTurnState: false})
+
+	response := injectTestRequest(t, "replace-without-guard", http.Header{turnStateHeader: {foreign}})
+	if got := response.Headers.Get(turnStateHeader); got != pooled {
+		t.Fatalf("a warm pool should replace the foreign echo regardless of the guard: %q", got)
+	}
+	for _, name := range response.ClearHeaders {
+		if strings.EqualFold(name, turnStateHeader) {
+			t.Fatal("the guard is off, so nothing should be cleared")
+		}
+	}
+}
+
 // than merely dropped, and the response never both sets and clears one header.
 func TestGuardStripAndInjectionDoNotContradictEachOther(t *testing.T) {
 	stubCredentialPlan(t, "team")
