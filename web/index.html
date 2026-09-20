@@ -1700,11 +1700,19 @@ body[data-workspace="history"] #historyPanel{grid-row:2!important}
   .history-model .chain>span:not(.tag):not(.arrow){flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;min-width:36px}
   /* A chip sliced at the cell edge reads as a bug; overflowing content fades
      out instead, and the full set is in the drawer. */
-  .history-outcome{
-    white-space:nowrap;
+  .history-outcome{white-space:nowrap}
+  /* The fade lives on a wrapper inside the cell. On the cell itself it also
+     faded the cell's own top border, which broke the row line just before
+     耗时 and made the last two columns read as a frozen block. */
+  .history-outcome-wrap{
+    display:block;overflow:hidden;
     -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);
     mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)
   }
+  /* Smaller chips in the list: the row is a summary, and each chip that
+     shrinks is another verdict that fits before the fade. */
+  .history-summary .tag{font-size:10.5px;padding:1px 6px;gap:3px}
+  .history-summary .chain{gap:5px}
   .history-outcome .tag{vertical-align:middle}
   .history-error-preview{display:inline-block;max-width:160px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
 }
@@ -2917,9 +2925,9 @@ async function loadHistory(page = 1) {
     row.setAttribute("aria-selected", String(record.id === store.selectedRecord));
     row.setAttribute("aria-haspopup", "dialog");
     row.innerHTML = `<td class="history-time num">${esc(new Date(record.started_at).toLocaleString())}</td>
-      <td class="history-origin">${record.origin === "test" ? '<span class="tag flat">测试</span>' : '<span class="muted">线上</span>'}</td>
+      <td class="history-origin"><span class="tag flat">${record.origin === "test" ? "测试" : "线上"}</span></td>
       <td class="history-model">${modelChain(record)}</td>
-      <td class="history-outcome">${outcomeTag(record.outcome)}${turnStateTags(record)}${record.error ? ` <span class="muted history-error-preview">${esc(record.error)}</span>` : ""}</td>
+      <td class="history-outcome"><span class="history-outcome-wrap">${outcomeTag(record.outcome)}${turnStateTags(record)}${record.error ? ` <span class="muted history-error-preview">${esc(record.error)}</span>` : ""}</span></td>
       <td class="history-latency num">${Number.isFinite(Number(record.latency_ms)) ? (Number(record.latency_ms) >= 1000 ? (Number(record.latency_ms) / 1000).toFixed(1) + " s" : record.latency_ms + " ms") : "-"}</td>
       <td class="history-status num" style="text-align:right">${record.status_code || "-"}</td>`;
     row.addEventListener("click", () => showRecord(record, row));
