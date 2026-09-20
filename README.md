@@ -223,7 +223,7 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 凭证选择器直接显示每个凭证的套餐（Team / Pro / Plus…）：`/credentials` 列表在读取邮箱的同一次文档读取里一并解析 `chatgpt_plan_type`（id_token 优先，缺失时回退 access_token 里的同名 claim），所以不需要等该凭证跑过流量。仍显示「套餐未知」说明凭证文档里确实没有套餐声明，属于异常，值得检查该 auth 文件。
 
-数据来自 `GET /codex-header-rewrite/turn-states`。面板同时显示凭证名称、稳定的 `auth_index`、模型、长度/阈值，并可在原行展开 state 具体值。池把原始 state 持久化在配置的 bbolt `data_path`（CPA 工作目录为 `/CLIProxyAPI` 时，默认落在 `/CLIProxyAPI/plugins/data/codex-header-rewrite.db`），因此 CPA 重建、重启或插件更新后会恢复；插件目录随容器更新被整体替换时，应把 `/CLIProxyAPI/plugins/data` 挂到持久卷。
+数据来自 `GET /codex-header-rewrite/turn-states`。面板同时显示凭证名称、稳定的 `auth_index`、模型、长度/阈值，点击任一行从右侧抽屉查看详情与 state 具体值，可复制或送去解码。池把原始 state 持久化在配置的 bbolt `data_path`（CPA 工作目录为 `/CLIProxyAPI` 时，默认落在 `/CLIProxyAPI/plugins/data/codex-header-rewrite.db`），因此 CPA 重建、重启或插件更新后会恢复；插件目录随容器更新被整体替换时，应把 `/CLIProxyAPI/plugins/data` 挂到持久卷。
 
 ### 自动注入
 
