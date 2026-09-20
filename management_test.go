@@ -161,6 +161,37 @@ func TestTurnStatePoolAPIFiltersByCredential(t *testing.T) {
 	}
 }
 
+// The listing already opens each credential document for the email, so the
+// plan resolves in the same pass. Before this, a credential that had served no
+// traffic showed an unknown plan in the panel indefinitely.
+func TestCredentialListResolvesPlanFromTheDocument(t *testing.T) {
+	resetState(t)
+	oldList, oldGet := hostAuthListFunc, hostAuthGetFunc
+	hostAuthListFunc = func() (hostAuthListResponse, error) {
+		return hostAuthListResponse{Files: []hostAuthFileEntry{{ID: "a", AuthIndex: "idx-a", Name: "codex-a.json", Provider: "codex"}}}, nil
+	}
+	hostAuthGetFunc = func(string) (json.RawMessage, error) {
+		return json.RawMessage(`{"id_token":{"https://api.openai.com/auth":{"chatgpt_plan_type":"team"}}}`), nil
+	}
+	t.Cleanup(func() {
+		hostAuthListFunc = oldList
+		hostAuthGetFunc = oldGet
+	})
+	items, err := listCredentialViews()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].PlanType != "team" {
+		t.Fatalf("credentials=%#v", items)
+	}
+	state.mu.Lock()
+	cached := state.credentials["idx-a"]
+	state.mu.Unlock()
+	if !cached.PlanResolved || cached.PlanType != "team" {
+		t.Fatalf("listing did not cache the resolved plan: %#v", cached)
+	}
+}
+
 func TestCredentialRefreshInvalidatesPlanWhenIdentityChanges(t *testing.T) {
 	resetState(t)
 	state.mu.Lock()

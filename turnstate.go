@@ -96,7 +96,9 @@ func credentialPlanFromJSON(raw json.RawMessage, depth int) string {
 			}
 		}
 	}
-	for _, name := range []string{"id_token", "idToken", "IDToken"} {
+	// The id_token is authoritative; the access token carries the same auth
+	// claim and covers credentials whose id_token is absent or stripped.
+	for _, name := range []string{"id_token", "idToken", "IDToken", "access_token", "accessToken"} {
 		field := rawFieldFold(object, name)
 		if len(field) == 0 {
 			continue

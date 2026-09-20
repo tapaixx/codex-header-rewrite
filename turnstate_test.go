@@ -50,6 +50,21 @@ func TestCredentialPlanSupportsObjectAndNestedTokenShapes(t *testing.T) {
 	}
 }
 
+// A credential whose id_token is absent still carries the auth claim in its
+// access token; the id_token stays authoritative when both are present.
+func TestCredentialPlanFallsBackToTheAccessToken(t *testing.T) {
+	accessOnly := json.RawMessage(`{"tokens":{"access_token":"header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9wbGFuX3R5cGUiOiJwbHVzIn19.signature"}}`)
+	if got := credentialPlanType(accessOnly); got != "plus" {
+		t.Fatalf("access-token plan=%q, want %q", got, "plus")
+	}
+	both := json.RawMessage(`{"tokens":{` +
+		`"id_token":"header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9wbGFuX3R5cGUiOiJ0ZWFtIn19.signature",` +
+		`"access_token":"header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9wbGFuX3R5cGUiOiJwbHVzIn19.signature"}}`)
+	if got := credentialPlanType(both); got != "team" {
+		t.Fatalf("id_token should stay authoritative, got %q", got)
+	}
+}
+
 func TestNonDegradedStateLimitsAreInclusivePerPlan(t *testing.T) {
 	tests := []struct {
 		plan  string

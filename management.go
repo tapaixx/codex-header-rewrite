@@ -266,25 +266,29 @@ func listCredentialViews() ([]credentialView, error) {
 			continue
 		}
 		snap := snapshotFromEntry(entry)
-		if snap.AuthIndex != "" {
-			updates[snap.AuthIndex] = snap
-		}
 		count := 0
 		email := ""
 		if snap.AuthIndex != "" {
 			if store != nil {
 				count, _ = store.HistoryCount(snap.AuthIndex)
 			}
+			// The document is already being read here for the email, so the
+			// plan claim is read in the same pass. Leaving it unresolved until
+			// live traffic flowed made every idle credential report an
+			// unknown plan in the panel.
 			if document, readErr := hostAuthGetFunc(snap.AuthIndex); readErr == nil {
 				email = credentialEmail(document)
+				snap.PlanType = credentialPlanType(document)
+				snap.PlanResolved = true
 			}
+			updates[snap.AuthIndex] = snap
 		}
 		_, hasRule := rules[snap.AuthIndex]
 		items = append(items, credentialView{credentialSnapshot: snap, Email: email, Configurable: snap.AuthIndex != "", HasRule: hasRule, HistoryCount: count})
 	}
 	state.mu.Lock()
 	for k, v := range updates {
-		if existing, ok := state.credentials[k]; ok && existing.PlanResolved && sameCredentialIdentity(existing, v) {
+		if existing, ok := state.credentials[k]; ok && !v.PlanResolved && existing.PlanResolved && sameCredentialIdentity(existing, v) {
 			v.PlanType = existing.PlanType
 			v.PlanResolved = true
 		}
