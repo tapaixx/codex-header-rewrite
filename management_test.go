@@ -57,6 +57,56 @@ func TestManagementCredentialFilterAndRule(t *testing.T) {
 	}
 }
 
+func TestCredentialEmailExtraction(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "account", raw: `{"account":"alex@example.com","access_token":"secret"}`, want: "alex@example.com"},
+		{name: "email", raw: `{"email":"dev@example.com"}`, want: "dev@example.com"},
+		{name: "nested", raw: `{"profile":{"email":"nested@example.com"}}`, want: "nested@example.com"},
+		{name: "account id is not email", raw: `{"account_id":"5417aaaa-bbbb-cccc","access_token":"secret"}`, want: ""},
+		{name: "non email account", raw: `{"account":"team-a"}`, want: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := credentialEmail(json.RawMessage(tc.raw)); got != tc.want {
+				t.Fatalf("credentialEmail()=%q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCredentialListExposesEmailOnly(t *testing.T) {
+	resetState(t)
+	oldList, oldGet := hostAuthListFunc, hostAuthGetFunc
+	hostAuthListFunc = func() (hostAuthListResponse, error) {
+		return hostAuthListResponse{Files: []hostAuthFileEntry{{ID: "a", AuthIndex: "idx-a", Name: "codex-a.json", Provider: "codex"}}}, nil
+	}
+	hostAuthGetFunc = func(string) (json.RawMessage, error) {
+		return json.RawMessage(`{"account":"user@example.com","access_token":"must-not-leak"}`), nil
+	}
+	t.Cleanup(func() {
+		hostAuthListFunc = oldList
+		hostAuthGetFunc = oldGet
+	})
+	items, err := listCredentialViews()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Email != "user@example.com" {
+		t.Fatalf("credentials=%#v", items)
+	}
+	raw, err := json.Marshal(items[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "must-not-leak") {
+		t.Fatalf("credential response leaked auth material: %s", raw)
+	}
+}
+
 func TestTurnStatePoolAPIExposesCredentialAndValue(t *testing.T) {
 	resetState(t)
 	resetTurnStates(t)
