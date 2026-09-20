@@ -1996,6 +1996,35 @@ html{-webkit-tap-highlight-color:transparent}
   #drawerClose{min-width:44px;min-height:44px}
 }
 
+/* The host applies its own theme to its document as data-theme="dark" or
+   "white" and persists it as cli-proxy-theme; the panel is an iframe inside
+   it. Following prefers-color-scheme alone meant a phone in dark mode drew a
+   dark panel inside a host the operator had set to white. The attribute the
+   panel copies from the host wins over the media query; without it the media
+   query still decides, which is what the host's own "auto" does. */
+html[data-theme="white"]{
+  color-scheme:light!important;
+  --bg:#f3f6fb!important;--surface:#fff!important;--sunk:#f7f9fd!important;
+  --raised:#fff!important;--focus:#1677ff!important;
+  --line:#e3eaf4!important;--line-strong:#cfd9e8!important;
+  --text:#13233d!important;--text-soft:#536780!important;--text-mute:#8593a7!important;
+  --accent:#1677ff!important;--accent-hover:#0f68e5!important;--accent-weak:#edf5ff!important;--on-accent:#fff!important;
+  --set:#13a36d!important;--set-weak:#eaf9f2!important;
+  --gone:#ef4d55!important;--gone-weak:#fff0f1!important;
+  --over:#f3a516!important;--over-weak:#fff6df!important;
+}
+html[data-theme="dark"]{
+  color-scheme:dark!important;
+  --bg:#0d1520!important;--surface:#151e2b!important;--sunk:#101824!important;--raised:#1a2533!important;
+  --line:#2c3c52!important;--line-strong:#425570!important;
+  --text:#e8eef7!important;--text-soft:#b7c4d7!important;--text-mute:#9aacc4!important;
+  --accent:#77b0ff!important;--accent-hover:#96c2ff!important;--accent-weak:#172c47!important;--on-accent:#08111e!important;
+  --set:#66d6aa!important;--set-weak:#153129!important;
+  --gone:#ff959d!important;--gone-weak:#3a2027!important;
+  --over:#f2c06f!important;--over-weak:#352816!important;
+  --focus:#77b0ff!important;
+}
+
 </style>
 </head>
 <body data-workspace="rules">
@@ -3799,6 +3828,56 @@ const degradedProxies = () => [...chipValues.retryProxies];
 let degradedSaving = false;
 // The sticky stack is remeasured whenever its height can change, so the tab
 // strip lands exactly on the bar and nothing below it has to guess.
+/* The panel runs as an iframe inside the host's management UI, which applies
+   its theme as data-theme on its own document and remembers it under
+   cli-proxy-theme. The parent is same-origin here, so its applied value is
+   the truthful one; the stored value is the fallback for when frame access is
+   refused, and prefers-color-scheme is the last resort -- which is also what
+   the host's own "auto" resolves to. */
+const HOST_THEME_KEY = "cli-proxy-theme";
+function hostTheme() {
+  try {
+    if (window.parent && window.parent !== window) {
+      const applied = window.parent.document.documentElement.getAttribute("data-theme");
+      // No attribute means the host is on auto and follows the system too.
+      return applied === "dark" || applied === "white" ? applied : "";
+    }
+  } catch { /* cross-origin or sandboxed: fall through to what was stored */ }
+  try {
+    const raw = safeStorage("localStorage").getItem(HOST_THEME_KEY);
+    if (!raw) return "";
+    let value = raw;
+    try {
+      const parsed = JSON.parse(raw);
+      value = parsed?.state?.theme ?? parsed?.theme ?? parsed?.state?.resolvedTheme ?? value;
+    } catch { /* a bare string is just as good */ }
+    value = String(value).trim().toLowerCase();
+    if (value === "light") return "white";
+    return value === "dark" || value === "white" ? value : "";
+  } catch {
+    return "";
+  }
+}
+function applyHostTheme() {
+  const theme = hostTheme();
+  const root = document.documentElement;
+  if (theme) root.setAttribute("data-theme", theme);
+  else root.removeAttribute("data-theme");
+}
+applyHostTheme();
+// The host can change theme while the panel is open, from either side of the
+// frame boundary.
+addEventListener("storage", (event) => {
+  if (!event.key || event.key === HOST_THEME_KEY) applyHostTheme();
+});
+try {
+  if (window.parent && window.parent !== window && globalThis.MutationObserver) {
+    new MutationObserver(applyHostTheme).observe(window.parent.document.documentElement,
+      { attributes: true, attributeFilter: ["data-theme"] });
+  }
+} catch { /* nothing to observe across a closed frame boundary */ }
+globalThis.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", applyHostTheme);
+
 function syncStickyOffsets() {
   const bar = document.querySelector(".topbar");
   const nav = document.querySelector(".workspace-nav");
