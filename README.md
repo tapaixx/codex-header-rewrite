@@ -71,7 +71,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.16.2.so` | `codex-header-rewrite` | `0.16.2` |
+| `codex-header-rewrite-v0.17.0.so` | `codex-header-rewrite` | `0.17.0` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -84,7 +84,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.16.2.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.17.0.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -223,7 +223,7 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 ### 降智响应拦截
 
-「请求历史」页的「拦截降智响应」按凭证保存（`reject_degraded_response`），独立于「启用改写」。拦截模型列表 `reject_degraded_models` 留空时匹配全部模型；非空时只按实际发出的模型 ID 精确匹配，不匹配客户端别名或模型前缀。仅当开关启用、模型命中且上游 state 判定为**疑似降智**时，这次响应才**不下发给客户端**：非流式替换为错误对象；流式第一个数据 chunk 换成终止性的 `error` 事件，之后全部丢弃。响应加上 `X-Codex-Header-Rewrite: rejected-degraded-turn-state`，历史里标「已拦截」。
+「请求历史」页的「拦截降智响应」按凭证保存（`reject_degraded_response`），独立于「启用改写」。拦截模型列表 `reject_degraded_models` 留空时匹配全部模型；非空时只按实际发出的模型 ID 精确匹配，不匹配客户端别名或模型前缀。仅当开关启用、模型命中且上游 state 判定为**疑似降智**时，这次响应才**不下发给客户端**：非流式替换为错误对象；流式第一个数据 chunk 换成终止性的 `error` 事件，之后全部丢弃。响应加上 `X-Codex-Header-Rewrite: rejected-degraded-turn-state`，历史里标「已拦截」。开启「拦截后重试」时，拦截的响应会**等重试跑完再下发**（最多 25 秒）：先返回错误，客户端会立刻自己重试，而那时池子还没补上，重来一次仍是降智。
 
 开启拦截后才能配置「拦截后重试取 state」「最大重试次数」和模型列表。后台重试使用同凭证、同模型发送最小 `hi` 请求，最多 1–5 次（默认 2），获得合格 state 后提前结束，并将整轮重试记录为一行历史。重试范围与拦截范围一致；关闭拦截会保留配置值，但不再触发新的重试。后台重试不会重新执行原始用户请求。
 

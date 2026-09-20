@@ -27,6 +27,9 @@ const (
 	retryPrompt          = "hi"
 	retryGap             = 400 * time.Millisecond
 	retryInFlightLimit   = 4
+	// Long enough for a short series of minimal requests, short enough that a
+	// stuck retry never becomes a stuck client.
+	retryWaitTimeout = 25 * time.Second
 )
 
 var retryInFlight = make(chan struct{}, retryInFlightLimit)
@@ -51,9 +54,14 @@ func retryAttemptCount(rule headerRule) int {
 
 // scheduleDegradedRetry runs the series off the response path so the client is
 // never waiting on it. state.mu must be held by the caller.
-func scheduleDegradedRetry(attempt *pendingAttempt, attempts int) {
+// scheduleDegradedRetry starts the series and returns a channel that closes
+// when it ends -- including when it never starts, so a caller can always wait
+// on it without checking why.
+func scheduleDegradedRetry(attempt *pendingAttempt, attempts int) chan struct{} {
+	done := make(chan struct{})
 	if state.quiescing || state.store == nil || attempt.AuthID == "" {
-		return
+		close(done)
+		return nil
 	}
 	if state.retryStop == nil {
 		state.retryStop = make(chan struct{})
@@ -62,17 +70,40 @@ func scheduleDegradedRetry(attempt *pendingAttempt, attempts int) {
 	select {
 	case retryInFlight <- struct{}{}:
 	default:
-		return
+		close(done)
+		return nil
 	}
 	state.retryWG.Add(1)
 	authIndex, authID := attempt.AuthIndex, attempt.AuthID
 	model := sentModel(attempt.Model, attempt.RequestedModel)
 	label, name, plan := attempt.CredentialLabel, attempt.CredentialName, attempt.CredentialPlan
 	go func() {
+		defer close(done)
 		defer state.retryWG.Done()
 		defer func() { <-retryInFlight }()
 		runDegradedRetry(authIndex, authID, label, name, model, plan, attempts, stop)
 	}()
+	return done
+}
+
+// waitForDegradedRetry holds a withheld response until the series ends.
+// Returning the error first sends the client straight back at an upstream
+// whose pool has not been refilled, so its own retry is degraded too. The wait
+// is capped and also ends at quiesce: a client must never hang on the plugin.
+func waitForDegradedRetry(done chan struct{}) {
+	if done == nil {
+		return
+	}
+	timer := time.NewTimer(retryWaitTimeout)
+	defer timer.Stop()
+	state.mu.Lock()
+	stop := state.retryStop
+	state.mu.Unlock()
+	select {
+	case <-done:
+	case <-stop:
+	case <-timer.C:
+	}
 }
 
 // runDegradedRetry makes up to attempts requests, stopping at the first

@@ -1981,6 +1981,21 @@ html{-webkit-tap-highlight-color:transparent}
 .lockup .mark{display:grid!important;place-items:center;flex:none;color:#fff}
 .lockup .mark svg{width:56%!important;height:56%!important;display:block}
 
+/* On a phone the drawer was the whole screen, so there was no backdrop left to
+   tap, the close control was a 30x32 target below the touch minimum, and the
+   head ignored the safe area — on a notched device the only way out sat under
+   the status bar. A strip of backdrop stays exposed, the head clears the
+   inset, and the control takes a full touch target. */
+@media (max-width:820px){
+  .drawer{width:calc(100vw - 52px)!important;border-left:1px solid var(--line)!important}
+  .drawer-head{
+    padding-top:calc(11px + env(safe-area-inset-top))!important;
+    padding-right:calc(16px + env(safe-area-inset-right))!important
+  }
+  .drawer-body{padding-bottom:calc(14px + env(safe-area-inset-bottom))!important}
+  #drawerClose{min-width:44px;min-height:44px}
+}
+
 </style>
 </head>
 <body data-workspace="rules">

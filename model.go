@@ -141,6 +141,9 @@ type pendingAttempt struct {
 	// A streamed response calls the mint path on its header chunk and again
 	// per chunk; the retry series must be started once.
 	retryScheduled bool
+	// Closed when that series ends. A withheld response waits on it, so the
+	// pool is refilled before the client is told to try again.
+	retryDone chan struct{}
 }
 
 type pendingRequest struct {

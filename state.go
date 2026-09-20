@@ -326,9 +326,9 @@ func removeHeaderNameFold(names []string, target string) []string {
 
 func observeResponse(req responseInterceptRequest) responseInterceptResponse {
 	state.mu.Lock()
-	defer state.mu.Unlock()
 	pr := state.pending[req.RequestID]
 	if pr == nil || pr.current == nil {
+		state.mu.Unlock()
 		return responseInterceptResponse{}
 	}
 	pr.current.ResponseHeaders = redactHeaders(req.ResponseHeaders)
@@ -337,10 +337,15 @@ func observeResponse(req responseInterceptRequest) responseInterceptResponse {
 	// The body is read here only to learn which model the upstream served. The
 	// model name is kept; the body itself is not stored anywhere.
 	pr.current.models.observeBody(req.Body)
-	if pr.current.rejecting {
+	rejecting, done, info := pr.current.rejecting, pr.current.retryDone, pr.current.TurnStateMinted
+	// Released before waiting: a withheld response must not hold every other
+	// request that is still in flight.
+	state.mu.Unlock()
+	if rejecting {
+		waitForDegradedRetry(done)
 		return responseInterceptResponse{
 			Headers: rejectionHeaders("application/json"),
-			Body:    rejectionBody(pr.current.TurnStateMinted),
+			Body:    rejectionBody(info),
 		}
 	}
 	return responseInterceptResponse{}
@@ -414,21 +419,23 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 	if attempt.rejecting && !attempt.retryScheduled {
 		if attempts := retryEnabledForLocked(attempt.AuthIndex); attempts > 0 {
 			attempt.retryScheduled = true
-			scheduleDegradedRetry(attempt, attempts)
+			attempt.retryDone = scheduleDegradedRetry(attempt, attempts)
 		}
 	}
 }
 func observeStreamHeaders(req streamChunkInterceptRequest) streamChunkInterceptResponse {
 	state.mu.Lock()
-	defer state.mu.Unlock()
 	pr := state.pending[req.RequestID]
 	if pr == nil || pr.current == nil {
+		state.mu.Unlock()
 		return streamChunkInterceptResponse{}
 	}
 	if req.ChunkIndex == streamChunkHeaderInitIndex {
 		pr.current.ResponseHeaders = redactHeaders(req.ResponseHeaders)
 		noteTurnStateMintLocked2(pr.current, req.ResponseHeaders)
-		if pr.current.rejecting {
+		rejecting := pr.current.rejecting
+		state.mu.Unlock()
+		if rejecting {
 			return streamChunkInterceptResponse{Headers: rejectionHeaders("text/event-stream")}
 		}
 		return streamChunkInterceptResponse{}
@@ -437,12 +444,19 @@ func observeStreamHeaders(req streamChunkInterceptRequest) streamChunkInterceptR
 		// The first payload chunk becomes the terminal error; nothing of the
 		// upstream body reaches the client after that.
 		pr.current.rejectedChunks++
-		if pr.current.rejectedChunks == 1 {
-			return streamChunkInterceptResponse{Body: rejectionEvent(pr.current.TurnStateMinted)}
+		first := pr.current.rejectedChunks == 1
+		done, info := pr.current.retryDone, pr.current.TurnStateMinted
+		state.mu.Unlock()
+		if first {
+			// Hold the terminal event until the pool has been refilled, so the
+			// client's own retry is not sent straight back into a degraded turn.
+			waitForDegradedRetry(done)
+			return streamChunkInterceptResponse{Body: rejectionEvent(info)}
 		}
 		return streamChunkInterceptResponse{DropChunk: true}
 	}
 	pr.current.models.observeCallback(req.Body)
+	state.mu.Unlock()
 	return streamChunkInterceptResponse{}
 }
 func completeRequest(c requestCompletion) {

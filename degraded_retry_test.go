@@ -243,3 +243,65 @@ func TestRetrySelectsProxyPerCallAndKeepsCredentialsIsolated(t *testing.T) {
 		t.Fatal("cleared proxies did not select direct")
 	}
 }
+
+// A withheld response must not reach the client before the retry series has
+// finished. Returning first sends the client straight back at an upstream
+// whose pool has not been refilled, which is the loop this exists to break.
+func TestWithheldResponseWaitsForTheRetrySeries(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	release := make(chan struct{})
+	oldGet, oldDo, oldRuntime := hostAuthGetFunc, retryHTTPDoFunc, hostAuthGetRuntimeFunc
+	hostAuthGetRuntimeFunc = func(index string) (hostAuthGetRuntimeResponse, error) {
+		return hostAuthGetRuntimeResponse{Auth: hostAuthFileEntry{ID: "auth-a", AuthIndex: index, Provider: "codex"}}, nil
+	}
+	var doc map[string]any
+	_ = json.Unmarshal(credentialDocumentWithPlan(t, "team"), &doc)
+	doc["access_token"] = "secret-token"
+	raw, _ := json.Marshal(doc)
+	hostAuthGetFunc = func(string) (json.RawMessage, error) { return raw, nil }
+	retryHTTPDoFunc = func(context.Context, hostHTTPRequest, string) (hostHTTPResponse, error) {
+		<-release // the series cannot finish until the test lets it
+		return hostHTTPResponse{StatusCode: 200, Headers: http.Header{turnStateHeader: {fernetToken(0x80, time.Now(), 1)}}}, nil
+	}
+	t.Cleanup(func() { hostAuthGetFunc, retryHTTPDoFunc, hostAuthGetRuntimeFunc = oldGet, oldDo, oldRuntime })
+
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, RejectDegradedResponse: true, RetryOnDegraded: true, RetryAttempts: 1}
+	state.mu.Unlock()
+	if _, err := interceptAfter(requestInterceptRequest{RequestID: "r", Model: "gpt-5.6-luna", Metadata: map[string]any{"selected_auth_index": "idx-a", "selected_auth_id": "auth-a"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	returned := make(chan responseInterceptResponse, 1)
+	go func() {
+		returned <- observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200,
+			ResponseHeaders: http.Header{turnStateHeader: {fernetToken(0x80, time.Now(), 40)}}})
+	}()
+	select {
+	case out := <-returned:
+		t.Fatalf("the response returned before the retry finished: %s", out.Body)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// Other requests must still be served while one is held.
+	free := make(chan struct{})
+	go func() { defer close(free); state.mu.Lock(); state.mu.Unlock() }()
+	select {
+	case <-free:
+	case <-time.After(time.Second):
+		t.Fatal("the held response is holding the state lock")
+	}
+
+	close(release)
+	select {
+	case out := <-returned:
+		if !strings.Contains(string(out.Body), `"turn_state_degraded"`) {
+			t.Fatalf("expected the withheld error body, got %s", out.Body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the response never returned after the retry finished")
+	}
+}
