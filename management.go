@@ -331,8 +331,7 @@ func credentialEmailObject(object map[string]json.RawMessage, depth int) string 
 		var value string
 		if json.Unmarshal(raw, &value) == nil {
 			value = strings.TrimSpace(value)
-			if strings.Contains(value, "@") && !strings.ContainsAny(value, " 	
-") {
+			if strings.Contains(value, "@") && !strings.Contains(value, " ") {
 				return value
 			}
 		}
