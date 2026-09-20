@@ -175,8 +175,11 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
 /* History */
 .history-table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
 .history-table td{overflow-wrap:anywhere}
-.history-error-preview{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
-.history-error-full{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto}
+.history-error-full{
+  margin:0;padding:8px 10px;border-radius:6px;background:var(--gone-weak);color:var(--gone);
+  font:11px/1.55 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto
+}
+.history-detail-error .history-detail-label>span:first-child::before{background:var(--gone)}
 .history-table th{text-align:left;font-weight:600;font-size:11.5px;color:var(--text-mute);padding:0 9px 7px}
 .history-summary{cursor:pointer;transition:background .14s var(--ease)}
 .history-summary td{padding:7px 9px;border-top:1px solid var(--line);vertical-align:middle}
@@ -1708,7 +1711,6 @@ body[data-workspace="history"] #historyPanel{grid-row:2!important}
   .history-summary .tag{font-size:10.5px;padding:1px 6px;gap:3px}
   .history-summary .chain{gap:5px}
   .history-outcome .tag{vertical-align:middle}
-  .history-error-preview{display:inline-block;max-width:160px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
 }
 
 /* The detail opens beside the table instead of inside it. An inline detail
@@ -2848,6 +2850,11 @@ function turnStateDetail(record) {
   </div>`;
 }
 
+// Upstream errors arrive as a JSON body; shown as one line they are unreadable,
+// and the list used to try. Pretty-print when it parses, otherwise as-is.
+function prettyError(text) {
+  try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
+}
 function modelChain(record) {
   const sent = record.model || record.sent_model || "";
   const upstream = record.upstream_model || "";
@@ -2921,7 +2928,7 @@ async function loadHistory(page = 1) {
     row.innerHTML = `<td class="history-time num">${esc(new Date(record.started_at).toLocaleString())}</td>
       <td class="history-origin"><span class="tag flat">${record.origin === "test" ? "测试" : "线上"}</span></td>
       <td class="history-model">${modelChain(record)}</td>
-      <td class="history-outcome"><span class="history-outcome-wrap">${outcomeTag(record.outcome)}${turnStateTags(record)}${record.error ? ` <span class="muted history-error-preview">${esc(record.error)}</span>` : ""}</span></td>
+      <td class="history-outcome"><span class="history-outcome-wrap">${outcomeTag(record.outcome)}${turnStateTags(record)}</span></td>
       <td class="history-latency num">${Number.isFinite(Number(record.latency_ms)) ? (Number(record.latency_ms) >= 1000 ? (Number(record.latency_ms) / 1000).toFixed(1) + " s" : record.latency_ms + " ms") : "-"}</td>
       <td class="history-status num" style="text-align:right">${record.status_code || "-"}</td>`;
     row.addEventListener("click", () => showRecord(record, row));
@@ -3075,12 +3082,15 @@ function showRecord(record) {
   }
   const requestDiff = diffHTML(record.before_headers, record.after_headers, "没有记录 Request Header");
   openDrawer("请求详情", `<div class="history-detail-shell">
-    ${record.error ? `<div class="history-error-full">${esc(record.error)}</div>` : ""}
     <div class="history-detail-head">
       <div>${modelChain(record)}</div>
       <div class="metaline"><span>Request ID ${esc(record.request_id || "-")}</span>
         <span>${esc(record.source_format || "-")}</span><span>${record.stream ? "流式" : "非流式"}</span></div>
     </div>
+    ${record.error ? `<div class="history-detail-section history-detail-error">
+      <div class="history-detail-label"><span>上游错误</span><span>${record.status_code ? `HTTP ${esc(String(record.status_code))}` : ""}</span></div>
+      <pre class="history-error-full">${esc(prettyError(record.error))}</pre>
+    </div>` : ""}
     <div class="history-detail-section">
       <div class="history-detail-label"><span>Request Header 差异</span><span class="${requestDiff.count ? "num" : ""}">${requestDiff.count ? `${requestDiff.count} 处改动` : (requestDiff.hasRows ? "无改动" : "无数据")}</span></div>
       ${requestDiff.html}
