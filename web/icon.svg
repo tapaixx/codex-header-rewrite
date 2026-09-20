@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Codex Header Rewrite">
+  <title>Codex Header Rewrite</title>
+  <!-- An H whose right stem has become an arrow: a request header, rewritten
+       and sent on. Same stroke language as the panel's icon set — 24 grid,
+       round caps and joins, no fills. -->
+  <defs>
+    <linearGradient id="chr-mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3189ff"/>
+      <stop offset="1" stop-color="#1769ef"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#chr-mark)"/>
+  <g transform="translate(4 4)" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5.5 4.5v15"/>
+    <path d="M5.5 12h8.5"/>
+    <path d="m15 7.5 4.5 4.5-4.5 4.5"/>
+  </g>
+</svg>
