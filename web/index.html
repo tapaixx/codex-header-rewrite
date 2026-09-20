@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d1520" media="(prefers-color-scheme: dark)">
 <title>Codex Header Rewrite</title>
 <style>
 /* Radius system (documented, applied everywhere):
@@ -88,7 +90,7 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
 /* Panels */
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);scroll-margin-top:72px}
 .panel-head{display:flex;align-items:center;gap:9px;min-height:42px;padding:8px 14px;border-bottom:1px solid var(--line)}
-.panel-head h3{margin:0;font-size:14px;font-weight:600}
+.panel-head h2{margin:0;font-size:14px;font-weight:600}
 .panel-body{padding:13px 14px}
 .field{display:grid;gap:5px;margin-bottom:10px}
 .field label{font-size:12px;font-weight:500;color:var(--text-soft)}
@@ -211,7 +213,7 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
 .overlay[data-open=true]{display:grid;animation:fade .18s var(--ease)}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 .dialog{background:var(--surface);border:1px solid var(--line);border-radius:14px;width:min(460px,100%);padding:20px;box-shadow:0 20px 48px rgba(10,12,15,.22)}
-.dialog h3{margin:0 0 6px;font-size:16px}
+.dialog h2{margin:0 0 6px;font-size:16px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,12px);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13px;
   opacity:0;pointer-events:none;transition:opacity .18s var(--ease),transform .18s var(--ease);z-index:60;max-width:min(560px,92vw)}
 .toast[data-show=true]{opacity:1;transform:translate(-50%,0)}
@@ -346,7 +348,7 @@ textarea{min-height:82px}
 }
 .lockup .mark svg{width:18px;height:18px}
 .lockup-copy{display:block!important}
-.lockup b{font-size:16px;line-height:1.15;color:var(--text);font-weight:700;letter-spacing:-.02em}
+.lockup h1{margin:0;font-size:16px;line-height:1.15;color:var(--text);font-weight:700;letter-spacing:-.02em}
 .lockup-copy>span{margin-top:3px;font-size:11.5px;color:var(--text-mute);white-space:nowrap}
 #versionChip{height:24px;padding:0 8px;background:var(--sunk);border-color:var(--line);font-size:11px}
 .credential-picker{
@@ -404,7 +406,7 @@ body[data-diff="off"] .shell main{grid-template-columns:minmax(0,1fr)}
 .panel-head{
   min-height:48px;padding:9px 14px;border-bottom:1px solid var(--line);gap:8px;background:var(--surface);
 }
-.panel-head h3{font-size:15px;font-weight:700;letter-spacing:-.01em;color:var(--text)}
+.panel-head h2{font-size:15px;font-weight:700;letter-spacing:-.01em;color:var(--text)}
 .panel-title{min-width:0}
 .panel-caption{margin-top:2px;color:var(--text-mute);font-size:11.5px;line-height:1.35}
 .panel-body{padding:12px 14px}
@@ -562,7 +564,7 @@ body[data-workspace="decode"] #decoderPanel{max-width:980px;width:100%;margin:0 
   }
   .lockup{grid-column:1;min-width:0}
   .lockup .mark{width:32px;height:32px}
-  .lockup b{font-size:15px}
+  .lockup h1{font-size:15px}
   .lockup-copy>span{display:none!important}
   #versionChip{display:none!important}
   .credential-picker{
@@ -597,7 +599,7 @@ body[data-workspace="decode"] #decoderPanel{max-width:980px;width:100%;margin:0 
 @media (max-width:600px){
   body{font-size:14px!important}
   input,textarea,select{font-size:16px}
-  .panel-head h3{font-size:14px}
+  .panel-head h2{font-size:14px}
   .panel-caption{font-size:11px}
   #rulePanel .panel-head{flex-wrap:wrap}
   #rulePanel .panel-title{flex:1 1 55%}
@@ -719,7 +721,7 @@ body{
     var(--surface)
   );
 }
-.panel-head h3{color:var(--text)}
+.panel-head h2{color:var(--text)}
 .panel-caption{color:var(--text-mute)}
 
 /* Input controls: less visual noise until active. */
@@ -1192,7 +1194,7 @@ body{background:var(--bg)!important;color:var(--text)!important}
 .topbar{background:var(--surface)!important;box-shadow:none!important;border-bottom:1px solid var(--line)!important}
 .topbar-main{min-height:66px!important;padding:9px 22px!important}
 .lockup .mark{width:36px!important;height:36px!important;border-radius:10px!important;background:linear-gradient(145deg,#3189ff,#1769ef)!important}
-.lockup b{font-size:16px!important;color:var(--text)!important}
+.lockup h1{font-size:16px!important;color:var(--text)!important}
 .lockup-copy>span{font-size:11px!important}
 .workspace-nav{top:66px!important;height:42px!important;background:var(--surface)!important;box-shadow:none!important}
 .workspace-nav-inner{padding:0 22px!important}
@@ -1230,7 +1232,7 @@ body{background:var(--bg)!important;color:var(--text)!important}
 body[data-workspace="rules"] .shell main{grid-template-columns:minmax(620px,1fr) minmax(560px,1fr)!important;gap:12px!important}
 .panel{border-radius:8px!important;border-color:var(--line)!important;box-shadow:0 1px 2px rgba(26,47,77,.025)!important}
 .panel-head{min-height:48px!important;padding:9px 12px!important;background:var(--surface)!important}
-.panel-head h3{font-size:14px!important}
+.panel-head h2{font-size:14px!important}
 .panel-caption{font-size:11px!important}
 .panel-live{font-size:11px;color:var(--text-mute);font-weight:500}
 .panel-body{padding:10px 12px!important}
@@ -1514,7 +1516,7 @@ body[data-workspace="history"] #turnStatePanel{display:block!important;grid-colu
 
 /* Headings break where the phrase does; body copy avoids leaving one word
    alone on the last line. */
-.panel-head h3,.panel-caption,.history-detail-title,.dialog h3,
+.panel-head h2,.panel-caption,.history-detail-title,.dialog h2,
 .summary-tile strong,.history-stat-label{text-wrap:balance}
 .muted,.notice span,.empty,.history-stat-note{text-wrap:pretty}
 
@@ -1955,9 +1957,29 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
 #historyPanel .history-table thead{position:static!important}
 #historyPanel .history-table thead th{background:var(--surface)}
 
+/* A skip link is the only way past the header stack for a keyboard, and it
+   lands on the region the tabs actually switch. */
+.skip-link{
+  position:fixed;left:8px;top:8px;z-index:100;padding:8px 14px;border-radius:8px;
+  background:var(--accent);color:var(--on-accent);font-size:13px;font-weight:600;
+  text-decoration:none;translate:0 -150%;transition:translate .15s var(--ease)
+}
+.skip-link:focus-visible{translate:0 0}
+main:focus{outline:none}
+
+/* Taps act immediately instead of waiting out the double-tap zoom delay, and
+   the grey flash Android paints on top is replaced by the states this panel
+   already defines. */
+button,summary,label,a,input,select,textarea,.chip-tag,.history-summary,.pool-row{touch-action:manipulation}
+html{-webkit-tap-highlight-color:transparent}
+
+/* The chips and the tables render identifiers from script; translate="no" is
+   set on those nodes where they are built. */
+
 </style>
 </head>
 <body data-workspace="rules">
+<a class="skip-link" href="#main">跳到主要内容</a>
 <svg style="display:none" aria-hidden="true">
   <symbol id="i-swap" viewBox="0 0 24 24"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
@@ -1981,7 +2003,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
   <div class="topbar-main">
     <div class="lockup">
       <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg></span>
-      <span class="lockup-copy"><b>Codex Header Rewrite</b><span>为每个凭证定制请求 Header 规则，让 Codex 更稳定、更可控</span></span>
+      <span class="lockup-copy"><h1 translate="no">Codex Header Rewrite</h1><span>为每个凭证定制请求 Header 规则，让 Codex 更稳定、更可控</span></span>
     </div>
     <div class="spacer"></div>
     <div class="credential-picker" id="credentialSwitcher">
@@ -2020,11 +2042,11 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
 </nav>
 
 <div class="shell">
-  <main>
+  <main id="main" tabindex="-1">
    <div class="col" id="colWork">
     <section class="panel" id="ruleSummaryPanel">
       <div class="panel-head">
-        <div class="panel-title"><h3>规则摘要</h3><div class="panel-caption">当前凭证、规则数量与运行状态</div></div>
+        <div class="panel-title"><h2>规则摘要</h2><div class="panel-caption">当前凭证、规则数量与运行状态</div></div>
       </div>
       <div class="panel-body">
         <div class="summary-grid">
@@ -2043,7 +2065,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
     <section class="panel" id="rulePanel">
       <div class="panel-head">
         <div class="panel-title">
-          <h3 id="ruleTitle">Header 规则</h3>
+          <h2 id="ruleTitle">Header 规则</h2>
           <div class="panel-caption">配置请求头的设置、覆盖、移除规则，右侧实时预览最终效果</div>
         </div>
         <div class="spacer"></div>
@@ -2098,13 +2120,13 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
     </section>
 
     <details class="panel panel-collapsible" id="testPanel">
-      <summary class="panel-head"><svg class="i"><use href="#i-flask"/></svg><div class="panel-title"><h3>测试请求</h3><div class="panel-caption">发送测试请求，预览实际 Header 并验证连通性<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="测试请求怎么发出">!</button><span class="hint-text"><span class="hint-v">预览只在插件内解析 Header，<b>不发请求</b>。</span><span class="hint-v">发送时插件调用 CPA 的 <code>host.http.do</code>，请求从 CPA 的代理感知传输层发出；Codex 端点还会使用稳定的 HTTP/1.1 Header 线级配置。</span><span class="hint-p">它不经过 Codex executor，因此线上请求仍可能被 executor 覆盖特殊字段。</span></span></span></div></div><span class="panel-chevron">⌄</span></summary>
+      <summary class="panel-head"><svg class="i"><use href="#i-flask"/></svg><div class="panel-title"><h2>测试请求</h2><div class="panel-caption">发送测试请求，预览实际 Header 并验证连通性<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="测试请求怎么发出">!</button><span class="hint-text"><span class="hint-v">预览只在插件内解析 Header，<b>不发请求</b>。</span><span class="hint-v">发送时插件调用 CPA 的 <code>host.http.do</code>，请求从 CPA 的代理感知传输层发出；Codex 端点还会使用稳定的 HTTP/1.1 Header 线级配置。</span><span class="hint-p">它不经过 Codex executor，因此线上请求仍可能被 executor 覆盖特殊字段。</span></span></span></div></div><span class="panel-chevron">⌄</span></summary>
       <div class="panel-body">
         <div class="grid2">
           <div class="field">
             <label for="testModelSelect">模型</label>
             <select id="testModelSelect"></select>
-            <input id="testModel" spellcheck="false" placeholder="模型 ID" hidden>
+            <input id="testModel" spellcheck="false" placeholder="例如 gpt-5.6-luna…" autocomplete="off" hidden>
             <span class="muted" id="modelHint"></span>
           </div>
           <div class="field"><label for="testEffort">推理强度</label><select id="testEffort"><option value="low">low</option><option value="minimal">minimal</option><option value="medium">medium</option><option value="high">high</option></select></div>
@@ -2125,7 +2147,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
           <summary class="muted" style="cursor:pointer">高级：端点与原始请求体</summary>
           <div class="field" style="margin-top:14px">
             <label for="testEndpoint">端点<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="端点填写规则">!</button><span class="hint-text"><span class="hint-v">留空即用 Codex 后端。可填任意 <code>https</code> 地址；<code>http</code> 仅限 localhost。</span></span></span></label>
-            <input id="testEndpoint" class="mono" spellcheck="false">
+            <input id="testEndpoint" class="mono" translate="no" spellcheck="false">
           </div>
           <label class="switch"><input type="checkbox" id="testAttach" checked><span>附带该凭证（access token 与账号 ID）</span></label>
           <div class="notice warn" id="attachWarn" hidden style="margin-top:10px"><svg class="i"><use href="#i-alert"/></svg><span>该地址不是 Codex 后端。勾选后，这个凭证的 access token 与账号 ID 会发送到该地址。</span></div>
@@ -2142,7 +2164,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
 
     <section class="panel" id="ruleStrategyPanel">
       <div class="panel-head">
-        <div class="panel-title"><h3>运行策略</h3><div class="panel-caption">规则保存后的生效范围与数据处理方式</div></div>
+        <div class="panel-title"><h2>运行策略</h2><div class="panel-caption">规则保存后的生效范围与数据处理方式</div></div>
       </div>
       <div class="panel-body">
         <div class="strategy-grid">
@@ -2163,11 +2185,11 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
     </section>
 
     <section class="panel" id="decoderPanel">
-      <div class="panel-head"><svg class="i"><use href="#i-key"/></svg><div class="panel-title"><h3>Turn-State 解码</h3><div class="panel-caption">解析 Fernet 信封元信息，不解密密文<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="解码读出什么">!</button><span class="hint-text"><span class="hint-v">只读 Fernet 信封：版本、签发时间与结构。</span><span class="hint-p">密文不解密，插件也不需要密钥。</span></span></span></div></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-key"/></svg><div class="panel-title"><h2>Turn-State 解码</h2><div class="panel-caption">解析 Fernet 信封元信息，不解密密文<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="解码读出什么">!</button><span class="hint-text"><span class="hint-v">只读 Fernet 信封：版本、签发时间与结构。</span><span class="hint-p">密文不解密，插件也不需要密钥。</span></span></span></div></div></div>
       <div class="panel-body">
         <div class="field">
           <label for="decodeInput">X-Codex-Turn-State</label>
-          <textarea id="decodeInput" spellcheck="false" placeholder="粘贴 blob，或在历史详情里点「解码」直接带入"></textarea>
+          <textarea id="decodeInput" spellcheck="false" placeholder="粘贴 X-Codex-Turn-State，或在历史详情里点「解码」带入…"></textarea>
         </div>
         <div class="actions" style="margin-top:0">
           <div class="spacer"></div>
@@ -2181,7 +2203,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
    <div class="col" id="colObserve">
     <section class="panel diff-panel" id="diffPanel">
       <div class="panel-head">
-        <div class="panel-title"><h3>Header 差异预览 <span class="panel-live">（实时）</span></h3><div class="panel-caption">基于当前规则的实时对比，也会显示测试请求实际结果</div></div>
+        <div class="panel-title"><h2>Header 差异预览 <span class="panel-live">（实时）</span></h2><div class="panel-caption">基于当前规则的实时对比，也会显示测试请求实际结果</div></div>
         <span class="tag flat" id="diffCount">暂无数据</span>
         <div class="spacer"></div><span class="muted" id="diffSource"></span>
       </div>
@@ -2213,7 +2235,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
     </section>
 
     <section class="panel" id="turnStatePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h3>State 池</h3><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只有不降智 state 才入池：Team 套餐 ≤ 332 字符，个人套餐（非 Team）≤ 292 字符；凭证没有套餐声明时不判定，也不入池。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">1 小时</span>只标记过期。</span></span></span></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>State 池</h2><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只有不降智 state 才入池：Team 套餐 ≤ 332 字符，个人套餐（非 Team）≤ 292 字符；凭证没有套餐声明时不判定，也不入池。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">1 小时</span>只标记过期。</span></span></span></div></div>
         <div class="spacer"></div><span class="muted" id="turnStateMeta"></span>
         <button class="quiet icon" id="turnStateRefresh" title="刷新" aria-label="刷新回合状态"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
@@ -2223,11 +2245,11 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
     </section>
 
     <section class="panel" id="degradedPanel">
-      <div class="panel-head"><svg class="i"><use href="#i-alert"/></svg><div class="panel-title"><h3>降智响应处置</h3><div class="panel-caption">上游返回疑似降智 state 时，对这次响应怎么办<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="降智响应处置的说明">!</button><span class="hint-text"><span class="hint-k">拦截</span><span class="hint-v">这次响应<b>不下发</b>给客户端：非流式换成错误对象，流式在第一个数据块换成终止性的 <code>error</code> 事件、其余丢弃，历史标「已拦截」。</span><span class="hint-k">重试</span><span class="hint-v">用<b>当前这个凭证</b>和<b>同一个模型</b>，在后台补发内容只有 <code>hi</code> 的最小请求，只读响应头里的新 state；拿到不降智的就入池，连续几次合并成历史里的一行。</span><span class="hint-p">按凭证保存，与「启用改写」无关，各自独立生效。插件改不了 HTTP 状态码，客户端看到的是 200 里带错误；被拦截和每次重试，上游都已经计了额度。</span></span></span></div></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-alert"/></svg><div class="panel-title"><h2>降智响应处置</h2><div class="panel-caption">上游返回疑似降智 state 时，对这次响应怎么办<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="降智响应处置的说明">!</button><span class="hint-text"><span class="hint-k">拦截</span><span class="hint-v">这次响应<b>不下发</b>给客户端：非流式换成错误对象，流式在第一个数据块换成终止性的 <code>error</code> 事件、其余丢弃，历史标「已拦截」。</span><span class="hint-k">重试</span><span class="hint-v">用<b>当前这个凭证</b>和<b>同一个模型</b>，在后台补发内容只有 <code>hi</code> 的最小请求，只读响应头里的新 state；拿到不降智的就入池，连续几次合并成历史里的一行。</span><span class="hint-p">按凭证保存，与「启用改写」无关，各自独立生效。插件改不了 HTTP 状态码，客户端看到的是 200 里带错误；被拦截和每次重试，上游都已经计了额度。</span></span></span></div></div></div>
       <div class="panel-body degraded-grid">
         <label class="switch"><input type="checkbox" id="rejectDegraded"><span>拦截降智响应</span></label>
         <label class="switch"><input type="checkbox" id="retryDegraded" disabled><span>拦截后重试取 state</span></label>
-        <label class="field-inline" for="retryAttempts">最大重试次数<input id="retryAttempts" type="number" min="1" max="5" step="1" value="2" disabled></label>
+        <label class="field-inline" for="retryAttempts">最大重试次数<input id="retryAttempts" type="number" inputmode="numeric" min="1" max="5" step="1" value="2" autocomplete="off" disabled></label>
         <div class="field" style="flex-basis:100%">
           <label id="rejectDegradedModelsLabel">拦截模型（留空表示全部模型）</label>
           <div class="chips" id="rejectDegradedModels" data-kind="model" data-disabled="1" role="group" aria-labelledby="rejectDegradedModelsLabel"></div>
@@ -2242,7 +2264,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
     </section>
 
     <section class="panel" id="historyPanel">
-      <div class="panel-head"><div class="panel-title"><h3>请求历史</h3><div class="panel-caption">当前凭证的请求记录，点任意一行查看详情</div></div><div class="spacer"></div><span class="muted" id="historyMeta"></span><button class="quiet" id="historyRefresh" title="刷新请求历史"><svg class="i" id="historyRefreshIcon"><use href="#i-refresh"/></svg>刷新</button><button class="quiet destructive" id="clearHistory"><svg class="i"><use href="#i-trash"/></svg>清空</button></div>
+      <div class="panel-head"><div class="panel-title"><h2>请求历史</h2><div class="panel-caption">当前凭证的请求记录，点任意一行查看详情</div></div><div class="spacer"></div><span class="muted" id="historyMeta"></span><button class="quiet" id="historyRefresh" title="刷新请求历史"><svg class="i" id="historyRefreshIcon"><use href="#i-refresh"/></svg>刷新</button><button class="quiet destructive" id="clearHistory"><svg class="i"><use href="#i-trash"/></svg>清空</button></div>
       <div class="panel-body">
         <div class="table-scroll">
         <table class="history-table">
@@ -2261,7 +2283,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
 
 <div class="overlay" id="keyOverlay">
   <div class="dialog">
-    <h3>CLIProxyAPI 管理密钥</h3>
+    <h2>CLIProxyAPI 管理密钥</h2>
     <p class="muted" id="keyDialogHint">面板会先读取宿主管理面板已保存的密钥。读不到时才需要在这里填写，只保存在当前标签页，不写入插件数据库。</p>
     <div class="field"><label for="keyInput">Management key</label><input id="keyInput" type="password" autocomplete="off" spellcheck="false"></div>
     <div class="actions"><button class="quiet" id="keyCancel">取消</button><div class="spacer"></div><button class="primary" id="keyConnect">连接</button></div>
@@ -2833,7 +2855,7 @@ async function loadRule() {
 function renderWarnings(warnings) {
   $("ruleWarn").hidden = !warnings.length;
   if (warnings.length) {
-    $("ruleWarnText").innerHTML = `${warnings.map((name) => `<code class="mono">${esc(name)}</code>`).join("、")} 属于 Codex executor 的特殊字段，改写可能在 interceptor 之后被覆盖。`;
+    $("ruleWarnText").innerHTML = `${warnings.map((name) => `<code class="mono" translate="no">${esc(name)}</code>`).join("、")} 属于 Codex executor 的特殊字段，改写可能在 interceptor 之后被覆盖。`;
   }
 }
 const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), strip_foreign_turn_state: $("ruleStripTurnState").checked, reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts(), retry_proxies: degradedProxies() });
@@ -2984,8 +3006,8 @@ function turnStateRows(label, info, extra = "", blob = "", model = "") {
     <div class="ts-title">${esc(label)}${extra}</div>
     <div class="ts-body">
       <dl class="ts-grid">
-        <dt>摘要</dt><dd class="mono">${esc(info.digest || "-")}</dd>
-        ${model ? `<dt>对应模型</dt><dd class="mono">${esc(model)}</dd>` : ""}
+        <dt>摘要</dt><dd class="mono" translate="no">${esc(info.digest || "-")}</dd>
+        ${model ? `<dt>对应模型</dt><dd class="mono" translate="no">${esc(model)}</dd>` : ""}
         ${info.plan_type ? `<dt>套餐</dt><dd>${esc(info.plan_type)}</dd>` : ""}
         ${info.non_degraded === true ? '<dt>质量判定</dt><dd><span class="tag ok">不降智</span></dd>' : ""}
         ${info.non_degraded === false ? '<dt>质量判定</dt><dd><span class="tag bad">疑似降智</span></dd>' : ""}
@@ -3204,7 +3226,7 @@ function envelopeRows(info) {
     ? (info.fernet_like ? '<span class="tag ok">Fernet 结构</span>' : '<span class="tag warn">结构不符</span>')
     : '<span class="tag bad">无法解码</span>';
   return `<dl class="ts-grid">
-    <dt>摘要</dt><dd class="mono">${esc(info.digest || "-")}</dd>
+    <dt>摘要</dt><dd class="mono" translate="no">${esc(info.digest || "-")}</dd>
     <dt>解码后总字节数</dt><dd class="num">${info.decodable ? `${info.bytes} 字节` : "-"}</dd>
     <dt>版本号</dt><dd class="num">${info.decodable ? `0x${Number(info.version).toString(16).padStart(2, "0")} (${info.version})` : "-"}</dd>
     <dt>时间戳 (Unix)</dt><dd class="num">${unix !== null ? unix : "-"}</dd>
@@ -3228,7 +3250,7 @@ async function showPoolState(item) {
   openDrawer("State 详情", `<div class="history-detail-shell">
     <div class="history-detail-head">
       <div><div class="chain"><span>${esc(item.model || "未记录")}</span>${verdict}</div></div>
-      <div class="metaline"><span>${esc(item.label || item.auth_index)}</span><span class="mono">${esc(item.auth_index)}</span></div>
+      <div class="metaline"><span>${esc(item.label || item.auth_index)}</span><span class="mono" translate="no">${esc(item.auth_index)}</span></div>
     </div>
     <div class="history-detail-section">
       <div class="history-detail-label"><span>判定</span></div>
@@ -3339,7 +3361,7 @@ async function loadTurnStates() {
       row.setAttribute("role", "button");
       row.setAttribute("aria-haspopup", "dialog");
       row.setAttribute("aria-selected", String(store.selectedState === poolStateKey(item)));
-      row.innerHTML = `<td class="mono pool-model-cell">${esc(item.model || "未记录")}</td>
+      row.innerHTML = `<td class="mono pool-model-cell" translate="no">${esc(item.model || "未记录")}</td>
         <td><span class="tag flat">${esc(item.plan_type || "未知套餐")}</span></td>
         <td class="num">${item.chars || "-"} / ≤ ${item.max_chars || "-"} 字符</td>
         <td class="num">${esc(minted.toLocaleString())} · ${age} 分钟前</td>
@@ -3466,7 +3488,7 @@ function renderTestResult(result, dryRun) {
   const notes = (result.notes || [])
     .map((text) => `<div class="notice info" style="margin-top:10px"><svg class="i"><use href="#i-info"/></svg><span>${esc(text)}</span></div>`).join("");
   const errors = [result.error, result.error_preview].filter(Boolean)
-    .map((text) => `<div class="notice warn" style="margin-top:10px"><svg class="i"><use href="#i-alert"/></svg><span class="mono">${esc(text)}</span></div>`).join("");
+    .map((text) => `<div class="notice warn" style="margin-top:10px"><svg class="i"><use href="#i-alert"/></svg><span class="mono" translate="no">${esc(text)}</span></div>`).join("");
   $("testOutcome").innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${tags.join("")}</div>${chain}${notes}${errors}
     <div class="muted" style="margin-top:9px">${esc(result.method || "POST")} ${esc(result.endpoint || "")}</div>`;
   renderResponseHeaders(dryRun ? null : result.response_headers);
@@ -3633,7 +3655,7 @@ function renderChips(id) {
   const placeholder = kind === "model" ? "添加模型…" : "添加 socks5:// 代理…";
   host.innerHTML = chipValues[id].map((value, index) => {
     const shown = chipDisplay(kind, value);
-    return `<span class="chip-tag chip-${kind}"><input class="chip-field" data-index="${index}" value="${esc(shown)}" size="${sizeFor(shown)}" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="${esc(shown)}"${off}><button type="button" class="chip-x" data-remove="${index}" aria-label="移除 ${esc(shown)}"${off}>✕</button></span>`;
+    return `<span class="chip-tag chip-${kind}"><input class="chip-field" translate="no" data-index="${index}" value="${esc(shown)}" size="${sizeFor(shown)}" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="${esc(shown)}"${off}><button type="button" class="chip-x" data-remove="${index}" aria-label="移除 ${esc(shown)}"${off}>✕</button></span>`;
   }).join("") + `<input class="chip-add" placeholder="${placeholder}" spellcheck="false" autocapitalize="off" autocomplete="off"${off}>`;
 }
 
