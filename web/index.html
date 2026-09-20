@@ -1942,6 +1942,19 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
   mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)
 }
 
+/* Sticky offsets are measured, not assumed. The top bar changes height with
+   the viewport -- it wraps to two rows on a phone -- so every hardcoded offset
+   below it was a guess that drifted: the tab strip sat 11px under the bar on a
+   phone and slid before it caught, and the table header floated behind the
+   strip. syncStickyOffsets keeps these in step with the real heights. */
+.workspace-nav{top:var(--stack-bar,66px)!important}
+#diffPanel{top:calc(var(--stack-all,108px) + 12px)!important}
+/* The table lives in a horizontal scroller, and `overflow-x:auto` makes that
+   element the sticky containing block, so a viewport-sticky header could not
+   work there anyway. It travels with the table instead. */
+#historyPanel .history-table thead{position:static!important}
+#historyPanel .history-table thead th{background:var(--surface)}
+
 </style>
 </head>
 <body data-workspace="rules">
@@ -3721,6 +3734,26 @@ function renderRetryProxies() {
 }
 const degradedProxies = () => [...chipValues.retryProxies];
 let degradedSaving = false;
+// The sticky stack is remeasured whenever its height can change, so the tab
+// strip lands exactly on the bar and nothing below it has to guess.
+function syncStickyOffsets() {
+  const bar = document.querySelector(".topbar");
+  const nav = document.querySelector(".workspace-nav");
+  const barHeight = bar ? Math.round(bar.getBoundingClientRect().height) : 0;
+  const navHeight = nav && getComputedStyle(nav).display !== "none"
+    ? Math.round(nav.getBoundingClientRect().height) : 0;
+  const root = document.documentElement.style;
+  root.setProperty("--stack-bar", `${barHeight}px`);
+  root.setProperty("--stack-all", `${barHeight + navHeight}px`);
+}
+if (globalThis.ResizeObserver) {
+  const observer = new ResizeObserver(syncStickyOffsets);
+  for (const node of [document.querySelector(".topbar"), document.querySelector(".workspace-nav")]) {
+    if (node) observer.observe(node);
+  }
+}
+addEventListener("resize", syncStickyOffsets);
+
 function syncDegradedControls() {
   const ready = !!store.rule && store.rule.auth_index === store.selected && !degradedSaving;
   $("rejectDegraded").disabled = !ready;
@@ -3886,6 +3919,7 @@ function trackHint(event) {
 addEventListener("scroll", trackHint, { capture: true, passive: true });
 addEventListener("resize", () => closeHint(true));
 
+syncStickyOffsets();
 setWorkspace("rules", false);
 renderKeyChip();
 $("diffPanel").dataset.mobileView = "after";

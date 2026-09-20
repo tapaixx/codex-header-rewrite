@@ -43,6 +43,24 @@ try {
       }
     }
   }
+  // The tab strip is a card header: it must stay pinned under the top bar
+  // while the page scrolls, at whatever height that bar happens to be.
+  for (const width of [1280,390]) {
+    await page.setViewportSize({width,height:420});
+    await page.evaluate(()=>setWorkspace('history',false));
+    await page.evaluate(()=>window.scrollTo(0,500));
+    const stack = await page.evaluate(()=>({
+      scrolled: window.scrollY,
+      barTop: Math.round(document.querySelector('.topbar').getBoundingClientRect().top),
+      barBottom: Math.round(document.querySelector('.topbar').getBoundingClientRect().bottom),
+      navTop: Math.round(document.querySelector('.workspace-nav').getBoundingClientRect().top),
+    }));
+    assert.ok(stack.scrolled>0,`page should scroll at ${width}`);
+    assert.equal(stack.barTop,0,`top bar stays pinned at ${width}`);
+    assert.equal(stack.navTop,stack.barBottom,`tab strip stays under the bar at ${width}`);
+    await page.evaluate(()=>window.scrollTo(0,0));
+  }
+  await page.setViewportSize({width:1280,height:900});
   await page.evaluate(()=>setWorkspace('history',false));
   const oldHistory=historyReads, oldPool=poolReads;
   await page.locator('#historyRefresh').click();
