@@ -1439,6 +1439,12 @@ body[data-workspace="history"] #turnStatePanel .state-pool{grid-template-columns
   .mobile-nav{grid-template-columns:repeat(4,1fr)!important}
 }
 
+
+/* Final workspace separation: Rules contains rules/diff/summary only; History owns State. */
+body[data-workspace="rules"] .overview-strip{display:none!important}
+body[data-workspace="history"] #historyPanel,
+body[data-workspace="history"] #turnStatePanel{display:block!important;grid-column:1/-1!important}
+@media(max-width:820px){.mobile-nav{grid-template-columns:repeat(4,1fr)!important}}
 </style>
 </head>
 <body data-workspace="rules">
@@ -1738,33 +1744,6 @@ body[data-workspace="history"] #turnStatePanel .state-pool{grid-template-columns
     </section>
 
    </div>
-  <section class="overview-strip" id="overviewStrip">
-    <article class="overview-card overview-test">
-      <div class="overview-head"><b>测试请求</b><button class="primary" id="overviewTestBtn" type="button">发送测试请求</button></div>
-      <div class="overview-toolbar"><span class="method-mini">POST</span><span class="overview-endpoint" id="overviewEndpoint">尚未发送</span></div>
-      <div class="overview-tabs"><span class="active">请求头</span><span>请求体</span><span>响应结果</span></div>
-      <div class="overview-split"><pre id="overviewTestHeaders">{}</pre><div class="overview-response"><small>响应结果</small><div><span class="tag flat" id="overviewTestStatus">待发送</span> <span class="muted" id="overviewTestLatency">耗时 —</span></div><code id="overviewResponseHeader">尚未发送测试请求</code></div></div>
-    </article>
-
-    <article class="overview-card overview-history">
-      <div class="overview-head"><b>请求历史</b><button class="quiet destructive" id="overviewHistoryBtn" type="button">清空历史</button></div>
-      <div class="overview-kpis"><span><small>总记录</small><strong id="overviewHistoryTotal">0</strong></span><span class="ok"><small>成功率</small><strong id="overviewSuccess">—</strong></span><span class="bad"><small>401 错误</small><strong id="overviewErrors">0</strong></span><span><small>平均延迟</small><strong id="overviewLatency">—</strong></span></div>
-      <table class="overview-table"><thead><tr><th>时间</th><th>方法</th><th>URL</th><th>状态</th><th>耗时</th></tr></thead><tbody id="overviewHistoryRows"></tbody></table>
-    </article>
-
-    <article class="overview-card overview-state">
-      <div class="overview-head"><b>State 池</b><button class="primary" id="overviewStateBtn" type="button">刷新 State</button></div>
-      <div class="overview-state-title">可用 State <span class="tag ok" id="overviewStateCount">0</span></div>
-      <div id="overviewStateList" class="overview-state-list"><div class="empty">暂无可用 State</div></div>
-    </article>
-
-    <article class="overview-card overview-decode">
-      <div class="overview-head"><b>Turn-State 解码</b></div>
-      <div class="overview-decode-input"><input id="overviewDecodeInput" placeholder="输入 Turn-State"><button class="primary" id="overviewDecodeBtn" type="button">解码</button></div>
-      <div class="overview-decode-label">解码结果</div>
-      <pre id="overviewDecodeOutput">{ }</pre>
-    </article>
-  </section>
   </main>
 </div>
 
@@ -2192,17 +2171,8 @@ async function selectCredential(authIndex) {
   $("testModelSelect").replaceChildren();
   $("testModel").value = "";
   $("decodeInput").value = "";
-  $("overviewDecodeInput").value = "";
-  $("overviewDecodeOutput").textContent = "{}";
-  $("overviewTestHeaders").textContent = "尚未预览或发送；请打开测试请求配置";
-  $("overviewEndpoint").textContent = "尚未发送";
-  $("overviewResponseHeader").textContent = "尚未发送测试请求";
-  $("overviewTestStatus").textContent = "待发送";
-  $("overviewTestStatus").className = "tag flat";
-  $("overviewTestLatency").textContent = "耗时 —";
   for (const control of $("rulePanel").querySelectorAll("input,button,select")) control.disabled = control.id !== "reloadRule";
   renderHistoryStats(0);
-  renderOverviewStates([]);
   renderRuleSummary();
   $("testHeaderRows").replaceChildren();
   syncAttachSwitch();
@@ -2507,24 +2477,6 @@ function renderHistoryStats(total) {
   $("histSuccessRate").textContent = rate === null ? "—" : (rate + "%");
   $("histAuthErrors").textContent = String(authErrors);
   $("histLatency").textContent = avg === null ? "—" : (avg >= 1000 ? ((avg / 1000).toFixed(1) + " s") : (avg + " ms"));
-  $("overviewHistoryTotal").textContent = String(total || 0);
-  $("overviewSuccess").textContent = rate === null ? "—" : (rate + "%");
-  $("overviewErrors").textContent = String(items.filter((record) => Number(record.status_code) === 401).length);
-  $("overviewLatency").textContent = avg === null ? "—" : (avg >= 1000 ? ((avg / 1000).toFixed(1) + " s") : (avg + " ms"));
-  const rows = $("overviewHistoryRows");
-  rows.replaceChildren();
-  for (const record of items.slice(0, 5)) {
-    const row = document.createElement("tr");
-    const method = record.method || (record.origin === "test" ? "POST" : "—");
-    const url = record.endpoint || record.path || "/v1/...";
-    const latency = Number(record.latency_ms);
-    row.innerHTML = '<td>' + esc(new Date(record.started_at).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"})) + '</td>' +
-      '<td><span style="color:var(--accent);font-weight:700">' + esc(method) + '</span></td>' +
-      '<td class="mono">' + esc(url) + '</td>' +
-      '<td>' + outcomeTag(record.outcome) + '</td>' +
-      '<td>' + (Number.isFinite(latency) ? (latency >= 1000 ? (latency / 1000).toFixed(1) + "s" : latency + "ms") : "—") + '</td>';
-    rows.append(row);
-  }
 }
 function historySkeleton() {
   $("historyBody").innerHTML = Array.from({ length: 4 }, () =>
@@ -2637,23 +2589,6 @@ function showRecord(record, summaryRow) {
 
 
 /* State pool: one non-degraded state per credential and model, newest first. */
-function renderOverviewStates(items) {
-  items = items.filter((item) => item.auth_index === store.selected && !item.expired);
-  $("overviewStateCount").textContent = String(items.length);
-  const list = $("overviewStateList");
-  list.replaceChildren();
-  if (!items.length) {
-    list.innerHTML = '<div class="empty" style="padding:12px 0">暂无可用 State</div>';
-    return;
-  }
-  for (const item of items.slice(0, 5)) {
-    const age = Math.max(0, Math.round(Number(item.age_seconds || 0) / 60));
-    const row = document.createElement("div");
-    row.className = "overview-state-row";
-    row.innerHTML = '<span class="dot"></span><code>' + esc(item.state || item.digest || "state") + '</code><small>' + age + ' 分钟前</small>';
-    list.append(row);
-  }
-}
 async function loadTurnStates() {
   const body = $("turnStateBody");
   const epoch = store.selectionEpoch;
@@ -2664,7 +2599,6 @@ async function loadTurnStates() {
     if (epoch !== store.selectionEpoch) return;
     const items = (payload.turn_states || []).filter((item) => item.auth_index === authIndex);
     store.turnStates = items;
-    renderOverviewStates(items);
     const current = store.creds.find((item) => item.auth_index === authIndex);
     const identity = current ? credentialDisplayName(current) : authIndex;
     const window = payload.reuse_window_seconds || 3600;
@@ -2790,8 +2724,6 @@ async function runTest(dryRun) {
 }
 function renderTestResult(result, dryRun) {
   if (!result) return;
-  $("overviewEndpoint").textContent = result.endpoint || "端点未返回";
-  $("overviewTestHeaders").textContent = JSON.stringify(result.after_headers || {}, null, 2);
   renderDiff(result.before_headers, result.after_headers, dryRun ? "预览，未发送请求" : `测试请求 ${new Date().toLocaleTimeString()}`);
   const tags = [outcomeTag(result.outcome)];
   if (!dryRun) {
@@ -2816,16 +2748,6 @@ function renderTestResult(result, dryRun) {
   $("testOutcome").innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${tags.join("")}</div>${chain}${notes}${errors}
     <div class="muted" style="margin-top:9px">${esc(result.method || "POST")} ${esc(result.endpoint || "")}</div>`;
   renderResponseHeaders(dryRun ? null : result.response_headers);
-  const overviewStatus = $("overviewResponseHeader");
-  if (overviewStatus) {
-    const responseEntries = Object.entries(result.response_headers || {});
-    overviewStatus.textContent = responseEntries.length
-      ? responseEntries.slice(0, 3).map(([name, values]) => name + ": " + (Array.isArray(values) ? values.join(", ") : values)).join("\n")
-      : (dryRun ? "预览模式：未发送请求" : "没有可展示的 Response Header");
-    $("overviewTestStatus").textContent = dryRun ? "预览" : String(result.status_code || result.outcome || "—");
-    $("overviewTestStatus").className = "tag " + (dryRun ? "flat" : (result.outcome === "succeeded" ? "ok" : "bad"));
-    $("overviewTestLatency").textContent = dryRun ? "未发送" : ("耗时 " + (result.latency_ms ?? "—") + " ms");
-  }
   $("diffPanel").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
@@ -2893,8 +2815,8 @@ $("historyRefresh").addEventListener("click", async () => {
   button.disabled = true;
   icon.classList.add("spin");
   try {
-    await loadHistory(store.page || 1);
-    toast("请求历史已刷新");
+    await Promise.all([loadHistory(store.page || 1), loadTurnStates()]);
+    toast("请求历史与 State 池已刷新");
   } catch (error) {
     fail(error);
   } finally {
@@ -2975,18 +2897,6 @@ $("formatDiffBtn").addEventListener("click", () => {
   renderCodeCompare(store.diffBefore, store.diffAfter, $("diffSource").textContent || "");
   toast("已格式化 Header 预览");
 });
-$("overviewTestBtn").textContent = "配置并测试";
-$("overviewTestBtn").addEventListener("click", () => setWorkspace("test"));
-$("overviewHistoryBtn").addEventListener("click", () => $("clearHistory").click());
-$("overviewStateBtn").addEventListener("click", () => loadTurnStates().catch(fail));
-$("overviewDecodeBtn").addEventListener("click", async () => {
-  const token = $("overviewDecodeInput").value.trim();
-  if (!token) { toast("先输入 Turn-State", true); return; }
-  try {
-    const payload = await api("/turn-state/decode", { method: "POST", body: { token } });
-    $("overviewDecodeOutput").textContent = JSON.stringify(payload.info || {}, null, 2);
-  } catch (error) { fail(error); }
-});
 $("previewBtn").addEventListener("click", () => runTest(true));
 $("sendBtn").addEventListener("click", () => runTest(false));
 $("keyBtn").addEventListener("click", () => openKeyDialog());
@@ -3014,7 +2924,6 @@ $("diffPanel").dataset.mobileView = "after";
 if (globalThis.matchMedia?.("(max-width:820px)").matches) {
   for (const block of document.querySelectorAll(".rule-block")) block.removeAttribute("open");
 }
-$("overviewTestHeaders").textContent = "尚未预览或发送；请打开测试请求配置";
 renderDiff(null, null, "");
 if (currentKey()) loadCredentials().catch(fail);
 else openKeyDialog();
