@@ -158,6 +158,16 @@ func TestRetryPoolsTheFirstNonDegradedStateAndRecordsOneRow(t *testing.T) {
 	if rec.Origin != originRetry || rec.RetryAttempts != 2 || rec.Outcome != "succeeded" {
 		t.Fatalf("one row summarising the series expected: %#v", rec)
 	}
+	// The detail reads these; without them the retry row shows no headers at all.
+	if rec.BeforeHeaders == nil || rec.ResponseHeaders == nil {
+		t.Fatalf("the retry row should carry its own headers: %#v", rec)
+	}
+	if got := rec.BeforeHeaders.Get("Authorization"); got == "" || strings.Contains(got, "secret-token") {
+		t.Fatalf("Authorization must be present but redacted, got %q", got)
+	}
+	if rec.ResponseHeaders.Get(turnStateHeader) == "" {
+		t.Fatal("the response headers should include the state the retry fetched")
+	}
 }
 
 // Every attempt degraded: nothing is pooled, the row says how many were made

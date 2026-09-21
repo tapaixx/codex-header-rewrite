@@ -43,6 +43,10 @@ type retryOutcome struct {
 	err         string
 	plan        string
 	stop        bool
+	// What actually went out and came back, so the detail can show the retry
+	// the same way it shows a proxied request. Redacted before it is stored.
+	sentHeaders     http.Header
+	responseHeaders http.Header
 }
 
 func retryAttemptCount(rule headerRule) int {
@@ -206,21 +210,23 @@ func retryOnce(ctx context.Context, authIndex, authID, model string) retryOutcom
 		Headers: headers,
 		Body:    body,
 	}, retryProxyFor(authIndex))
+	sent := redactHeaders(headers)
+	got := redactHeaders(response.Headers)
 	if callErr != nil {
-		return retryOutcome{statusCode: response.StatusCode, err: callErr.Error()}
+		return retryOutcome{statusCode: response.StatusCode, err: callErr.Error(), sentHeaders: sent, responseHeaders: got}
 	}
 	if !retryIdentityMatches(authIndex, authID) {
 		return retryOutcome{err: "credential identity changed during retry", stop: true}
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return retryOutcome{statusCode: response.StatusCode, err: fmt.Sprintf("retry returned HTTP %d", response.StatusCode)}
+		return retryOutcome{statusCode: response.StatusCode, err: fmt.Sprintf("retry returned HTTP %d", response.StatusCode), sentHeaders: sent, responseHeaders: got}
 	}
 	blob := headerTurnState(response.Headers)
 	if blob == "" {
-		return retryOutcome{statusCode: response.StatusCode, err: fmt.Sprintf("no %s in the response (HTTP %d)", turnStateHeader, response.StatusCode)}
+		return retryOutcome{statusCode: response.StatusCode, err: fmt.Sprintf("no %s in the response (HTTP %d)", turnStateHeader, response.StatusCode), sentHeaders: sent, responseHeaders: got}
 	}
 	nonDegraded, _, knownPlan := nonDegradedTurnState(blob, plan)
-	return retryOutcome{statusCode: response.StatusCode, blob: blob, nonDegraded: knownPlan && nonDegraded, plan: plan}
+	return retryOutcome{statusCode: response.StatusCode, blob: blob, nonDegraded: knownPlan && nonDegraded, plan: plan, sentHeaders: sent, responseHeaders: got}
 }
 
 func retryIdentityMatches(authIndex, authID string) bool {
@@ -300,6 +306,11 @@ func recordRetrySeries(s retrySeries) {
 		StatusCode: s.last.statusCode, Outcome: outcome,
 		Error: s.last.err, Origin: originRetry,
 		RetryAttempts: s.attempts,
+		// The plugin does not rewrite its own retry, so both views of the
+		// request are the headers it sent.
+		BeforeHeaders:   s.last.sentHeaders,
+		AfterHeaders:    s.last.sentHeaders,
+		ResponseHeaders: s.last.responseHeaders,
 	}
 	if s.info.Digest != "" {
 		info := s.info

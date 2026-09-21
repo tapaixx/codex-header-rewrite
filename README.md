@@ -71,7 +71,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.17.2.so` | `codex-header-rewrite` | `0.17.2` |
+| `codex-header-rewrite-v0.18.0.so` | `codex-header-rewrite` | `0.18.0` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -84,7 +84,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.17.2.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.18.0.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -251,6 +251,8 @@ curl -s -H "Authorization: Bearer <management-key>" \
 4. **你没有在规则里手工写过这个 Header** —— 规则里「设置/覆盖」里钉了值，以你钉的为准；规则里「移除」了它，就保持移除，不会被池悄悄填回去。
 
 **注入后的回执会反过来校验池子**：如果注入的那条 state 在注入时已经**超过复用窗口**，而这次上游铸回来的仍是**疑似降智**的 state，说明这条旧 state 已经带不动回合链了——它会立刻从池中删除（内存和 bbolt 一起），历史里标「注入后仍降智 · 已失效」，下一次请求不再注入它，让上游重新签发。窗口内的 state 出现同样结果时不动它：一次降智回合不足以否定一条新鲜的 state。若这期间池里已经换成了更新的 state，只删注入的那条，不误伤新的。
+
+**重试请求与线上请求并不等价**：重试发的是最小请求——只有 `Content-Type` / `Accept` / `Originator` / `Authorization` / `Chatgpt-Account-Id` 五个头，`tools: []`、提示词 `hi`，不带 `X-Codex-Turn-Metadata`、`X-Codex-Beta-Features`、`X-Openai-Internal-Codex-Responses-Lite`，也不带会话上下文；线上请求这些全都带，请求体可达数 MB。上游据此铸出的 state 长度不同，所以**重试拿到"不降智"不等于该账号已恢复**，详情页现在会把重试实际发出与收到的 Header 一并显示，便于自行比对。
 
 命中注入的记录在历史里标「已注入」，差异视图里也能看到该 Header 是被新增或替换的。客户端本来带了一个不可复用的回带值时，注入会直接替换它 —— 一次响应里不会同时出现"设置"和"移除"同一个 Header 这种自相矛盾的指令。
 
