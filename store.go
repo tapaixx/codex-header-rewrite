@@ -1,6 +1,53 @@
 package main
 
-import "time"
+import (
+	"sort"
+	"time"
+)
+
+// sortHistoryNewestFirst orders records the way the list reads them: by the
+// time the request started, newest first.
+//
+// Storage order cannot stand in for that. A record is written when the request
+// finishes, so concurrent requests land in completion order, and a retry
+// series is written before the request that triggered it -- the response path
+// waits for the series, so the series is always the one that finishes first
+// even though it started later. The batching writer adds its own reordering.
+//
+// records must arrive oldest-inserted first, which is what both backends
+// produce: reversing before a stable sort makes two records that share a start
+// time fall back to newest-inserted.
+func sortHistoryNewestFirst(records []historyRecord) {
+	for i, j := 0, len(records)-1; i < j; i, j = i+1, j-1 {
+		records[i], records[j] = records[j], records[i]
+	}
+	sort.SliceStable(records, func(i, j int) bool {
+		return records[i].StartedAt.After(records[j].StartedAt)
+	})
+}
+
+// historyPageOf slices one page out of records already ordered newest first.
+func historyPageOf(authIndex string, page int, records []historyRecord) historyPage {
+	if page < 1 {
+		page = 1
+	}
+	total := len(records)
+	result := historyPage{
+		AuthIndex:  authIndex,
+		Page:       page,
+		PageSize:   pageSize,
+		Total:      total,
+		TotalPages: (total + pageSize - 1) / pageSize,
+		Items:      []historyRecord{},
+	}
+	start := (page - 1) * pageSize
+	if start >= total {
+		return result
+	}
+	end := min(start+pageSize, total)
+	result.Items = append(result.Items, records[start:end]...)
+	return result
+}
 
 type persistence interface {
 	Close() error

@@ -172,36 +172,27 @@ func (p *boltPersistence) AppendHistory(record historyRecord) error {
 }
 
 func (p *boltPersistence) History(authIndex string, page int) (historyPage, error) {
-	if page < 1 {
-		page = 1
-	}
-	result := historyPage{AuthIndex: authIndex, Page: page, PageSize: pageSize, Items: []historyRecord{}}
+	result := historyPage{AuthIndex: authIndex, Page: max(page, 1), PageSize: pageSize, Items: []historyRecord{}}
 	err := p.db.View(func(tx *bolt.Tx) error {
 		b, _ := historyChild(tx, authIndex, false)
 		if b == nil {
 			return nil
 		}
-		result.Total = b.Stats().KeyN
-		result.TotalPages = (result.Total + pageSize - 1) / pageSize
-		skip := (page - 1) * pageSize
-		seen, taken := 0, 0
-		c := b.Cursor()
-		for k, v := c.Last(); k != nil; k, v = c.Prev() {
-			if seen < skip {
-				seen++
-				continue
-			}
-			if taken >= pageSize {
-				break
-			}
+		// The bucket holds at most historyLimit records, so reading it whole to
+		// order it by start time costs less than the page it serves.
+		records := make([]historyRecord, 0, b.Stats().KeyN)
+		if err := b.ForEach(func(_, v []byte) error {
 			var rec historyRecord
 			if err := json.Unmarshal(v, &rec); err != nil {
 				return fmt.Errorf("decode history: %w", err)
 			}
-			result.Items = append(result.Items, rec)
-			taken++
-			seen++
+			records = append(records, rec)
+			return nil
+		}); err != nil {
+			return err
 		}
+		sortHistoryNewestFirst(records)
+		result = historyPageOf(authIndex, page, records)
 		return nil
 	})
 	return result, err

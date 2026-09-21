@@ -117,17 +117,9 @@ func (p *localPersistence) AppendHistory(r historyRecord) error {
 func (p *localPersistence) History(a string, page int) (historyPage, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if page < 1 {
-		page = 1
-	}
-	items := p.state.History[a]
-	total := len(items)
-	out := historyPage{AuthIndex: a, Page: page, PageSize: pageSize, Total: total, TotalPages: (total + pageSize - 1) / pageSize, Items: []historyRecord{}}
-	start := total - 1 - (page-1)*pageSize
-	for i := start; i >= 0 && len(out.Items) < pageSize; i-- {
-		out.Items = append(out.Items, items[i])
-	}
-	return out, nil
+	records := append([]historyRecord(nil), p.state.History[a]...)
+	sortHistoryNewestFirst(records)
+	return historyPageOf(a, page, records), nil
 }
 func (p *localPersistence) ClearHistory(a string) error {
 	p.mu.Lock()
