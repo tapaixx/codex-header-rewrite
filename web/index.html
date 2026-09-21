@@ -2103,7 +2103,7 @@ html[data-theme="dark"]{
           <div class="summary-tile"><span class="summary-icon">♙</span><small>当前凭证</small><strong id="summaryCredential">-</strong></div>
           <div class="summary-tile"><span class="summary-icon">☷</span><small>设置 / 覆盖</small><strong id="summarySetCount">0 条</strong></div>
           <div class="summary-tile"><span class="summary-icon bad">□</span><small>移除 Header</small><strong id="summaryRemoveCount">0 条</strong></div>
-          <div class="summary-tile"><span class="summary-icon warn">!</span><small>State 守卫</small><strong id="summaryGuard">关闭</strong></div>
+          <div class="summary-tile"><span class="summary-icon warn">!</span><small>State 注入</small><strong id="summaryGuard">关闭</strong></div>
           <div class="summary-tile"><span class="summary-icon">◇</span><small>可用模型</small><strong id="summaryModels">-</strong></div>
           <div class="summary-tile"><span class="summary-icon">◷</span><small>最后更新时间</small><strong class="summary-small" id="summaryUpdated">-</strong></div>
           <div class="summary-tile"><span class="summary-icon">●</span><small>规则状态</small><strong id="summaryHealth">未加载</strong></div>
@@ -2122,7 +2122,7 @@ html[data-theme="dark"]{
         <label class="switch"><input type="checkbox" id="ruleEnabled"><span>启用改写</span></label>
       </div>
       <div class="panel-body">
-        <div class="notice info" id="ruleOffNotice" hidden style="margin-bottom:10px"><svg class="i"><use href="#i-info"/></svg><span>规则未启用，以下配置已保留但不可编辑，也不执行 Header 改写、State 守卫与自动注入。打开「启用改写」后可编辑，修改后请保存规则。</span></div>
+        <div class="notice info" id="ruleOffNotice" hidden style="margin-bottom:10px"><svg class="i"><use href="#i-info"/></svg><span>规则未启用，以下配置已保留但不可编辑，也不执行 Header 改写与 State 注入。打开「启用改写」后可编辑，修改后请保存规则。</span></div>
         <fieldset class="rule-blocks" id="ruleFields" aria-label="Header 改写配置" disabled>
           <details class="rule-block rule-block-set">
             <summary>
@@ -2152,9 +2152,9 @@ html[data-theme="dark"]{
 
           <div class="rule-block rule-block-guard rule-block-flat" id="guardBlock" data-guard="off">
             <span class="rule-block-icon"><svg class="i"><use href="#i-alert"/></svg></span>
-            <span class="rule-block-copy"><b>X-Codex-Turn-State 守卫</b><small id="guardNowText"></small></span>
-            <span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="守卫开关的详细说明">!</button><span class="hint-text"><span class="hint-k">先后顺序</span><span class="hint-v">插件先查 State 池：有「本凭证 + 本模型」的合格 state 就直接<b>覆盖</b>回带值，不经守卫；池子拿不出东西时才轮到守卫。</span><span class="hint-k">开启</span><span class="hint-v">确认来自<b>其他凭证</b>或<b>其他模型</b>的回带 state 会被摘掉，让上游重新签发。</span><span class="hint-k">关闭</span><span class="hint-v">原样透传，只记录、不修改。</span><span class="hint-p">只是<b>过期</b>或<b>来源未知</b>的回带不摘。守卫属于这条规则：「启用改写」关着时不生效。</span><span class="hint-p">跨号回带来自 CPA 默认按请求轮换凭证（round-robin，<code>session-affinity</code> 默认关闭），详见 README。</span></span></span>
-            <label class="switch guard-switch"><input type="checkbox" id="ruleStripTurnState"><span>启用守卫</span></label>
+            <span class="rule-block-copy"><b>X-Codex-Turn-State 注入</b><small id="guardNowText"></small></span>
+            <span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="State 注入开关的说明">!</button><span class="hint-text"><span class="hint-k">开启</span><span class="hint-v">从 State 池取「该凭证 + 当前模型」的合格 state，写入本次请求的 <code>X-Codex-Turn-State</code>；池里没有就不写。确认来自其他凭证或其他模型的回带值会被摘掉。</span><span class="hint-k">关闭</span><span class="hint-v">完全不碰这个 Header，客户端带什么就原样发什么。</span><span class="hint-p">规则里手工设置或移除了这个 Header 时以手工为准；「启用改写」关着时整条规则都不生效。</span></span></span></span>
+            <label class="switch guard-switch"><input type="checkbox" id="ruleStripTurnState"><span>注入 State</span></label>
           </div>
         </fieldset>
 
@@ -2562,10 +2562,10 @@ function renderRulePreview() {
   if ($("ruleOffNotice")) $("ruleOffNotice").hidden = enabled;
   if ($("guardNowText")) {
     $("guardNowText").textContent = !enabled
-      ? "规则未启用，守卫不会摘除任何回带 state"
+      ? "规则未启用，不会注入 State"
       : (guardOn
-        ? "摘掉确认来自其他凭证或其他模型的回带 state"
-        : "回带的 state 原样透传，只记录不修改");
+        ? "从 State 池为该凭证补 X-Codex-Turn-State"
+        : "不注入，客户端带什么就原样发什么");
   }
 }
 /* ---------- management key ----------------------------------------------
@@ -2884,7 +2884,7 @@ async function loadRule() {
   store.rule = payload.rule;
   for (const control of $("rulePanel").querySelectorAll("input,button,select")) control.disabled = false;
   $("ruleEnabled").checked = !!store.rule.enabled;
-  $("ruleStripTurnState").checked = !!store.rule.strip_foreign_turn_state;
+  $("ruleStripTurnState").checked = !!(store.rule.inject_turn_state ?? store.rule.strip_foreign_turn_state);
   if ($("rejectDegraded")) $("rejectDegraded").checked = !!store.rule.reject_degraded_response;
   if ($("retryDegraded")) $("retryDegraded").checked = !!store.rule.retry_on_degraded;
   if ($("retryAttempts")) $("retryAttempts").value = String(store.rule.retry_attempts || 2);
@@ -2907,7 +2907,7 @@ function renderWarnings(warnings) {
     $("ruleWarnText").innerHTML = `${warnings.map((name) => `<code class="mono" translate="no">${esc(name)}</code>`).join("、")} 属于 Codex executor 的特殊字段，改写可能在 interceptor 之后被覆盖。`;
   }
 }
-const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), strip_foreign_turn_state: $("ruleStripTurnState").checked, reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts(), retry_proxies: degradedProxies() });
+const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), inject_turn_state: $("ruleStripTurnState").checked, reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts(), retry_proxies: degradedProxies() });
 
 /* ---------- the header diff -------------------------------------------
    One row per header. The name is written once and the value change is shown

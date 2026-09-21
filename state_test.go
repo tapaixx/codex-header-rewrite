@@ -272,7 +272,7 @@ func TestForeignTurnStateEchoIsFlaggedAndOptionallyStripped(t *testing.T) {
 		state.mu.Lock()
 		state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", Provider: "codex", Name: "a.json", Label: "team-a", PlanType: "team", PlanResolved: true}
 		state.credentials["idx-b"] = credentialSnapshot{AuthIndex: "idx-b", Provider: "codex", Name: "b.json", Label: "team-b", PlanType: "team", PlanResolved: true}
-		state.rules["idx-b"] = headerRule{AuthIndex: "idx-b", Enabled: true, StripForeignTurnState: strip}
+		state.rules["idx-b"] = headerRule{AuthIndex: "idx-b", Enabled: true, InjectTurnState: strip}
 		state.mu.Unlock()
 
 		blob := fernetToken(0x80, time.Now(), 2)
@@ -350,7 +350,7 @@ func TestOwnTurnStateEchoIsNotFlagged(t *testing.T) {
 	resetTurnStates(t)
 	state.mu.Lock()
 	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", Provider: "codex", Name: "a.json", PlanType: "team", PlanResolved: true}
-	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, StripForeignTurnState: true}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true}
 	state.mu.Unlock()
 	blob := fernetToken(0x80, time.Now(), 1)
 	if _, err := interceptAfter(requestInterceptRequest{RequestID: "t1", Metadata: map[string]any{"selected_auth_index": "idx-a"}}); err != nil {
@@ -397,8 +397,8 @@ func TestStatePoolInjectsOnlyForMatchingCredentialAndModel(t *testing.T) {
 	state.mu.Lock()
 	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
 	state.credentials["idx-b"] = credentialSnapshot{AuthIndex: "idx-b", AuthID: "auth-b", Provider: "codex", Name: "b.json"}
-	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true}
-	state.rules["idx-b"] = headerRule{AuthIndex: "idx-b", Enabled: true}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true}
+	state.rules["idx-b"] = headerRule{AuthIndex: "idx-b", Enabled: true, InjectTurnState: true}
 	state.mu.Unlock()
 	blob := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
@@ -428,7 +428,7 @@ func TestStatePoolInjectionReplacesAConflictingClientState(t *testing.T) {
 	resetTurnStates(t)
 	state.mu.Lock()
 	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
-	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true}
 	state.mu.Unlock()
 	pooled := fernetToken(0x80, time.Now(), 1)
 	client := fernetToken(0x80, time.Now().Add(-time.Minute), 1)
@@ -528,7 +528,7 @@ func TestEnabledRuleInjectsAndRecordsIt(t *testing.T) {
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
-	blob := poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true})
+	blob := poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true})
 	if got := injectTestRequest(t, "rule-on", nil).Headers.Get(turnStateHeader); got != blob {
 		t.Fatalf("headers=%q want the pooled state", got)
 	}
@@ -597,7 +597,7 @@ func pooledAt(t *testing.T, issued time.Time) string {
 	blob := fernetToken(0x80, issued, 1)
 	state.mu.Lock()
 	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
-	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true}
 	ok := noteTurnStateMintLocked(blob, "idx-a", "A", "gpt-5.6-luna", "team")
 	state.mu.Unlock()
 	if !ok {
@@ -828,11 +828,10 @@ func TestResponsesPassThroughWithoutTheFlagOrWithoutDegradation(t *testing.T) {
 	}
 }
 
-// A pooled state protects the outgoing credential on its own. The guard decides
-// whether an unusable echo is dropped; it has no say in whether a usable one is
-// substituted, so a credential whose pool is warm never forwards another
-// credential's state even with the guard switched off.
-func TestPooledStateReplacesForeignEchoWithTheGuardOff(t *testing.T) {
+// The switch decides whether the plugin supplies this header at all. With it
+// off the client's request goes upstream exactly as it arrived, pool or no
+// pool -- that is the whole of the rule.
+func TestNothingIsInjectedWhenTheSwitchIsOff(t *testing.T) {
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -841,15 +840,15 @@ func TestPooledStateReplacesForeignEchoWithTheGuardOff(t *testing.T) {
 	state.credentials["idx-b"] = credentialSnapshot{AuthIndex: "idx-b", AuthID: "auth-b", Provider: "codex", Name: "b.json"}
 	noteTurnStateMintLocked(foreign, "idx-b", "B", "gpt-5.6-luna", "team")
 	state.mu.Unlock()
-	pooled := poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true, StripForeignTurnState: false})
+	poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: false})
 
-	response := injectTestRequest(t, "replace-without-guard", http.Header{turnStateHeader: {foreign}})
-	if got := response.Headers.Get(turnStateHeader); got != pooled {
-		t.Fatalf("a warm pool should replace the foreign echo regardless of the guard: %q", got)
+	response := injectTestRequest(t, "switch-off", http.Header{turnStateHeader: {foreign}})
+	if got := response.Headers.Get(turnStateHeader); got != "" {
+		t.Fatalf("the switch is off, nothing should be injected: %q", got)
 	}
 	for _, name := range response.ClearHeaders {
 		if strings.EqualFold(name, turnStateHeader) {
-			t.Fatal("the guard is off, so nothing should be cleared")
+			t.Fatal("the switch is off, nothing should be cleared either")
 		}
 	}
 }
@@ -864,7 +863,7 @@ func TestGuardStripAndInjectionDoNotContradictEachOther(t *testing.T) {
 	state.credentials["idx-b"] = credentialSnapshot{AuthIndex: "idx-b", AuthID: "auth-b", Provider: "codex", Name: "b.json"}
 	noteTurnStateMintLocked(foreign, "idx-b", "B", "gpt-5.6-luna", "team")
 	state.mu.Unlock()
-	pooled := poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true, StripForeignTurnState: true})
+	pooled := poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true})
 
 	response := injectTestRequest(t, "replace-foreign", http.Header{turnStateHeader: {foreign}})
 	if got := response.Headers.Get(turnStateHeader); got != pooled {
@@ -874,5 +873,17 @@ func TestGuardStripAndInjectionDoNotContradictEachOther(t *testing.T) {
 		if strings.EqualFold(name, turnStateHeader) {
 			t.Fatal("one response must not both set and clear the same header")
 		}
+	}
+}
+
+// A rule stored before the switch became an injection control carries its
+// value under the old key; loading it must not silently turn injection off.
+func TestLegacyGuardKeyBecomesTheInjectionSwitch(t *testing.T) {
+	migrated, err := validateRule(headerRule{AuthIndex: "idx-a", LegacyGuard: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !migrated.InjectTurnState || migrated.LegacyGuard {
+		t.Fatalf("the old key should fold into the new switch: %#v", migrated)
 	}
 }

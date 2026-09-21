@@ -71,7 +71,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.18.0.so` | `codex-header-rewrite` | `0.18.0` |
+| `codex-header-rewrite-v0.19.0.so` | `codex-header-rewrite` | `0.19.0` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -84,7 +84,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.18.0.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.19.0.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -194,7 +194,7 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 > 参考实现说明：sub2api 的 `upstream_model_mismatch` 同样是读响应载荷声明的模型（`response.model` / `message.model` / `modelVersion`）后与发出的模型比对，不是按 Header 判断 —— Header 里没有这个信息。
 
-## 回合状态守卫（X-Codex-Turn-State）
+## X-Codex-Turn-State 注入
 
 上游在响应头里返回 `X-Codex-Turn-State`，客户端在同一回合的下一次请求原样回带。插件先观察、分类；只有不降智的 state 才“铸造”（写入 State 池）。一个 blob 能被复用要同时满足三件事：
 
@@ -211,13 +211,13 @@ curl -s -H "Authorization: Bearer <management-key>" \
 | 跨模型回带 | 同凭证但来自另一个模型，详情显示是哪个模型 |
 | 回带来源未知 | 没记到来源（超出溯源窗口、未入池或发生在装插件之前）—— 是「未知」，不是「一致」 |
 | 已过期 N 分钟 | 信封里的签发时间已超过复用窗口 |
-| 已摘除 | 规则开启守卫，本次回带已被摘掉 |
+| 已摘除 | 注入开关打开，本次回带被判定不可复用并已摘掉 |
 
 **为什么会出现跨号回带**：账号不是客户端选的。CPA 的 `routing.strategy` 默认为 `round-robin`，**按请求**轮换凭证，而 `routing.session-affinity` 默认关闭 —— 同一段对话的相邻两轮很可能由不同账号伺服。客户端只看到一个端点，它只是把上游给它的 `X-Codex-Turn-State` 原样带回来，于是 A 号铸的 state 被发给了 B 号。即使打开 `session-affinity`，CPA 在绑定凭证不可用时仍会自动故障转移（401 / 429 / 冷却），回合链照样换号。跨模型同理：state 绑在铸造它的模型上，会话中途换模型或发生回退后，回带的仍是旧模型的 state。单机直连 Codex 两种都不会发生——那里只有一个账号。
 
-**守卫在规则之内**：`strip_foreign_turn_state` 是 `headerRule` 的字段，不是与「启用改写」并列的开关。摘除要求 `rule.Enabled && rule.StripForeignTurnState` 两个都为真；从 State 池补发只要求 `rule.Enabled`，且规则没有手工设置或移除该 Header。规则总开关关闭时，守卫保存着也不生效。
+**一个开关**：`inject_turn_state` 是 `headerRule` 的字段。开启时插件从 State 池取「该凭证 + 当前模型」的合格 state 写入请求（池里没有就不写），并摘除确认来自其他凭证或其他模型的回带值；关闭时完全不碰这个 Header。规则里手工设置或移除该 Header 时以手工为准，「启用改写」关闭时整条规则都不生效。早先以 `strip_foreign_turn_state` 保存的规则在读取时会折算成这个开关。
 
-关闭「启用改写」后，设置/覆盖、移除和 State 守卫编辑区置灰且不可编辑，已有值保留；重新打开后可编辑，点击「保存规则」生效。响应侧拦截及后台重试仍由各自开关控制。
+关闭「启用改写」后，设置/覆盖、移除和 State 注入编辑区置灰且不可编辑，已有值保留；重新打开后可编辑，点击「保存规则」生效。响应侧拦截及后台重试仍由各自开关控制。
 
 **摘除的边界**：规则里的「不可复用时移除 X-Codex-Turn-State」只摘**跨号**和**跨模型**这两种确定不可复用的情况；**过期只提示、不摘除** —— 那个窗口是经验值不是文档约定，猜错会把本来还能用的回合链打断。来源未知时也不动它。
 

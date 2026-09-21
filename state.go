@@ -240,7 +240,7 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 	}
 	echo, echoed := evaluateTurnStateEchoLocked(req.Headers, authIndex, sentModel(req.Model, req.RequestedModel))
 	stripped := false
-	if echoed && echo.unusable() && hasRule && rule.Enabled && rule.StripForeignTurnState {
+	if echoed && echo.unusable() && hasRule && rule.Enabled && rule.InjectTurnState {
 		// The blob came from another credential or model, so
 		// no upstream turn chain can accept it here. It is dropped from this
 		// request and the recorded "after" view shows it gone.
@@ -255,7 +255,7 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 	// removed rather than being quietly refilled.
 	injected := false
 	var injectedFrom turnStateOrigin
-	if hasRule && rule.Enabled && !ruleMentionsHeader(rule, turnStateHeader) {
+	if hasRule && rule.Enabled && rule.InjectTurnState && !ruleMentionsHeader(rule, turnStateHeader) {
 		if pooled, ok := turnStateForInjectionLocked(authIndex, sentModel(req.Model, req.RequestedModel), cred.PlanType); ok {
 			injectedFrom = pooled
 			if updates == nil {

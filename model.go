@@ -22,10 +22,14 @@ type headerRule struct {
 	Enabled   bool              `json:"enabled"`
 	Set       map[string]string `json:"set"`
 	Remove    []string          `json:"remove"`
-	// StripForeignTurnState removes an echoed X-Codex-Turn-State when this
-	// plugin knows it came from a different credential. Detection alone only
-	// reports the contradiction; this is what stops it reaching the upstream.
-	StripForeignTurnState bool `json:"strip_foreign_turn_state"`
+	// InjectTurnState is the single switch for this header: on, the plugin
+	// supplies X-Codex-Turn-State from the pool and drops an echo it can prove
+	// is unusable; off, it leaves the header exactly as the client sent it.
+	InjectTurnState bool `json:"inject_turn_state"`
+	// LegacyGuard carried the same switch before it became an injection
+	// control. It is read so rules saved earlier keep working, and never
+	// written; validateRule folds it into InjectTurnState.
+	LegacyGuard bool `json:"strip_foreign_turn_state,omitempty"`
 	// RejectDegradedResponse withholds a response whose minted
 	// X-Codex-Turn-State classifies as degraded: the body is replaced with an
 	// error and, on a stream, every later chunk is dropped. The status code

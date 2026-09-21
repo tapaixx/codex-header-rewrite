@@ -50,6 +50,12 @@ func validateRule(rule headerRule) (headerRule, error) {
 	}
 	rule.Set = cleanSet
 	rule.Remove = cleanRemove
+	// A rule saved before the switch meant "inject" carries its value under the
+	// old name; fold it in once and stop writing the old key.
+	if rule.LegacyGuard {
+		rule.InjectTurnState = true
+		rule.LegacyGuard = false
+	}
 	models := make([]string, 0, len(rule.RejectDegradedModels))
 	seenModels := map[string]bool{}
 	for _, model := range rule.RejectDegradedModels {
