@@ -92,35 +92,127 @@ func jsonSize(value any) int {
 	return len(raw)
 }
 
-// maskSSEBody masks the payload of every data line while leaving the framing
-// as it was, so the recorded stream still reads as the stream it was.
-func maskSSEBody(body []byte, field string) []byte {
-	lines := bytes.Split(body, []byte("\n"))
-	for i, line := range lines {
-		carriage := bytes.HasSuffix(line, []byte("\r"))
-		bare := bytes.TrimSuffix(line, []byte("\r"))
-		if !bytes.HasPrefix(bare, []byte("data:")) {
-			continue
-		}
-		payload := bytes.TrimSpace(bare[len("data:"):])
-		if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
-			continue
-		}
-		masked, ok := maskJSONDocument(payload, field)
-		if !ok {
-			continue
-		}
-		rebuilt := append([]byte("data: "), masked...)
-		if carriage {
-			rebuilt = append(rebuilt, '\r')
-		}
-		lines[i] = rebuilt
+// keepsResponseFrame reports whether a streamed frame is kept for what it
+// says. Three are:
+//
+//   - response.created carries the model, the reasoning settings, the tools
+//     and the service tier -- the whole shape of what was asked.
+//   - a terminal frame carries the declaration the model verdict prefers,
+//     plus the final status and the usage.
+//   - an error frame carries the upstream's own words, which are short and
+//     the only account of what went wrong.
+//
+// Everything else -- in_progress, which merely repeats created, and the
+// output_text.delta / output_item / content_part run -- is the answer being
+// streamed. Keeping it would store the conversation one fragment at a time,
+// which is the thing these bodies are not for: delta is not named output, so
+// masking by field name never touched it.
+func keepsResponseFrame(eventType string) bool {
+	switch trimmed := strings.TrimSpace(eventType); trimmed {
+	case "response.created":
+		return true
+	case "error", "response.error":
+		return true
+	default:
+		return isTerminalModelEvent(trimmed)
 	}
-	return bytes.Join(lines, []byte("\n"))
 }
 
-// maskedBodyNote describes the masking for the panel, so a reader is never
-// left wondering whether a body was empty or withheld.
-func maskedBodyNote(field string) string {
-	return strings.ToUpper(field[:1]) + field[1:]
+// maskedFrame replaces a frame's payload outright, keeping only its type so
+// the sequence still reads as a sequence.
+func maskedFrame(eventType string, size int) []byte {
+	out, err := json.Marshal(map[string]any{"type": eventType, "masked": fmt.Sprintf("%d bytes", size)})
+	if err != nil {
+		return []byte(`{"masked":"error"}`)
+	}
+	return out
+}
+
+// payloadEventType reads the type a frame declares, which every Codex event
+// carries; the event line is the fallback for hosts that omit it.
+func payloadEventType(payload []byte, fromEventLine string) string {
+	var declared struct {
+		Type string `json:"type"`
+		Data struct {
+			Type string `json:"type"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &declared); err == nil {
+		if declared.Type != "" {
+			return declared.Type
+		}
+		if declared.Data.Type != "" {
+			return declared.Data.Type
+		}
+	}
+	return strings.TrimSpace(fromEventLine)
+}
+
+// lastEventName reads the event type named just before a payload, from the
+// framing that precedes it. The slice passed in only covers the text since the
+// previous payload, so a name cannot leak forward into the next frame.
+func lastEventName(lead []byte) string {
+	index := bytes.LastIndex(lead, []byte("event:"))
+	if index < 0 {
+		return ""
+	}
+	rest := lead[index+len("event:"):]
+	if cut := bytes.IndexAny(rest, "\r\n"); cut >= 0 {
+		rest = rest[:cut]
+	}
+	if cut := bytes.Index(rest, []byte("data:")); cut >= 0 {
+		rest = rest[:cut]
+	}
+	return string(bytes.TrimSpace(rest))
+}
+
+// maskSSEBody rewrites the payload of every event while leaving every other
+// byte exactly where it was. A frame worth keeping has only its content field
+// masked; every other frame loses its payload entirely.
+//
+// Payloads are located by balancing brackets from each data: marker rather
+// than by splitting lines. A host that drops the framing sends the whole
+// stream as one line, and a line-based pass matched nothing in it -- so the
+// body would have been stored with every fragment of the answer in it, which
+// is the opposite of what masking is for.
+func maskSSEBody(body []byte, field string) []byte {
+	var out bytes.Buffer
+	cursor, scan := 0, 0
+	for scan < len(body) {
+		index := bytes.Index(body[scan:], []byte("data:"))
+		if index < 0 {
+			break
+		}
+		start := index + scan + len("data:")
+		value, end := firstJSONValue(body[start:])
+		if value == nil {
+			scan = start
+			continue
+		}
+		valueEnd := start + end
+		if bytes.Equal(bytes.TrimSpace(value), []byte("[DONE]")) {
+			scan = valueEnd
+			continue
+		}
+		eventType := payloadEventType(value, lastEventName(body[cursor:start]))
+		var rewritten []byte
+		if keepsResponseFrame(eventType) || eventType == "" {
+			// Unidentifiable frames are masked by field name rather than
+			// discarded: one of them may be the only payload that declared
+			// anything.
+			masked, ok := maskJSONDocument(value, field)
+			if !ok {
+				scan = valueEnd
+				continue
+			}
+			rewritten = masked
+		} else {
+			rewritten = maskedFrame(eventType, len(value))
+		}
+		out.Write(body[cursor : valueEnd-len(value)])
+		out.Write(rewritten)
+		cursor, scan = valueEnd, valueEnd
+	}
+	out.Write(body[cursor:])
+	return out.Bytes()
 }

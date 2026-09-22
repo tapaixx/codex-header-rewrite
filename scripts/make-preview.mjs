@@ -30,8 +30,12 @@ const requestBody = JSON.stringify({
 const unframedResponseBody =
   'event: response.created' +
   'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_68f2","object":"response","created_at":1790057487,"status":"in_progress","model":"gpt-6-astra","output":"[MASKED 2 bytes]","reasoning":{"context":"all_turns","effort":"low","summary":"detailed"},"service_tier":"auto","store":false,"temperature":1.0,"tools":[{"type":"function","name":"view_image","description":"image_url should be a base64-encoded `data:` URL; forward an `event:` block as-is"}]}}' +
+  'event: response.in_progress' +
+  'data: {"masked":"1184 bytes","type":"response.in_progress"}' +
   'event: response.output_text.delta' +
-  'data: {"type":"response.output_text.delta","content_index":0,"delta":"\u55e8","output_index":0,"sequence_number":4}' +
+  'data: {"masked":"118 bytes","type":"response.output_text.delta"}' +
+  'event: response.output_item.done' +
+  'data: {"masked":"406 bytes","type":"response.output_item.done"}' +
   'event: response.completed' +
   'data: {"type":"response.completed","sequence_number":13,"response":{"id":"resp_68f2","object":"response","status":"completed","model":"gpt-6-astra","output":"[MASKED 2210 bytes]","service_tier":"default","usage":{"input_tokens":21190,"output_tokens":11,"total_tokens":21201}}}';
 

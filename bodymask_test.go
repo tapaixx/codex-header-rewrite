@@ -87,3 +87,93 @@ func TestTheMaskRecordsTheSizeItReplaced(t *testing.T) {
 		t.Fatalf("a non-empty value should report its size: %q", text)
 	}
 }
+
+// Only three kinds of frame say anything the panel uses. Everything else is
+// the answer arriving in fragments, and delta is not named output, so masking
+// by field name never touched it.
+func TestOnlyInformativeFramesSurvive(t *testing.T) {
+	stream := strings.Join([]string{
+		`event: response.created`,
+		`data: {"type":"response.created","response":{"model":"gpt-6-astra","reasoning":{"effort":"low"},"output":[]}}`,
+		``,
+		`event: response.in_progress`,
+		`data: {"type":"response.in_progress","response":{"model":"gpt-6-astra","instructions":"a very long repeat of everything"}}`,
+		``,
+		`event: response.output_text.delta`,
+		`data: {"type":"response.output_text.delta","delta":"the private answer","obfuscation":"zz"}`,
+		``,
+		`event: response.output_item.done`,
+		`data: {"type":"response.output_item.done","item":{"content":[{"text":"the private answer again"}]}}`,
+		``,
+		`event: response.completed`,
+		`data: {"type":"response.completed","response":{"model":"gpt-6-astra","status":"completed","output":[{"text":"the private answer"}],"usage":{"input_tokens":21190}}}`,
+		``,
+		`data: [DONE]`,
+		``,
+	}, "\n")
+	masked := string(maskResponseBody([]byte(stream)))
+
+	if strings.Contains(masked, "the private answer") {
+		t.Fatalf("the answer survived:\n%s", masked)
+	}
+	// Kept whole apart from output: the model, the settings, the usage.
+	for _, keep := range []string{`"model":"gpt-6-astra"`, `"effort":"low"`, `"status":"completed"`, `"input_tokens":21190`} {
+		if !strings.Contains(masked, keep) {
+			t.Fatalf("masking dropped %s:\n%s", keep, masked)
+		}
+	}
+	// Replaced outright, with the type left so the sequence still reads.
+	for _, gone := range []string{"response.in_progress", "response.output_text.delta", "response.output_item.done"} {
+		if !strings.Contains(masked, `"type":"`+gone+`"`) {
+			t.Fatalf("the sequence lost %s:\n%s", gone, masked)
+		}
+	}
+	if strings.Count(masked, `"masked":"`) != 3 {
+		t.Fatalf("expected three replaced frames:\n%s", masked)
+	}
+	if strings.Contains(masked, "a very long repeat of everything") {
+		t.Fatalf("in_progress merely repeats created and should be gone:\n%s", masked)
+	}
+	// Framing and the sentinel are untouched, and the result still parses.
+	for _, keep := range []string{"event: response.created", "event: response.completed", "data: [DONE]"} {
+		if !strings.Contains(masked, keep) {
+			t.Fatalf("framing damaged, %q is gone:\n%s", keep, masked)
+		}
+	}
+	var observer modelObserver
+	observer.observeBody([]byte(masked))
+	if got := observer.model(); got != "gpt-6-astra" {
+		t.Fatalf("model=%q after masking", got)
+	}
+	if got := observer.effort(); got != "low" {
+		t.Fatalf("effort=%q after masking", got)
+	}
+}
+
+// The host sends streams with the framing gone. A line-based pass matched
+// nothing in one of those, so every fragment of the answer was stored.
+func TestMaskingReachesAnUnframedStream(t *testing.T) {
+	stream := `event: response.created` +
+		`data: {"type":"response.created","response":{"model":"gpt-6-astra","output":[]}}` +
+		`event: response.output_text.delta` +
+		`data: {"type":"response.output_text.delta","delta":"the private answer"}` +
+		`event: response.completed` +
+		`data: {"type":"response.completed","response":{"model":"gpt-6-astra","status":"completed"}}`
+	masked := string(maskResponseBody([]byte(stream)))
+	if strings.Contains(masked, "the private answer") {
+		t.Fatalf("an unframed answer survived:\n%s", masked)
+	}
+	if !strings.Contains(masked, `"model":"gpt-6-astra"`) || !strings.Contains(masked, `"status":"completed"`) {
+		t.Fatalf("the informative frames should survive:\n%s", masked)
+	}
+	// Key order comes from marshalling a map, so check for the pair rather than
+	// for one particular spelling of it.
+	if !strings.Contains(masked, `"type":"response.output_text.delta"`) || !strings.Contains(masked, `"masked":`) {
+		t.Fatalf("the delta frame should be replaced:\n%s", masked)
+	}
+	var observer modelObserver
+	observer.observeBody([]byte(masked))
+	if got := observer.model(); got != "gpt-6-astra" {
+		t.Fatalf("model=%q after masking an unframed stream", got)
+	}
+}
