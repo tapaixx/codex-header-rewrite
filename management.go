@@ -148,8 +148,8 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 		// A record older than this feature, or one that carried no payload, is
 		// not an error: the panel says so rather than showing a failure.
 		return jsonResponse(http.StatusOK, map[string]any{
-			"id": id, "found": found, "masked_request_field": requestContentField,
-			"masked_response_field": responseContentField, "max_stored_bytes": maxStoredBodyBytes,
+			"id": id, "found": found, "masked_request_fields": requestContentFields,
+			"masked_response_fields": responseContentFields, "max_stored_bytes": maxStoredBodyBytes,
 			"request_body": body.RequestBody, "request_bytes": body.RequestBytes,
 			"response_body": body.ResponseBody, "response_bytes": body.ResponseBytes,
 		}), nil

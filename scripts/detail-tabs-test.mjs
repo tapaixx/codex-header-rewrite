@@ -24,7 +24,7 @@ await page.route('http://panel.test/**', async route => {
   if (u.pathname.endsWith('/history/body')) {
     bodyCalls++;
     assert.equal(u.searchParams.get('id'),'rec-1');
-    d = {id:'rec-1',found:true,masked_request_field:'input',masked_response_field:'output',max_stored_bytes:262144,
+    d = {id:'rec-1',found:true,masked_request_fields:['input'],masked_response_fields:['output','tools'],max_stored_bytes:262144,
          request_body:'{"model":"gpt-6-astra","input":"[MASKED 4096 bytes]","tools":[]}', request_bytes:400000,
          response_body:'event: response.completed\ndata: {"type":"response.completed","sequence_number":13,"stream":true,"response":{"model":"gpt-6-astra","output":"[MASKED 88 bytes]"}}\n\n',
          response_bytes:1024};
@@ -91,7 +91,7 @@ try {
   // display, and still coloured.
   await page.evaluate(()=>{
     document.querySelector('#detailResponseBody').innerHTML =
-      bodyPaneHTML('Response Body', 'event: response.createddata: {"type":"response.created","response":{"model":"gpt-6-astra"}}', 120, 'output', 262144);
+      bodyPaneHTML('Response Body', 'event: response.createddata: {"type":"response.created","response":{"model":"gpt-6-astra"}}', 120, ['output','tools'], 262144);
   });
   const unframed = await page.locator('#detailPane-resb .body-view').textContent();
   assert.ok(unframed.startsWith('event: response.created\ndata: {'), 'framing restored: '+JSON.stringify(unframed.slice(0,40)));

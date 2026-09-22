@@ -13,9 +13,16 @@ import (
 // the field carrying it is replaced before the body is stored. What is left
 // still says how big the masked value was, which is usually the only thing
 // about it that matters when reading a request back.
+var (
+	// What a request asked is the conversation; what a response answered is the
+	// conversation too. The tool schemas are neither -- they are the same
+	// fifteen kilobytes of declarations on every single turn, and knowing the
+	// tools were present says as much as reading them again.
+	requestContentFields  = []string{"input"}
+	responseContentFields = []string{"output", "tools"}
+)
+
 const (
-	requestContentField  = "input"
-	responseContentField = "output"
 	// A stream is accumulated raw so that masking sees whole SSE frames, then
 	// cut to maxStoredBodyBytes once masked. Masking chunk by chunk would let a
 	// frame split across two chunks through unmasked.
@@ -27,32 +34,36 @@ func maskedValue(size int) string { return fmt.Sprintf("[MASKED %d bytes]", size
 // maskRequestBody hides what was asked; maskResponseBody hides what was
 // answered. Both walk the whole document, so a field nested under response or
 // under an event is masked as well as one at the top level.
-func maskRequestBody(body []byte) []byte  { return maskBodyField(body, requestContentField) }
-func maskResponseBody(body []byte) []byte { return maskBodyField(body, responseContentField) }
+func maskRequestBody(body []byte) []byte  { return maskBodyFields(body, requestContentFields) }
+func maskResponseBody(body []byte) []byte { return maskBodyFields(body, responseContentFields) }
 
-// maskBodyField replaces every value stored under the named field. A payload
-// that is not JSON is treated as an SSE stream and masked frame by frame; a
-// payload that is neither is returned untouched rather than mangled.
-func maskBodyField(body []byte, field string) []byte {
+// maskBodyFields replaces every value stored under any of the named fields. A
+// payload that is not JSON is treated as an SSE stream and masked frame by
+// frame; a payload that is neither is returned untouched rather than mangled.
+func maskBodyFields(body []byte, fields []string) []byte {
 	trimmed := bytes.TrimSpace(body)
 	if len(trimmed) == 0 {
 		return body
 	}
 	if trimmed[0] == '{' || trimmed[0] == '[' {
-		if masked, ok := maskJSONDocument(trimmed, field); ok {
+		if masked, ok := maskJSONDocument(trimmed, fields); ok {
 			return masked
 		}
 		return body
 	}
-	return maskSSEBody(body, field)
+	return maskSSEBody(body, fields)
 }
 
-func maskJSONDocument(payload []byte, field string) ([]byte, bool) {
+func maskJSONDocument(payload []byte, fields []string) ([]byte, bool) {
 	var document any
 	if err := json.Unmarshal(payload, &document); err != nil {
 		return nil, false
 	}
-	masked := maskJSONValue(document, field)
+	wanted := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		wanted[field] = struct{}{}
+	}
+	masked := maskJSONValue(document, wanted)
 	out, err := json.Marshal(masked)
 	if err != nil {
 		return nil, false
@@ -60,23 +71,23 @@ func maskJSONDocument(payload []byte, field string) ([]byte, bool) {
 	return out, true
 }
 
-// maskJSONValue walks a decoded document and replaces the named field wherever
-// it appears. The replacement records the size the value serialised to, so a
+// maskJSONValue walks a decoded document and replaces the named fields wherever
+// they appear. The replacement records the size the value serialised to, so a
 // masked request can still be told apart from an empty one.
-func maskJSONValue(value any, field string) any {
+func maskJSONValue(value any, fields map[string]struct{}) any {
 	switch typed := value.(type) {
 	case map[string]any:
 		for key, nested := range typed {
-			if key == field {
+			if _, masked := fields[key]; masked {
 				typed[key] = maskedValue(jsonSize(nested))
 				continue
 			}
-			typed[key] = maskJSONValue(nested, field)
+			typed[key] = maskJSONValue(nested, fields)
 		}
 		return typed
 	case []any:
 		for i, nested := range typed {
-			typed[i] = maskJSONValue(nested, field)
+			typed[i] = maskJSONValue(nested, fields)
 		}
 		return typed
 	default:
@@ -175,7 +186,7 @@ func lastEventName(lead []byte) string {
 // stream as one line, and a line-based pass matched nothing in it -- so the
 // body would have been stored with every fragment of the answer in it, which
 // is the opposite of what masking is for.
-func maskSSEBody(body []byte, field string) []byte {
+func maskSSEBody(body []byte, fields []string) []byte {
 	var out bytes.Buffer
 	cursor, scan := 0, 0
 	for scan < len(body) {
@@ -200,7 +211,7 @@ func maskSSEBody(body []byte, field string) []byte {
 			// Unidentifiable frames are masked by field name rather than
 			// discarded: one of them may be the only payload that declared
 			// anything.
-			masked, ok := maskJSONDocument(value, field)
+			masked, ok := maskJSONDocument(value, fields)
 			if !ok {
 				scan = valueEnd
 				continue

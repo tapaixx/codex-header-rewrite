@@ -3667,7 +3667,7 @@ function renderBody(text) {
   return renderSSE(trimmed);
 }
 
-function bodyPaneHTML(label, text, bytes, maskedField, maxStored) {
+function bodyPaneHTML(label, text, bytes, maskedFields, maxStored) {
   if (!text) {
     return `<div class="history-detail-label"><span>${esc(label)}</span></div>
       <div class="empty">没有记录到${esc(label)}</div>`;
@@ -3676,7 +3676,7 @@ function bodyPaneHTML(label, text, bytes, maskedField, maxStored) {
   const truncated = bytes > 0 && maxStored > 0 && bytes > maxStored;
   return `<div class="history-detail-label"><span>${esc(label)}</span><span class="num">${esc(formatBytes(bytes || stored))}</span></div>
     <div class="body-meta">
-      ${maskedField ? `<span><code>${esc(maskedField)}</code> 已遮蔽</span>` : ""}
+      ${(maskedFields || []).length ? `<span>${(maskedFields || []).map((f) => `<code>${esc(f)}</code>`).join("、")} 已遮蔽</span>` : ""}
       ${truncated ? `<span class="warn-text">已截断，只保留前 ${esc(formatBytes(maxStored))}</span>` : ""}
     </div>
     <pre class="body-view">${renderBody(text)}</pre>`;
@@ -3694,8 +3694,8 @@ async function loadRecordBodies(record) {
     // The reader may have closed this record or opened another meanwhile.
     if (store.selectedRecord !== id) return;
     const max = payload.max_stored_bytes || 0;
-    request.innerHTML = bodyPaneHTML("Request Body", payload.request_body, payload.request_bytes, payload.masked_request_field, max);
-    response.innerHTML = bodyPaneHTML("Response Body", payload.response_body, payload.response_bytes, payload.masked_response_field, max);
+    request.innerHTML = bodyPaneHTML("Request Body", payload.request_body, payload.request_bytes, payload.masked_request_fields, max);
+    response.innerHTML = bodyPaneHTML("Response Body", payload.response_body, payload.response_bytes, payload.masked_response_fields, max);
   } catch (error) {
     if (store.selectedRecord !== id) return;
     const message = `<div class="empty">读取失败：${esc(error.message || String(error))}</div>`;

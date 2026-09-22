@@ -71,7 +71,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.21.6.so` | `codex-header-rewrite` | `0.21.6` |
+| `codex-header-rewrite-v0.21.7.so` | `codex-header-rewrite` | `0.21.7` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -84,7 +84,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.21.6.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.21.7.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -156,14 +156,21 @@ Request Header 标签页里「未改动的 N 个 Header」默认展开 —— �
 
 详情里的 body 有语法着色：键用强调色、字符串用新增色、数字用覆盖色、布尔与 null 用移除色，被遮蔽的值单独高亮——它是文档里唯一一处不是上游原样内容的字符串。分帧丢失的流在**显示时**会把换行补回去（记录的字节不变）。
 
-**请求体遮蔽**：写盘前所有名为 `input` 的字段替换为 `[MASKED N bytes]`，`N` 是被替换值序列化后的大小。遮蔽是递归的，嵌在任意层级的同名字段一样处理。
+**按字段遮蔽**：写盘前替换为 `[MASKED N bytes]`，`N` 是被替换值序列化后的大小。遮蔽是递归的，嵌在任意层级的同名字段一样处理。两个方向遮的字段不同，各自只遮被指定的那些：
+
+| 方向 | 遮蔽的字段 |
+|---|---|
+| 请求体 | `input` |
+| 响应体（v0.21.7 起含 `tools`） | `output`、`tools` |
+
+`tools` 之所以要遮：那是每一轮都重复一遍的同一份工具声明，约 15 KB，知道「带了工具」和把声明再读一遍信息量一样。详情里的遮蔽说明会列出当次实际遮掉的字段名。
 
 **响应体按帧遮蔽（v0.21.6）**：只有三类帧因为它们说的话被保留，其余整个载荷替换掉：
 
 | 帧 | 处理 | 保留的理由 |
 |---|---|---|
-| `response.created` | 保留，`output` 仍遮 | 模型、reasoning、tools、service_tier 都在这里 |
-| 终局帧（`response.completed` / `done` / `failed` / `incomplete` / `cancelled`） | 保留，`output` 仍遮 | 终局声明是模型判定优先采用的那条，还带 usage 与最终状态 |
+| `response.created` | 保留，`output` 与 `tools` 仍遮 | 模型、reasoning、service_tier 都在这里 |
+| 终局帧（`response.completed` / `done` / `failed` / `incomplete` / `cancelled`） | 保留，`output` 与 `tools` 仍遮 | 终局声明是模型判定优先采用的那条，还带 usage 与最终状态 |
 | `error` / `response.error` | 保留 | 上游报错原文，短且是唯一的事故记录 |
 | 其余全部 | 载荷换成 `{"type":…,"masked":"N bytes"}` | `in_progress` 只是把 created 重复一遍；`output_text.delta` / `output_item.*` / `content_part.*` 是正在流出的答案 |
 

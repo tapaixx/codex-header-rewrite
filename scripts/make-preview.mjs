@@ -29,7 +29,7 @@ const requestBody = JSON.stringify({
 // are gone, which is exactly the shape that used to read as no model at all.
 const unframedResponseBody =
   'event: response.created' +
-  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_68f2","object":"response","created_at":1790057487,"status":"in_progress","model":"gpt-6-astra","output":"[MASKED 2 bytes]","reasoning":{"context":"all_turns","effort":"low","summary":"detailed"},"service_tier":"auto","store":false,"temperature":1.0,"tools":[{"type":"function","name":"view_image","description":"image_url should be a base64-encoded `data:` URL; forward an `event:` block as-is"}]}}' +
+  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_68f2","object":"response","created_at":1790057487,"status":"in_progress","model":"gpt-6-astra","output":"[MASKED 2 bytes]","reasoning":{"context":"all_turns","effort":"low","summary":"detailed"},"service_tier":"auto","store":false,"temperature":1.0,"tools":"[MASKED 14822 bytes]"}}' +
   'event: response.in_progress' +
   'data: {"masked":"1184 bytes","type":"response.in_progress"}' +
   'event: response.output_text.delta' +
@@ -178,7 +178,7 @@ const stub = `
     }
     if (path.endsWith("/history/body")) {
       const found = F.bodies[q.get("id")];
-      return json({ id: q.get("id"), found: Boolean(found), masked_request_field: "input", masked_response_field: "output",
+      return json({ id: q.get("id"), found: Boolean(found), masked_request_fields: ["input"], masked_response_fields: ["output", "tools"],
         max_stored_bytes: 262144, request_body: "", response_body: "", request_bytes: 0, response_bytes: 0, ...(found || {}) });
     }
     if (path.endsWith("/history/clear")) return json({ cleared: authIndex });
