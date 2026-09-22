@@ -71,7 +71,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.21.10.so` | `codex-header-rewrite` | `0.21.10` |
+| `codex-header-rewrite-v0.22.0.so` | `codex-header-rewrite` | `0.22.0` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -84,7 +84,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.21.10.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.22.0.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -306,11 +306,20 @@ node scripts/make-preview.mjs
 
 **为什么会出现跨号回带**：账号不是客户端选的。CPA 的 `routing.strategy` 默认为 `round-robin`，**按请求**轮换凭证，而 `routing.session-affinity` 默认关闭 —— 同一段对话的相邻两轮很可能由不同账号伺服。客户端只看到一个端点，它只是把上游给它的 `X-Codex-Turn-State` 原样带回来，于是 A 号铸的 state 被发给了 B 号。即使打开 `session-affinity`，CPA 在绑定凭证不可用时仍会自动故障转移（401 / 429 / 冷却），回合链照样换号。跨模型同理：state 绑在铸造它的模型上，会话中途换模型或发生回退后，回带的仍是旧模型的 state。单机直连 Codex 两种都不会发生——那里只有一个账号。
 
-**State 连着它的会话入池（未发版）**：池里的每一条不再只是一个 state，还带着它被铸造时的**会话 Cookie** —— 请求当时带的 Cookie，叠加这次铸造响应里 `Set-Cookie` 的赋值。一个 turn state 属于某个会话，两者分开都没多大用：拿一条 state 配一个上游已经翻过页的会话，和拿另一个凭证的 state 一样是矛盾的。
+**State 连着它的会话入池（v0.22.0）**：池里的每一条不再只是一个 state，还带着它被铸造时的**会话 Cookie** —— 请求当时带的 Cookie，叠加这次铸造响应里 `Set-Cookie` 的赋值。一个 turn state 属于某个会话，两者分开都没多大用：拿一条 state 配一个上游已经翻过页的会话，和拿另一个凭证的 state 一样是矛盾的。
 
 值存在持久池里（`persistedTurnState.cookie`），重启后随 state 一起恢复；这个字段之前的记录没有，读回来是「没有记录会话」而不是错误。State 池的详情里能看到它。
 
-> 目前只是**存下来并展示**，注入时还没有用它。要不要在注入 state 的同时也把这条会话写进 `Cookie` 请求头，是另一个决定 —— 发之前先确认。
+取值口径说明：只取 `Set-Cookie` 赋的那几个会漏掉会话的其余部分，而且大多数响应根本不下发 `Set-Cookie`，那样池里绝大部分条目会是空的。所以存的是**铸造那一刻的完整会话**：
+
+| 情况 | 存下来的值 |
+|---|---|
+| 请求有 cookie，响应轮换了 session | 轮换后的完整会话 |
+| 请求有 cookie，响应没有 `Set-Cookie` | 请求那份会话 |
+| 请求没 cookie，响应下发了 | 只有响应下发的那些 |
+| 两边都没有 | 空，详情显示「没有记录会话」 |
+
+**注入时不会写入 `Cookie` 请求头。** 这条会话是记录，不是覆盖动作：池里那条可能已经过期，用它替掉客户端当前的会话会比不写更糟。它的用处是事后能看出某条 state 当时属于哪个会话。
 
 **State 有效期（v0.20.0）**：`state_ttl_seconds` 是 `headerRule` 的字段，按凭证保存，取值 5–7200 秒，留空（存为 `0`）按默认 200 秒。之前这是编译进去的 1 小时常量，但这个窗口上游从没公开过，而且各账号表现不同，所以改成面板里可填的数字。两个凭证可以各填各的，同一条 blob 的年龄按当时服务这次请求的那条规则判定。超出范围的值保存时直接报错，不会被悄悄改写成别的数——否则面板上显示的就不是你填的那个窗口了。
 
