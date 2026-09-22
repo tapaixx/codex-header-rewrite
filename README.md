@@ -19,7 +19,7 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - retry A → B 分别记录；被替换 attempt 标记 `switched`，不猜测 401/429。
 - 记录重写前/后的 Request Header 与 upstream Response Header。
 - Authorization、API key、token/secret/password 等在写盘前永久脱敏；`Cookie` / `Set-Cookie` 自 v0.20.1 起按明文记录（见「重试会带上会话 Cookie」）。
-- 保存 request / response body（v0.21.0），但**输入与输出内容被遮蔽**：请求体的 `input`、响应体的 `output` 一律替换为 `[MASKED N bytes]`，只留下模型、instructions、tools、reasoning、turn metadata、usage、错误结构这些解释请求本身的字段。单个 body 最多保留 256 KB，超出截断并记录原始大小。
+- 保存 request / response body（v0.21.0），但**会话内容被遮蔽**：请求体的 `input` / `messages` / `system`、响应体的 `output` / `content` / `tools` / `usage` 一律替换为 `[MASKED N bytes]`，Codex Responses 与 Claude Messages 两种格式都覆盖；只留下模型、instructions、reasoning、turn metadata、错误结构这些解释请求本身的字段。单个 body 最多保留 256 KB，超出截断并记录原始大小。
 - 自定义测试请求：从凭证可用模型中选择模型、发送默认 `hi` 或自定义 JSON、预览改写结果，或向自定义端点发一次真实请求。
 - 模型一致性核对：记录上游实际声明的模型，与发出的模型比对，不一致时标红。
 - 回合状态（X-Codex-Turn-State）溯源：按套餐判定是否降智，合格值按「凭证 + 模型」持久化入池，发现跨账号回带并可按规则摘除；内置 Fernet 信封解码。
@@ -174,8 +174,6 @@ Request Header 标签页里「未改动的 N 个 Header」默认展开 —— �
 
 **响应体按帧遮蔽（v0.21.6）**：只有三类帧因为它们说的话被保留，其余整个载荷替换掉：
 
-| 帧 | 处理 | 保留的理由 |
-|---|---|---|
 | 帧（Codex） | 帧（Claude） | 处理 | 理由 |
 |---|---|---|---|
 | `response.created` | `message_start` | 保留，按字段遮蔽后 | 模型在这里；Codex 另有 reasoning / service_tier |
