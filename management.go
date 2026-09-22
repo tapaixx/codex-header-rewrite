@@ -22,6 +22,8 @@ const (
 	apiHistoryPath         = "/codex-header-rewrite/history"
 	apiHistoryClearPath    = "/codex-header-rewrite/history/clear"
 	apiHistoryBodyPath     = "/codex-header-rewrite/history/body"
+	apiProbeHistoryPath    = "/codex-header-rewrite/probes"
+	apiProbeClearPath      = "/codex-header-rewrite/probes/clear"
 	apiOrphansCleanupPath  = "/codex-header-rewrite/orphans/cleanup"
 	apiTestPath            = "/codex-header-rewrite/test"
 	apiTurnStateDecodePath = "/codex-header-rewrite/turn-state/decode"
@@ -48,6 +50,8 @@ func registerManagement() managementRegistration {
 		{Method: http.MethodGet, Path: apiHistoryPath, Description: "List credential header history"},
 		{Method: http.MethodPost, Path: apiHistoryClearPath, Description: "Clear credential history"},
 		{Method: http.MethodGet, Path: apiHistoryBodyPath, Description: "Read one record's request and response bodies"},
+		{Method: http.MethodGet, Path: apiProbeHistoryPath, Description: "List automatic state probe history"},
+		{Method: http.MethodPost, Path: apiProbeClearPath, Description: "Clear automatic state probe history"},
 		{Method: http.MethodPost, Path: apiOrphansCleanupPath, Description: "Remove orphaned credential data"},
 		{Method: http.MethodPost, Path: apiTestPath, Description: "Run a header rewrite test request"},
 		{Method: http.MethodPost, Path: apiTurnStateDecodePath, Description: "Decode an X-Codex-Turn-State envelope"},
@@ -129,6 +133,67 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"deleted": authIndex}), nil
+	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiProbeClearPath):
+		var body struct {
+			AuthIndex string `json:"auth_index"`
+		}
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return jsonError(http.StatusBadRequest, "invalid JSON body"), nil
+		}
+		authIndex := strings.TrimSpace(body.AuthIndex)
+		if authIndex == "" {
+			return jsonError(http.StatusBadRequest, "auth_index is required"), nil
+		}
+		state.mu.Lock()
+		store := state.store
+		state.mu.Unlock()
+		if store == nil {
+			return jsonError(http.StatusServiceUnavailable, "persistence is not initialized"), nil
+		}
+		if err := store.ClearProbeHistory(authIndex); err != nil {
+			return jsonError(http.StatusInternalServerError, err.Error()), nil
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"cleared": authIndex}), nil
+	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiProbeHistoryPath):
+		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
+		if authIndex == "" {
+			return jsonError(http.StatusBadRequest, "auth_index is required"), nil
+		}
+		page, _ := strconv.Atoi(req.Query.Get("page"))
+		state.mu.Lock()
+		store := state.store
+		rule := state.rules[authIndex]
+		state.mu.Unlock()
+		if store == nil {
+			return jsonError(http.StatusServiceUnavailable, "persistence is not initialized"), nil
+		}
+		result, err := store.ProbeHistory(authIndex, page)
+		if err != nil {
+			return jsonError(http.StatusInternalServerError, err.Error()), nil
+		}
+		// The schedule is reported beside the rows, because a probe list that
+		// is empty can mean "nothing to do" or "not due yet" or "the account
+		// went quiet", and those read identically without it.
+		session, _, _ := store.Session(authIndex, "")
+		probeSchedule.Lock()
+		due := probeSchedule.nextDue[authIndex]
+		probeSchedule.Unlock()
+		payload := map[string]any{
+			"auth_index": result.AuthIndex, "page": result.Page, "page_size": result.PageSize,
+			"total": result.Total, "total_pages": result.TotalPages, "items": result.Items,
+			"limit": probeHistoryLimit, "enabled": rule.ProbeEnabled,
+			"within_window": withinProbeWindow(rule, time.Now().UTC()),
+		}
+		if !session.LastLiveAt.IsZero() {
+			payload["last_live_at"] = session.LastLiveAt
+			payload["live_age_seconds"] = int64(time.Since(session.LastLiveAt).Seconds())
+		}
+		if !due.IsZero() && due.Before(time.Now().Add(probeRunning/2)) {
+			payload["next_due_at"] = due
+		} else if !due.IsZero() {
+			payload["running"] = true
+		}
+		return jsonResponse(http.StatusOK, payload), nil
 	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiHistoryBodyPath):
 		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
 		id := strings.TrimSpace(req.Query.Get("id"))

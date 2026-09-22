@@ -60,6 +60,18 @@ type persistence interface {
 	// HistoryBody fetches one record's payloads, which are stored apart from
 	// the record so a page of the list never carries them.
 	HistoryBody(authIndex, id string) (bodyRecord, bool, error)
+	// Probe history is kept apart from request history and bounded separately.
+	// Sharing one bucket would let a probe running every few seconds evict the
+	// real traffic within the hour, which is the only record of what the proxy
+	// actually did.
+	AppendProbeHistory(record historyRecord) error
+	ProbeHistory(authIndex string, page int) (historyPage, error)
+	ClearProbeHistory(authIndex string) error
+	// SaveSession writes one egress's cookie jar; Session reads it back. Absent
+	// is not an error: a jar that has never been filled is the normal state
+	// before the first response comes back through that egress.
+	SaveSession(session credentialSession) error
+	Session(authIndex, egress string) (credentialSession, bool, error)
 	ClearHistory(authIndex string) error
 	HistoryCount(authIndex string) (int, error)
 	DeleteCredentialData(authIndex string) error
@@ -90,6 +102,10 @@ func (q *queuedPersistence) run() {
 	batch := make([]historyRecord, 0, 32)
 	flush := func() {
 		for _, record := range batch {
+			if record.Origin == originProbe {
+				_ = q.backend.AppendProbeHistory(record)
+				continue
+			}
 			_ = q.backend.AppendHistory(record)
 		}
 		batch = batch[:0]
@@ -118,6 +134,14 @@ func (q *queuedPersistence) run() {
 			}
 		}
 	}
+}
+
+// EnqueueProbe shares the queue but not the destination: probe rows are
+// bounded separately, so the writer has to know which family a record belongs
+// to. Origin carries that, so the queue stays one channel.
+func (q *queuedPersistence) EnqueueProbe(record historyRecord) {
+	record.Origin = originProbe
+	q.Enqueue(record)
 }
 
 func (q *queuedPersistence) Enqueue(record historyRecord) {

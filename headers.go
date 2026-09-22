@@ -110,7 +110,88 @@ func validateRule(rule headerRule) (headerRule, error) {
 	if rule.StateTTLSeconds > maxStateTTLSeconds {
 		return rule, fmt.Errorf("state_ttl_seconds must not exceed %d", maxStateTTLSeconds)
 	}
+
+	rule.ProbeModels = dedupeTrimmed(rule.ProbeModels)
+	probeProxies, err := normalizeProxyList("probe_proxies", rule.ProbeProxies)
+	if err != nil {
+		return rule, err
+	}
+	rule.ProbeProxies = probeProxies
+	rule.ProbeCookieMode = strings.TrimSpace(rule.ProbeCookieMode)
+	for name, minute := range map[string]int{
+		"probe_window_start_minute": rule.ProbeWindowStartMinute,
+		"probe_window_end_minute":   rule.ProbeWindowEndMinute,
+	} {
+		if minute < 0 || minute >= minutesPerDay {
+			return rule, fmt.Errorf("%s must be between 0 and %d", name, minutesPerDay-1)
+		}
+	}
+	if rule.ProbeCookieMode != "" && !validProbeCookieMode(rule.ProbeCookieMode) {
+		return rule, fmt.Errorf("probe_cookie_mode must be one of %s, %s, %s",
+			probeCookieCredential, probeCookieStaticProxy, probeCookieRotatingProxy)
+	}
+	if rule.ProbeEnabled {
+		// Both fetch states for the same credential on their own schedule.
+		// Running them together would have two writers competing for one pool.
+		if rule.RetryOnDegraded {
+			return rule, fmt.Errorf("probe_enabled and retry_on_degraded cannot both be on")
+		}
+		if len(rule.ProbeModels) == 0 {
+			return rule, fmt.Errorf("probe_models is required while the probe is on")
+		}
+		if rule.ProbeCookieTTLSeconds < minProbeCookieTTLSec {
+			return rule, fmt.Errorf("probe_cookie_ttl_seconds must be at least %d", minProbeCookieTTLSec)
+		}
+		if rule.ProbeIntervalSeconds < minProbeIntervalSec {
+			return rule, fmt.Errorf("probe_interval_seconds must be at least %d", minProbeIntervalSec)
+		}
+		// With no proxy the egress is the host's own, so the jar the live
+		// traffic fills is the only coherent choice and is not worth asking
+		// about. With proxies there is no safe default: each mode is correct
+		// for a different kind of egress and the wrong one sends a cookie
+		// bound to one address out through another.
+		if len(rule.ProbeProxies) == 0 {
+			rule.ProbeCookieMode = probeCookieCredential
+		} else if rule.ProbeCookieMode == "" {
+			return rule, fmt.Errorf("probe_cookie_mode must be chosen once probe_proxies is not empty")
+		}
+	}
 	return rule, nil
+}
+
+func dedupeTrimmed(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := make(map[string]bool, len(values))
+	for _, raw := range values {
+		value := strings.TrimSpace(raw)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func normalizeProxyList(field string, values []string) ([]string, error) {
+	out := make([]string, 0, len(values))
+	seen := make(map[string]bool, len(values))
+	for i, raw := range values {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		proxyURL, err := parseRetryProxy(raw)
+		if err != nil {
+			return nil, fmt.Errorf("%s[%d]: %w", field, i+1, err)
+		}
+		value := proxyURL.String()
+		if !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	return out, nil
 }
 
 func rejectsDegradedModel(rule headerRule, model string) bool {

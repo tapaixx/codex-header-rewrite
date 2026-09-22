@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -46,22 +47,38 @@ func retryProxyFor(authIndex string) string {
 	return proxies[rand.IntN(len(proxies))]
 }
 
-func doRetryHTTP(ctx context.Context, request hostHTTPRequest, proxyURL string) (hostHTTPResponse, error) {
-	// Build from scratch: nil Proxy explicitly ignores environment/CPA proxies.
+// newBackgroundTransport builds a transport from scratch: a nil Proxy field
+// explicitly ignores the environment's and CPA's own proxies, which is the
+// point -- these requests are the only ones that choose their own egress.
+//
+// The caller owns it, because a probe needs two requests to leave through the
+// same exit. A rotating pool changes address per connection, and a SOCKS5
+// tunnel is one connection to one exit, so keeping the transport alive across
+// the pair is what makes "prime a cookie, then use it" mean anything.
+func newBackgroundTransport(proxyURL string) (*http.Transport, error) {
 	transport := &http.Transport{
 		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
 		DisableCompression:    true,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
 	}
-	defer transport.CloseIdleConnections()
 	if proxyURL != "" {
 		parsed, err := parseRetryProxy(proxyURL)
 		if err != nil {
-			return hostHTTPResponse{}, err
+			return nil, err
 		}
 		transport.Proxy = http.ProxyURL(parsed)
 	}
+	return transport, nil
+}
+
+// maxBackgroundBodyBytes bounds what a background request reads back. The body
+// is wanted for the model it declares and for the capped copy the detail
+// shows; an SSE stream is unbounded, so it is read through a limit rather than
+// buffered whole.
+const maxBackgroundBodyBytes = maxStreamBufferBytes
+
+func doHTTPOverTransport(ctx context.Context, transport *http.Transport, request hostHTTPRequest, proxied bool) (hostHTTPResponse, error) {
 	client := &http.Client{
 		Transport:     transport,
 		Timeout:       30 * time.Second,
@@ -69,7 +86,7 @@ func doRetryHTTP(ctx context.Context, request hostHTTPRequest, proxyURL string) 
 	}
 	req, err := http.NewRequestWithContext(ctx, request.Method, request.URL, bytes.NewReader(request.Body))
 	if err != nil {
-		return hostHTTPResponse{}, errors.New("invalid retry request")
+		return hostHTTPResponse{}, errors.New("invalid background request")
 	}
 	req.Header = request.Headers.Clone()
 	response, err := client.Do(req)
@@ -78,11 +95,24 @@ func doRetryHTTP(ctx context.Context, request hostHTTPRequest, proxyURL string) 
 		if ctx.Err() != nil {
 			return hostHTTPResponse{}, ctx.Err()
 		}
-		if proxyURL != "" {
-			return hostHTTPResponse{}, errors.New("SOCKS retry request failed; check proxy connectivity and authentication")
+		if proxied {
+			return hostHTTPResponse{}, errors.New("SOCKS background request failed; check proxy connectivity and authentication")
 		}
-		return hostHTTPResponse{}, errors.New("direct retry request failed; check connectivity")
+		return hostHTTPResponse{}, errors.New("direct background request failed; check connectivity")
 	}
-	defer response.Body.Close() // Only the state header is needed; never buffer SSE.
-	return hostHTTPResponse{StatusCode: response.StatusCode, Headers: response.Header.Clone()}, nil
+	defer response.Body.Close()
+	// Drained to the limit rather than abandoned: leaving bytes unread stops
+	// the connection being reused, and the pair of requests a probe makes
+	// depends on reuse to keep the same exit.
+	body, _ := io.ReadAll(io.LimitReader(response.Body, maxBackgroundBodyBytes))
+	return hostHTTPResponse{StatusCode: response.StatusCode, Headers: response.Header.Clone(), Body: body}, nil
+}
+
+func doRetryHTTP(ctx context.Context, request hostHTTPRequest, proxyURL string) (hostHTTPResponse, error) {
+	transport, err := newBackgroundTransport(proxyURL)
+	if err != nil {
+		return hostHTTPResponse{}, err
+	}
+	defer transport.CloseIdleConnections()
+	return doHTTPOverTransport(ctx, transport, request, proxyURL != "")
 }

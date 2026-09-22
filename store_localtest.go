@@ -13,6 +13,8 @@ import (
 type localDiskState struct {
 	Rules      map[string]headerRule         `json:"rules"`
 	History    map[string][]historyRecord    `json:"history"`
+	Probes     map[string][]historyRecord    `json:"probes"`
+	Sessions   map[string]credentialSession  `json:"sessions"`
 	Bodies     map[string]bodyRecord         `json:"bodies"`
 	TurnStates map[string]persistedTurnState `json:"turn_states"`
 }
@@ -23,7 +25,8 @@ type localPersistence struct {
 }
 
 func openPersistence(path string) (persistence, error) {
-	p := &localPersistence{path: path, state: localDiskState{Rules: map[string]headerRule{}, History: map[string][]historyRecord{}, Bodies: map[string]bodyRecord{}, TurnStates: map[string]persistedTurnState{}}}
+	p := &localPersistence{path: path, state: localDiskState{Rules: map[string]headerRule{}, History: map[string][]historyRecord{}, Probes: map[string][]historyRecord{},
+		Sessions: map[string]credentialSession{}, Bodies: map[string]bodyRecord{}, TurnStates: map[string]persistedTurnState{}}}
 	raw, err := os.ReadFile(path)
 	if err == nil {
 		_ = json.Unmarshal(raw, &p.state)
@@ -35,6 +38,12 @@ func openPersistence(path string) (persistence, error) {
 	}
 	if p.state.History == nil {
 		p.state.History = map[string][]historyRecord{}
+	}
+	if p.state.Probes == nil {
+		p.state.Probes = map[string][]historyRecord{}
+	}
+	if p.state.Sessions == nil {
+		p.state.Sessions = map[string]credentialSession{}
 	}
 	if p.state.Bodies == nil {
 		p.state.Bodies = map[string]bodyRecord{}
@@ -122,6 +131,56 @@ func (p *localPersistence) AppendHistory(r historyRecord) error {
 	p.state.History[r.AuthIndex] = items
 	return p.save()
 }
+func (p *localPersistence) AppendProbeHistory(r historyRecord) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	r.BeforeHeaders = redactHeaders(r.BeforeHeaders)
+	r.AfterHeaders = redactHeaders(r.AfterHeaders)
+	r.ResponseHeaders = redactHeaders(r.ResponseHeaders)
+	if bodies := r.takeBodies(); !bodies.empty() {
+		p.state.Bodies[bodyKey(r.AuthIndex, r.ID)] = bodies
+	}
+	items := append(p.state.Probes[r.AuthIndex], r)
+	for len(items) > probeHistoryLimit {
+		delete(p.state.Bodies, bodyKey(r.AuthIndex, items[0].ID))
+		items = items[1:]
+	}
+	p.state.Probes[r.AuthIndex] = items
+	return p.save()
+}
+
+func (p *localPersistence) ProbeHistory(a string, page int) (historyPage, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	records := append([]historyRecord(nil), p.state.Probes[a]...)
+	sortHistoryNewestFirst(records)
+	return historyPageOf(a, page, records), nil
+}
+
+func (p *localPersistence) ClearProbeHistory(a string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, record := range p.state.Probes[a] {
+		delete(p.state.Bodies, bodyKey(a, record.ID))
+	}
+	delete(p.state.Probes, a)
+	return p.save()
+}
+
+func (p *localPersistence) SaveSession(session credentialSession) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.state.Sessions[bodyKey(session.AuthIndex, session.Egress)] = session
+	return p.save()
+}
+
+func (p *localPersistence) Session(a, egress string) (credentialSession, bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	session, ok := p.state.Sessions[bodyKey(a, egress)]
+	return session, ok, nil
+}
+
 func (p *localPersistence) History(a string, page int) (historyPage, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -162,6 +221,15 @@ func (p *localPersistence) DeleteCredentialData(a string) error {
 	delete(p.state.Rules, a)
 	p.dropBodiesLocked(a)
 	delete(p.state.History, a)
+	for _, record := range p.state.Probes[a] {
+		delete(p.state.Bodies, bodyKey(a, record.ID))
+	}
+	delete(p.state.Probes, a)
+	for key, session := range p.state.Sessions {
+		if session.AuthIndex == a {
+			delete(p.state.Sessions, key)
+		}
+	}
 	for k, r := range p.state.TurnStates {
 		if r.AuthIndex == a {
 			delete(p.state.TurnStates, k)

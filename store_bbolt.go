@@ -22,7 +22,19 @@ var (
 	// decodes every record in the bucket to order it; carrying payloads there
 	// would mean reading megabytes to render a list that shows none of them.
 	historyBodiesBucket = []byte("history_bodies")
+	// Probe rows are bounded separately from request rows: a probe that runs
+	// every few seconds would otherwise evict the real traffic within the hour.
+	// Bodies are shared, because record ids do not collide and each appender
+	// prunes the ones it evicts.
+	probeHistoryBucket = []byte("probe_history")
+	// One cookie jar per (credential, egress), flat, because there are only
+	// ever a handful and they are read one at a time.
+	sessionsBucket = []byte("sessions")
 )
+
+func sessionKey(authIndex, egress string) []byte {
+	return []byte(authIndex + "\x00" + egress)
+}
 
 type boltPersistence struct{ db *bolt.DB }
 
@@ -43,6 +55,12 @@ func openPersistence(path string) (persistence, error) {
 			return err
 		}
 		if _, err := tx.CreateBucketIfNotExists(historyBodiesBucket); err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucketIfNotExists(probeHistoryBucket); err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucketIfNotExists(sessionsBucket); err != nil {
 			return err
 		}
 		_, err := tx.CreateBucketIfNotExists(turnStatesBucket)
@@ -136,6 +154,10 @@ func historyChild(tx *bolt.Tx, authIndex string, create bool) (*bolt.Bucket, err
 	return childBucket(tx, historyBucket, authIndex, create)
 }
 
+func probeHistoryChild(tx *bolt.Tx, authIndex string, create bool) (*bolt.Bucket, error) {
+	return childBucket(tx, probeHistoryBucket, authIndex, create)
+}
+
 func bodiesChild(tx *bolt.Tx, authIndex string, create bool) (*bolt.Bucket, error) {
 	return childBucket(tx, historyBodiesBucket, authIndex, create)
 }
@@ -158,7 +180,20 @@ func childBucket(tx *bolt.Tx, name []byte, authIndex string, create bool) (*bolt
 	return root.CreateBucketIfNotExists([]byte(authIndex))
 }
 
+// childFunc selects which family of buckets a record family lives in, so the
+// request history and the probe history share one appender and one prune loop
+// while keeping separate limits.
+type childFunc func(*bolt.Tx, string, bool) (*bolt.Bucket, error)
+
 func (p *boltPersistence) AppendHistory(record historyRecord) error {
+	return p.appendRecord(record, historyChild, historyLimit)
+}
+
+func (p *boltPersistence) AppendProbeHistory(record historyRecord) error {
+	return p.appendRecord(record, probeHistoryChild, probeHistoryLimit)
+}
+
+func (p *boltPersistence) appendRecord(record historyRecord, child childFunc, limit int) error {
 	record.BeforeHeaders = redactHeaders(record.BeforeHeaders)
 	record.AfterHeaders = redactHeaders(record.AfterHeaders)
 	record.ResponseHeaders = redactHeaders(record.ResponseHeaders)
@@ -174,7 +209,7 @@ func (p *boltPersistence) AppendHistory(record historyRecord) error {
 		}
 	}
 	return p.db.Update(func(tx *bolt.Tx) error {
-		b, err := historyChild(tx, record.AuthIndex, true)
+		b, err := child(tx, record.AuthIndex, true)
 		if err != nil {
 			return err
 		}
@@ -208,7 +243,7 @@ func (p *boltPersistence) AppendHistory(record historyRecord) error {
 		for k, _ := countCursor.First(); k != nil; k, _ = countCursor.Next() {
 			count++
 		}
-		for count > historyLimit {
+		for count > limit {
 			c := b.Cursor()
 			k, v := c.First()
 			if k == nil {
@@ -255,14 +290,22 @@ func (p *boltPersistence) HistoryBody(authIndex, id string) (bodyRecord, bool, e
 }
 
 func (p *boltPersistence) History(authIndex string, page int) (historyPage, error) {
+	return p.readHistory(authIndex, page, historyChild)
+}
+
+func (p *boltPersistence) ProbeHistory(authIndex string, page int) (historyPage, error) {
+	return p.readHistory(authIndex, page, probeHistoryChild)
+}
+
+func (p *boltPersistence) readHistory(authIndex string, page int, child childFunc) (historyPage, error) {
 	result := historyPage{AuthIndex: authIndex, Page: max(page, 1), PageSize: pageSize, Items: []historyRecord{}}
 	err := p.db.View(func(tx *bolt.Tx) error {
-		b, _ := historyChild(tx, authIndex, false)
+		b, _ := child(tx, authIndex, false)
 		if b == nil {
 			return nil
 		}
-		// The bucket holds at most historyLimit records, so reading it whole to
-		// order it by start time costs less than the page it serves.
+		// The bucket is bounded, so reading it whole to order it by start time
+		// costs less than the page it serves.
 		records := make([]historyRecord, 0, b.Stats().KeyN)
 		if err := b.ForEach(func(_, v []byte) error {
 			var rec historyRecord
@@ -280,8 +323,67 @@ func (p *boltPersistence) History(authIndex string, page int) (historyPage, erro
 	})
 	return result, err
 }
+
+func (p *boltPersistence) ClearProbeHistory(authIndex string) error {
+	return p.db.Update(func(tx *bolt.Tx) error {
+		root := tx.Bucket(probeHistoryBucket)
+		if root == nil || root.Bucket([]byte(authIndex)) == nil {
+			return nil
+		}
+		return root.DeleteBucket([]byte(authIndex))
+	})
+}
+
+func (p *boltPersistence) SaveSession(session credentialSession) error {
+	raw, err := json.Marshal(session)
+	if err != nil {
+		return err
+	}
+	return p.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists(sessionsBucket)
+		if err != nil {
+			return err
+		}
+		return bucket.Put(sessionKey(session.AuthIndex, session.Egress), raw)
+	})
+}
+
+func (p *boltPersistence) Session(authIndex, egress string) (credentialSession, bool, error) {
+	var out credentialSession
+	found := false
+	err := p.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(sessionsBucket)
+		if bucket == nil {
+			return nil
+		}
+		raw := bucket.Get(sessionKey(authIndex, egress))
+		if raw == nil {
+			return nil
+		}
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return fmt.Errorf("decode session: %w", err)
+		}
+		found = true
+		return nil
+	})
+	return out, found, err
+}
 func (p *boltPersistence) ClearHistory(authIndex string) error {
 	return p.db.Update(func(tx *bolt.Tx) error {
+		if bucket := tx.Bucket(sessionsBucket); bucket != nil {
+			prefix := sessionKey(authIndex, "")
+			cursor := bucket.Cursor()
+			for k, _ := cursor.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, _ = cursor.Next() {
+				if err := cursor.Delete(); err != nil {
+					return err
+				}
+			}
+		}
+		if probes := tx.Bucket(probeHistoryBucket); probes != nil && probes.Bucket([]byte(authIndex)) != nil {
+			if err := probes.DeleteBucket([]byte(authIndex)); err != nil {
+				return err
+			}
+		}
 		if payloads := tx.Bucket(historyBodiesBucket); payloads != nil && payloads.Bucket([]byte(authIndex)) != nil {
 			if err := payloads.DeleteBucket([]byte(authIndex)); err != nil {
 				return err

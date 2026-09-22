@@ -54,8 +54,42 @@ type headerRule struct {
 	// StateTTLSeconds is how long a pooled state counts as fresh for this
 	// credential. Zero means defaultStateTTLSeconds, which is what every rule
 	// saved before the field existed carries.
-	StateTTLSeconds int       `json:"state_ttl_seconds,omitempty"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	StateTTLSeconds int `json:"state_ttl_seconds,omitempty"`
+
+	// ProbeEnabled keeps the pool warm on a timer instead of waiting for a
+	// degraded response to react to. It is mutually exclusive with
+	// RetryOnDegraded: both fetch states on the same credential, and running
+	// them together would have two schedules competing for the same pool.
+	ProbeEnabled bool `json:"probe_enabled,omitempty"`
+	// The window the probe may run in, as minutes into a UTC day. Equal values
+	// or both zero mean all day; start greater than end crosses midnight,
+	// which a local-time window routinely becomes once converted.
+	ProbeWindowStartMinute int `json:"probe_window_start_minute,omitempty"`
+	ProbeWindowEndMinute   int `json:"probe_window_end_minute,omitempty"`
+	// Which models to keep warm. Required while the probe is on: a probe with
+	// no models has nothing to do.
+	ProbeModels []string `json:"probe_models,omitempty"`
+	// Empty means direct; each probe request selects one at random, the same
+	// way a retry does.
+	ProbeProxies []string `json:"probe_proxies,omitempty"`
+	// ProbeCookieMode decides which cookie jar a probe request presents, which
+	// only has one right answer once the egress is known -- see probe.go. With
+	// no proxies configured this is forced to probeCookieCredential; with
+	// proxies it must be chosen, because the wrong choice sends a cookie bound
+	// to one IP out through another.
+	ProbeCookieMode string `json:"probe_cookie_mode,omitempty"`
+	// How long after the last live request the credential still counts as in
+	// use. Past it the probe stops rather than keeping an idle account warm.
+	ProbeCookieTTLSeconds int `json:"probe_cookie_ttl_seconds,omitempty"`
+	// The gap between the end of one probe task and the start of the next.
+	ProbeIntervalSeconds int `json:"probe_interval_seconds,omitempty"`
+	// ProbeResolveExitIP asks for the exact egress address behind a proxy. It
+	// cannot be answered under a rotating pool -- the resolver reaches a
+	// different host and therefore a different exit -- so it is left blank
+	// there rather than answered wrongly.
+	ProbeResolveExitIP bool `json:"probe_resolve_exit_ip,omitempty"`
+
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type credentialSnapshot struct {
@@ -135,6 +169,17 @@ type historyRecord struct {
 	// whole series is a single record, not one per attempt.
 	RetryAttempts      int    `json:"retry_attempts,omitempty"`
 	TurnStateSessionID string `json:"turn_state_session_id,omitempty"`
+	// What a probe chose for itself. The egress is the proxy it went out
+	// through (empty means direct); the region is the datacentre the response
+	// came back through, read from Cf-Ray, which is free and accurate for this
+	// request even when the exact address is not knowable.
+	ProbeEgress     string `json:"probe_egress,omitempty"`
+	ProbeExitRegion string `json:"probe_exit_region,omitempty"`
+	ProbeExitIP     string `json:"probe_exit_ip,omitempty"`
+	ProbeCookieMode string `json:"probe_cookie_mode,omitempty"`
+	// ProbePrimed reports that this probe spent an extra request obtaining a
+	// cookie for its connection, which is the other half of its quota cost.
+	ProbePrimed bool `json:"probe_primed,omitempty"`
 	// Bodies travel on the record only between the request path and the store,
 	// which splits them into their own bucket. They are absent from a record
 	// read back by History, because a page of fifty records would otherwise
@@ -174,6 +219,7 @@ const (
 	originLive  = "live"
 	originTest  = "test"
 	originRetry = "retry"
+	originProbe = "probe"
 )
 
 type pendingAttempt struct {
@@ -305,3 +351,55 @@ func appendBody(buffer []byte, total int, chunk []byte) ([]byte, int) {
 	}
 	return buffer, total
 }
+
+// The three ways a probe request can present a cookie. Which one is right
+// follows from what the egress is, not from preference:
+//
+//   - probeCookieCredential uses the jar the live traffic fills. Correct when
+//     the probe goes out the same way live traffic does, which is the case
+//     when no proxy is configured.
+//   - probeCookieStaticProxy keeps a jar per proxy URL. Correct when that URL
+//     always exits from the same address, because a Cloudflare bot token is
+//     bound to the address that obtained it.
+//   - probeCookieRotatingProxy keeps no jar at all. A rotating pool exits from
+//     a different address per connection, so a stored cookie is always the
+//     wrong address's; instead each probe primes a cookie and uses it over the
+//     same connection, which a SOCKS5 tunnel guarantees is one exit.
+const (
+	probeCookieCredential    = "credential"
+	probeCookieStaticProxy   = "static_proxy"
+	probeCookieRotatingProxy = "rotating_proxy"
+)
+
+func validProbeCookieMode(mode string) bool {
+	switch mode {
+	case probeCookieCredential, probeCookieStaticProxy, probeCookieRotatingProxy:
+		return true
+	}
+	return false
+}
+
+// credentialSession is one cookie jar: what a given egress last handed back,
+// and when. A jar is only ever written from a response that came back through
+// the egress it is keyed to, so a proxied probe can never overwrite the jar
+// the live traffic fills.
+type credentialSession struct {
+	AuthIndex string    `json:"auth_index"`
+	Egress    string    `json:"egress"`
+	Cookie    string    `json:"cookie,omitempty"`
+	RefreshAt time.Time `json:"refreshed_at"`
+	// LastLiveAt is only set on the direct jar and only by real client
+	// traffic. It answers "is this account still in use", which is a different
+	// question from "is this cookie still fresh" and must not share a field
+	// with it: a probe that refreshed its own clock would keep an abandoned
+	// account warm forever.
+	LastLiveAt time.Time `json:"last_live_at,omitempty"`
+}
+
+const (
+	probeHistoryLimit       = 500
+	defaultProbeIntervalSec = 30
+	minProbeIntervalSec     = 1
+	minProbeCookieTTLSec    = 1
+	minutesPerDay           = 24 * 60
+)
