@@ -27,10 +27,10 @@ func TestProbeWindow(t *testing.T) {
 		return time.Date(2026, 9, 22, hour, minute, 0, 0, time.UTC)
 	}
 	cases := []struct {
-		name        string
-		start, end  int
-		when        time.Time
-		want        bool
+		name       string
+		start, end int
+		when       time.Time
+		want       bool
 	}{
 		{"unset is all day", 0, 0, at(3, 0), true},
 		{"equal bounds are all day", 540, 540, at(3, 0), true},
@@ -162,7 +162,6 @@ func TestProbeCookieModeFallsBackOnlyWithoutProxies(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
-
 
 // probeRows drains the writer the way lastAttempt does: the queue batches, so
 // a test that reads straight from the store sees nothing yet.
