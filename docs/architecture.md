@@ -101,7 +101,20 @@ ABI 只允许替换 Headers / Body 与按 chunk 丢弃（`DropChunk`），不能
 
 范围由 `reject_degraded_models` 指定：空列表匹配全部，非空与 `sentModel(Model, RequestedModel)` 精确比较。响应拦截不依赖请求改写开关。只有被拦截且启用 `retry_on_degraded` 的请求才启动后台最小请求；`retry_attempts` 是最大次数，拿到合格 state 后提前结束。
 
-重试的 Header 由 `retryHeaders` 组装：`Content-Type` / `Accept` / `Originator` / `Authorization` / `Chatgpt-Account-Id`，再加上被拦截那次请求的 `Cookie`（`joinCookieHeader` 把 HTTP/2 拆开的多段按 `; ` 拼回）。Cookie 存在 `pendingAttempt.clientCookie` 上，不是 `historyRecord` 的字段，因此不会被序列化或落盘；`recordRetrySeries` 写历史时走 `redactHeaders`。
+重试的 Header 由 `retryHeaders` 组装：`Content-Type` / `Accept` / `Originator` / `Authorization` / `Chatgpt-Account-Id`，再加上会话 `Cookie`：
+
+```text
+request.intercept_after
+ -> pendingAttempt.clientCookie = joinCookieHeader(req.Headers)   // HTTP/2 多段按 "; " 拼回
+response（header-init / intercept_after）判定拦截且要重试
+ -> clientCookie = applySetCookies(clientCookie, responseHeaders)
+    -> 只取 name=value，丢掉 Path/Domain/Expires/Secure/HttpOnly/SameSite
+    -> 同名覆盖且保持原位置；新签发的追加在末尾
+    -> 空值或 Max-Age<=0 -> 删除该 crumb（不回空值）
+ -> scheduleDegradedRetry
+```
+
+`clientCookie` 只存在于在途 `pendingAttempt` 上，不是 `historyRecord` 的字段。`Cookie` 与 `Set-Cookie` 自 v0.20.1 起不在 `exactSensitiveHeaders` 中，因此 `redactHeaders` 按明文记录它们——这是为了能比对重试与线上请求的会话；代价是 bbolt 文件里含可用会话。
 
 ## 测试请求
 

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -292,31 +293,121 @@ func headerTurnState(h http.Header) string {
 	return headerValueFold(h, turnStateHeader)
 }
 
+// headerValuesFold returns every value under a header name, matching the name
+// case-insensitively the way the rest of this file reads headers.
+func headerValuesFold(h http.Header, name string) []string {
+	if h == nil {
+		return nil
+	}
+	if values := h.Values(name); len(values) > 0 {
+		return values
+	}
+	for key, values := range h {
+		if strings.EqualFold(key, name) {
+			return values
+		}
+	}
+	return nil
+}
+
 // joinCookieHeader returns the request's cookies as a single header value.
 // HTTP/2 may split Cookie into several crumbs, and the wire form joins them
 // with "; ", so a request that arrives split is put back together rather than
-// half-copied. Header names are matched case-insensitively, the same way the
-// rest of this file reads them.
+// half-copied.
 func joinCookieHeader(h http.Header) string {
-	if h == nil {
-		return ""
-	}
-	values := h.Values("Cookie")
-	if len(values) == 0 {
-		for key, candidate := range h {
-			if strings.EqualFold(key, "Cookie") {
-				values = candidate
-				break
-			}
-		}
-	}
-	parts := make([]string, 0, len(values))
-	for _, value := range values {
+	parts := make([]string, 0, 2)
+	for _, value := range headerValuesFold(h, "Cookie") {
 		if trimmed := strings.TrimSpace(value); trimmed != "" {
 			parts = append(parts, trimmed)
 		}
 	}
 	return strings.Join(parts, "; ")
+}
+
+// applySetCookies folds a response's Set-Cookie headers into the cookie the
+// retry will send. The upstream can rotate or issue a session cookie on the
+// very response being withheld, so sending back only what the request carried
+// would present a session the upstream has already moved past.
+//
+// Only the name=value crumb is taken. Path, Domain, Expires and the flags say
+// how a browser should store the cookie, not what goes back on the wire. A
+// crumb the response clears -- empty value, or max-age at or below zero -- is
+// dropped rather than echoed back empty. Order follows the request, with
+// anything newly issued appended.
+func applySetCookies(cookie string, responseHeaders http.Header) string {
+	assignments := headerValuesFold(responseHeaders, "Set-Cookie")
+	if len(assignments) == 0 {
+		return cookie
+	}
+	order := make([]string, 0, 8)
+	placed := make(map[string]bool, 8)
+	values := make(map[string]string, 8)
+	assign := func(name, value string) {
+		if !placed[name] {
+			order = append(order, name)
+			placed[name] = true
+		}
+		values[name] = value
+	}
+	for _, crumb := range strings.Split(cookie, ";") {
+		if name, value, ok := cutCookieCrumb(crumb); ok {
+			assign(name, value)
+		}
+	}
+	for _, assignment := range assignments {
+		name, value, cleared := parseSetCookie(assignment)
+		if name == "" {
+			continue
+		}
+		if cleared {
+			// Kept in the order, so re-issuing it later does not duplicate it.
+			delete(values, name)
+			placed[name] = true
+			continue
+		}
+		assign(name, value)
+	}
+	parts := make([]string, 0, len(order))
+	for _, name := range order {
+		if value, ok := values[name]; ok {
+			parts = append(parts, name+"="+value)
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
+// parseSetCookie reads what a Set-Cookie header assigns, and whether it is
+// clearing the cookie rather than setting one.
+func parseSetCookie(assignment string) (name, value string, cleared bool) {
+	segments := strings.Split(assignment, ";")
+	name, value, ok := cutCookieCrumb(segments[0])
+	if !ok {
+		return "", "", false
+	}
+	if value == "" {
+		return name, "", true
+	}
+	for _, attribute := range segments[1:] {
+		key, raw, found := strings.Cut(attribute, "=")
+		if !found || !strings.EqualFold(strings.TrimSpace(key), "max-age") {
+			continue
+		}
+		if seconds, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil && seconds <= 0 {
+			return name, "", true
+		}
+	}
+	return name, value, false
+}
+
+// cutCookieCrumb splits one name=value crumb. A cookie value may itself
+// contain "=", so only the first one separates the pair.
+func cutCookieCrumb(crumb string) (string, string, bool) {
+	name, value, found := strings.Cut(strings.TrimSpace(crumb), "=")
+	name = strings.TrimSpace(name)
+	if !found || name == "" {
+		return "", "", false
+	}
+	return name, strings.TrimSpace(value), true
 }
 
 // clientSessionID matches the header the Codex client uses to identify a

@@ -318,9 +318,8 @@ func TestWithheldResponseWaitsForTheRetrySeries(t *testing.T) {
 
 // The retry answers for a request that was withheld, so it has to look like the
 // same caller to the upstream: the Cookie of that request travels with the
-// series. What lands in the history is redacted, like every other piece of
-// credential material the plugin records.
-func TestRetryCarriesTheInterceptedCookieAndRecordsItRedacted(t *testing.T) {
+// series, and is recorded as sent so the two can be compared.
+func TestRetryCarriesTheInterceptedCookie(t *testing.T) {
 	resetState(t)
 	resetTurnStates(t)
 	good := fernetToken(0x80, time.Now(), 1)
@@ -351,19 +350,13 @@ func TestRetryCarriesTheInterceptedCookieAndRecordsItRedacted(t *testing.T) {
 	if rec.Origin != originRetry {
 		t.Fatalf("the last row should be the retry: %#v", rec)
 	}
-	if got := rec.BeforeHeaders.Get("Cookie"); got != "[REDACTED]" {
-		t.Fatalf("the recorded cookie must be redacted, got %q", got)
+	if got := rec.BeforeHeaders.Get("Cookie"); got != cookie {
+		t.Fatalf("the recorded cookie should be what was sent, got %q", got)
 	}
-	// The record travels through JSON on its way to the store, so the raw value
-	// must not survive anywhere in it.
-	raw, err := json.Marshal(rec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, secret := range []string{"session-value", "device-value"} {
-		if strings.Contains(string(raw), secret) {
-			t.Fatalf("the serialised record leaks %q: %s", secret, raw)
-		}
+	// Authorization travels on the same request and is still redacted: reading
+	// cookies was the ask, not reading everything.
+	if got := rec.BeforeHeaders.Get("Authorization"); got != "Bearer [REDACTED]" {
+		t.Fatalf("Authorization must stay redacted, got %q", got)
 	}
 }
 
@@ -408,5 +401,75 @@ func TestSplitCookieCrumbsAreRejoined(t *testing.T) {
 				t.Fatalf("got %q want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// The withheld response is itself a chance for the upstream to rotate or issue
+// the session cookie, so the retry sends the request's cookie updated by what
+// that response set -- not the copy the request arrived with.
+func TestSetCookieFromTheResponseUpdatesTheRetryCookie(t *testing.T) {
+	cases := []struct {
+		name     string
+		request  string
+		response []string
+		want     string
+	}{
+		{"nothing set leaves the request cookie alone", "a=1; b=2", nil, "a=1; b=2"},
+		{"a rotated value replaces it in place", "a=1; b=2", []string{"a=9; Path=/; HttpOnly"}, "a=9; b=2"},
+		{"a new cookie is appended", "a=1", []string{"c=3; Secure"}, "a=1; c=3"},
+		{"issued with no request cookie", "", []string{"c=3; Path=/"}, "c=3"},
+		{"attributes are not sent back", "", []string{"s=v; Expires=Wed, 21 Oct 2026 07:28:00 GMT; SameSite=Lax"}, "s=v"},
+		{"an emptied cookie is dropped, not echoed empty", "a=1; b=2", []string{"a=; Path=/"}, "b=2"},
+		{"max-age zero is a deletion", "a=1; b=2", []string{"b=x; Max-Age=0"}, "a=1"},
+		{"a later assignment wins", "a=1", []string{"a=2", "a=3"}, "a=3"},
+		{"cleared then reissued appears once", "a=1", []string{"a=; Max-Age=0", "a=4"}, "a=4"},
+		{"a value containing = survives", "", []string{"t=eyJhbGc=.payload=; Path=/"}, "t=eyJhbGc=.payload="},
+		{"several headers all apply", "a=1", []string{"b=2", "c=3"}, "a=1; b=2; c=3"},
+		{"a malformed assignment is skipped", "a=1", []string{"garbage", "b=2"}, "a=1; b=2"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			headers := http.Header{}
+			for _, value := range tc.response {
+				headers.Add("Set-Cookie", value)
+			}
+			if got := applySetCookies(tc.request, headers); got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// End to end: the cookie the retry sends is the merged one, and the history row
+// shows it, so the session a retry presented can be compared afterwards.
+func TestRetrySendsTheCookieTheResponseRotated(t *testing.T) {
+	resetState(t)
+	resetTurnStates(t)
+	sent := retryStub(t, "team", []string{fernetToken(0x80, time.Now(), 1)})
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, RejectDegradedResponse: true, RetryOnDegraded: true, RetryAttempts: 1}
+	state.mu.Unlock()
+
+	if _, err := interceptAfter(requestInterceptRequest{RequestID: "r", Model: "gpt-5.6-luna",
+		Headers:  http.Header{"Cookie": {"session=old; oai-did=device"}},
+		Metadata: map[string]any{"selected_auth_index": "idx-a", "selected_auth_id": "auth-a"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200, ResponseHeaders: http.Header{
+		turnStateHeader: {fernetToken(0x80, time.Now(), 40)},
+		"Set-Cookie":    {"session=rotated; Path=/; HttpOnly", "issued=fresh; Secure"},
+	}})
+
+	if len(*sent) != 1 {
+		t.Fatalf("one attempt expected, made %d", len(*sent))
+	}
+	const want = "session=rotated; oai-did=device; issued=fresh"
+	if got := (*sent)[0].Headers.Get("Cookie"); got != want {
+		t.Fatalf("retry sent %q, want %q", got, want)
+	}
+	if got := lastAttempt(t).BeforeHeaders.Get("Cookie"); got != want {
+		t.Fatalf("the history row shows %q, want %q", got, want)
 	}
 }

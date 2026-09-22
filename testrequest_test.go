@@ -69,7 +69,7 @@ func TestRealTestRequestReportsUpstreamModelMismatchAndRecordsIt(t *testing.T) {
 		sent = request
 		body := "event: response.created\ndata: {\"response\":{\"model\":\"gpt-5.6-luna\"}}\n\n" +
 			"event: response.completed\ndata: {\"response\":{\"model\":\"gpt-5.6-luna-mini\"}}\n\n"
-		return hostHTTPResponse{StatusCode: 200, Headers: map[string][]string{"Set-Cookie": {"secret"}, "X-Request-Id": {"r1"}}, Body: []byte(body)}, nil
+		return hostHTTPResponse{StatusCode: 200, Headers: map[string][]string{"X-Api-Key": {"secret"}, "Set-Cookie": {"session=kept"}, "X-Request-Id": {"r1"}}, Body: []byte(body)}, nil
 	}
 	result, err := runTestRequest(testRequest{AuthIndex: "idx-a", Model: "gpt-5.6-luna", Stream: true, Record: true, Headers: map[string]string{"x-probe": "1"}})
 	if err != nil {
@@ -100,8 +100,11 @@ func TestRealTestRequestReportsUpstreamModelMismatchAndRecordsIt(t *testing.T) {
 	if got := result.BeforeHeaders.Get("Authorization"); got != "Bearer [REDACTED]" {
 		t.Fatalf("returned headers must be redacted, got %q", got)
 	}
-	if got := result.ResponseHeaders.Get("Set-Cookie"); got != "[REDACTED]" {
+	if got := result.ResponseHeaders.Get("X-Api-Key"); got != "[REDACTED]" {
 		t.Fatalf("response secret not redacted: %q", got)
+	}
+	if got := result.ResponseHeaders.Get("Set-Cookie"); got != "session=kept" {
+		t.Fatalf("Set-Cookie should be recorded verbatim: %q", got)
 	}
 
 	state.mu.Lock()

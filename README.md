@@ -18,7 +18,7 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - 每个 credential 保留最近 50 条 attempt，10 条/页；点击记录从右侧抽屉打开详情，列表不动、所选行保持高亮。
 - retry A → B 分别记录；被替换 attempt 标记 `switched`，不猜测 401/429。
 - 记录重写前/后的 Request Header 与 upstream Response Header。
-- Authorization、Cookie、API key、token/secret/password 等在写盘前永久脱敏。
+- Authorization、API key、token/secret/password 等在写盘前永久脱敏；`Cookie` / `Set-Cookie` 自 v0.20.1 起按明文记录（见「重试会带上会话 Cookie」）。
 - 不保存 request / response body。
 - 自定义测试请求：从凭证可用模型中选择模型、发送默认 `hi` 或自定义 JSON、预览改写结果，或向自定义端点发一次真实请求。
 - 模型一致性核对：记录上游实际声明的模型，与发出的模型比对，不一致时标红。
@@ -71,7 +71,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.20.0.so` | `codex-header-rewrite` | `0.20.0` |
+| `codex-header-rewrite-v0.20.1.so` | `codex-header-rewrite` | `0.20.1` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -84,7 +84,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.20.0.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.20.1.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -215,7 +215,7 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 **为什么会出现跨号回带**：账号不是客户端选的。CPA 的 `routing.strategy` 默认为 `round-robin`，**按请求**轮换凭证，而 `routing.session-affinity` 默认关闭 —— 同一段对话的相邻两轮很可能由不同账号伺服。客户端只看到一个端点，它只是把上游给它的 `X-Codex-Turn-State` 原样带回来，于是 A 号铸的 state 被发给了 B 号。即使打开 `session-affinity`，CPA 在绑定凭证不可用时仍会自动故障转移（401 / 429 / 冷却），回合链照样换号。跨模型同理：state 绑在铸造它的模型上，会话中途换模型或发生回退后，回带的仍是旧模型的 state。单机直连 Codex 两种都不会发生——那里只有一个账号。
 
-**State 有效期（v0.20.0）**：`state_ttl_seconds` 是 `headerRule` 的字段，按凭证保存，取值 5–7200 秒，留空（存为 `0`）按默认 200 秒。之前这是编译进去的 1 小时常量，但这个窗口上游从没公开过，而且各账号表现不同，所以改成面板里可填的数字。两个凭证可以各填各的，同一条 blob 的年龄按当时服务这次请求的那条规则判定。超出范围的值保存时直接报错，不会被悄悄改写成别的数——否则面板上显示的就不是你填的那个窗口了。
+**State 有效期（v0.20.1）**：`state_ttl_seconds` 是 `headerRule` 的字段，按凭证保存，取值 5–7200 秒，留空（存为 `0`）按默认 200 秒。之前这是编译进去的 1 小时常量，但这个窗口上游从没公开过，而且各账号表现不同，所以改成面板里可填的数字。两个凭证可以各填各的，同一条 blob 的年龄按当时服务这次请求的那条规则判定。超出范围的值保存时直接报错，不会被悄悄改写成别的数——否则面板上显示的就不是你填的那个窗口了。
 
 窗口决定的不是「是否注入」：**过期的 state 照样会注入**，因为窗口是经验值。它决定的是什么时候把「注入后仍降智」当成这条 state 已经失效的证据（见下文）。把它调短，失效的 state 就更快被清出池子；调长则更保守。
 
@@ -256,11 +256,15 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 **注入后的回执会反过来校验池子**：如果注入的那条 state 在注入时已经**超过该凭证的 `state_ttl_seconds`**，而这次上游铸回来的仍是**疑似降智**的 state，说明这条旧 state 已经带不动回合链了——它会立刻从池中删除（内存和 bbolt 一起），历史里标「注入后仍降智 · 已失效」，下一次请求不再注入它，让上游重新签发。窗口内的 state 出现同样结果时不动它：一次降智回合不足以否定一条新鲜的 state。若这期间池里已经换成了更新的 state，只删注入的那条，不误伤新的。
 
-**重试会带上被拦截请求的 Cookie（v0.20.0）**：重试要在上游看来是同一个调用方，而 Cookie 是原请求里唯一承载这层会话身份的东西，所以被拦截那次请求的 `Cookie` 会随重试一起发出（HTTP/2 拆成多段时按 `; ` 拼回完整值）。原请求没带 Cookie 就不带，不会凭空造一个空头。它只存在于内存中的在途 attempt 上，不进 `historyRecord`，因此不会被序列化或落盘；写进历史的那份和其他凭证材料一样脱敏。
+**重试会带上会话 Cookie（v0.20.1）**：重试要在上游看来是同一个调用方，而 Cookie 是原请求里唯一承载这层会话身份的东西。重试发出的 `Cookie` = **被拦截请求带的 Cookie**，再叠加**这次被拦截响应里 `Set-Cookie` 的赋值**——被拦下的那次响应本身就可能轮换或下发会话 cookie，只回放请求里那份旧的，等于用一个上游已经翻过页的会话去问。
 
-> 顺带修掉一个脱敏漏洞：`redactHeaderValue` 原本会保留第一个空格之前的内容（为了让 `Authorization` 显示成 `Bearer [REDACTED]`），而 Cookie 的第一段本身就是 `name=value`，于是整条 cookie 被写进了历史。现在只有 `Authorization` / `Proxy-Authorization` 保留 scheme，其余敏感头整体替换为 `[REDACTED]`。
+合并规则：只取 `name=value`，`Path` / `Domain` / `Expires` / `Secure` / `HttpOnly` / `SameSite` 这些只描述浏览器该怎么存，不上线；同名覆盖且保持原位置，新签发的追加在后面；`Set-Cookie` 把值置空或 `Max-Age<=0` 视为删除，直接丢掉而不是回一个空值；同名多次赋值以最后一次为准；cookie 值里含 `=`（比如 base64）不会被截断。HTTP/2 把 `Cookie` 拆成多段时按 `; ` 拼回。请求和响应都没有 cookie 就不带这个头。
 
-**重试请求与线上请求并不等价**：重试发的是最小请求——只有 `Content-Type` / `Accept` / `Originator` / `Authorization` / `Chatgpt-Account-Id`（以及原请求带了的 `Cookie`），`tools: []`、提示词 `hi`，不带 `X-Codex-Turn-Metadata`、`X-Codex-Beta-Features`、`X-Openai-Internal-Codex-Responses-Lite`，也不带会话上下文；线上请求这些全都带，请求体可达数 MB。上游据此铸出的 state 长度不同，所以**重试拿到"不降智"不等于该账号已恢复**，详情页现在会把重试实际发出与收到的 Header 一并显示，便于自行比对。
+**Cookie 在历史里是明文（v0.20.1）**：`Cookie` 与 `Set-Cookie` 不再脱敏——要比对重试和线上请求各自用的是哪个会话，只能看到原值才行。代价要清楚：**数据库文件里就有可用的会话**，`data_path` 下那个 `.db` 的备份或拷贝等同于带走会话，请按凭证文件的标准对待它。`Authorization`、`Proxy-Authorization`、api-key、token/secret/password 等仍然脱敏。
+
+> 顺带修掉一个脱敏漏洞：`redactHeaderValue` 原本会保留第一个空格之前的内容（为了让 `Authorization` 显示成 `Bearer [REDACTED]`），对没有 scheme 的敏感头会漏出第一段。现在只有 `Authorization` / `Proxy-Authorization` 保留 scheme，其余敏感头整体替换为 `[REDACTED]`。
+
+**重试请求与线上请求并不等价**：重试发的是最小请求——只有 `Content-Type` / `Accept` / `Originator` / `Authorization` / `Chatgpt-Account-Id`（以及合并后的 `Cookie`），`tools: []`、提示词 `hi`，不带 `X-Codex-Turn-Metadata`、`X-Codex-Beta-Features`、`X-Openai-Internal-Codex-Responses-Lite`，也不带会话上下文；线上请求这些全都带，请求体可达数 MB。上游据此铸出的 state 长度不同，所以**重试拿到"不降智"不等于该账号已恢复**，详情页现在会把重试实际发出与收到的 Header 一并显示，便于自行比对。
 
 命中注入的记录在历史里标「已注入」，差异视图里也能看到该 Header 是被新增或替换的。客户端本来带了一个不可复用的回带值时，注入会直接替换它 —— 一次响应里不会同时出现"设置"和"移除"同一个 Header 这种自相矛盾的指令。
 

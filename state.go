@@ -420,6 +420,10 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 	if attempt.rejecting && !attempt.retryScheduled {
 		if attempts := retryEnabledForLocked(attempt.AuthIndex); attempts > 0 {
 			attempt.retryScheduled = true
+			// This very response may have rotated or issued the session cookie,
+			// so the retry sends what the request carried updated by what the
+			// response set -- not the stale copy the request came in with.
+			attempt.clientCookie = applySetCookies(attempt.clientCookie, responseHeaders)
 			attempt.retryDone = scheduleDegradedRetry(attempt, attempts)
 		}
 	}

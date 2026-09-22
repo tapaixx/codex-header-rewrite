@@ -10,8 +10,14 @@ import (
 
 var tokenRE = regexp.MustCompile(`^[!#$%&'*+.^_` + "`" + `|~0-9A-Za-z-]+$`)
 
+// Cookie and Set-Cookie are deliberately absent: the operator asked to read
+// them, because comparing the session a retry presents against the one the
+// live request carried is the only way to tell the two apart. They are
+// recorded verbatim, which means a copy of the database carries usable
+// sessions -- that is the trade this makes. Bearer tokens and API keys are
+// still redacted.
 var exactSensitiveHeaders = map[string]struct{}{
-	"authorization": {}, "proxy-authorization": {}, "cookie": {}, "set-cookie": {},
+	"authorization": {}, "proxy-authorization": {},
 	"x-api-key": {}, "api-key": {}, "x-goog-api-key": {}, "x-auth-token": {},
 }
 var sensitiveHeaderFragments = []string{"token", "secret", "password", "credential", "api-key", "apikey"}

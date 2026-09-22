@@ -28,16 +28,17 @@ func TestRedactHeaders(t *testing.T) {
 	if out.Get("Authorization") != "Bearer [REDACTED]" || out.Get("X-Api-Key") != "[REDACTED]" || out.Get("X-Custom") != "visible" { t.Fatalf("out=%#v", out) }
 }
 
-// Only a scheme survives redaction. A Cookie has no scheme: its first crumb is
-// a name=value pair, and keeping everything before the first space published it.
+// Only an authorization scheme survives redaction; every other sensitive value
+// goes whole. Cookies are not redacted at all -- the operator reads them to
+// compare the session a retry presents against the live request's.
 func TestRedactionKeepsSchemesAndNothingElse(t *testing.T) {
 	cases := []struct{ name, value, want string }{
 		{"Authorization", "Bearer secret-token", "Bearer [REDACTED]"},
 		{"Authorization", "Basic dXNlcjpwYXNz", "Basic [REDACTED]"},
-		{"Cookie", "session=secret-value; oai-did=device", "[REDACTED]"},
-		{"Cookie", "a=1", "[REDACTED]"},
-		{"Set-Cookie", "session=secret-value; Path=/; HttpOnly", "[REDACTED]"},
+		{"Cookie", "session=secret-value; oai-did=device", "session=secret-value; oai-did=device"},
+		{"Set-Cookie", "session=secret-value; Path=/; HttpOnly", "session=secret-value; Path=/; HttpOnly"},
 		{"X-Auth-Token", "tok en", "[REDACTED]"},
+		{"X-Api-Key", "abc", "[REDACTED]"},
 	}
 	for _, tc := range cases {
 		if got := redactHeaderValue(tc.name, tc.value); got != tc.want {

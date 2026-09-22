@@ -142,7 +142,7 @@ func TestRetryAttemptsBelongToEachCredential(t *testing.T) {
 	if err != nil || r2.Headers.Get("X-Team") != "B" {
 		t.Fatalf("r2=%#v err=%v", r2, err)
 	}
-	observeResponse(responseInterceptRequest{RequestID: "req", StatusCode: 200, ResponseHeaders: http.Header{"Set-Cookie": {"secret"}, "X-Upstream": {"ok"}}})
+	observeResponse(responseInterceptRequest{RequestID: "req", StatusCode: 200, ResponseHeaders: http.Header{"X-Api-Key": {"secret"}, "Set-Cookie": {"session=kept"}, "X-Upstream": {"ok"}}})
 	completeRequest(requestCompletion{RequestID: "req", Outcome: "succeeded", StatusCode: 200, StartedAt: time.Now().Add(-time.Second), CompletedAt: time.Now()})
 	state.mu.Lock()
 	writer := state.writer
@@ -163,8 +163,12 @@ func TestRetryAttemptsBelongToEachCredential(t *testing.T) {
 	if pa.Items[0].BeforeHeaders.Get("Authorization") != "Bearer [REDACTED]" {
 		t.Fatalf("request secret not redacted %#v", pa.Items[0].BeforeHeaders)
 	}
-	if pb.Items[0].ResponseHeaders.Get("Set-Cookie") != "[REDACTED]" {
+	if pb.Items[0].ResponseHeaders.Get("X-Api-Key") != "[REDACTED]" {
 		t.Fatalf("response secret not redacted %#v", pb.Items[0].ResponseHeaders)
+	}
+	// Cookies are recorded as they were, so the session can be compared.
+	if pb.Items[0].ResponseHeaders.Get("Set-Cookie") != "session=kept" {
+		t.Fatalf("Set-Cookie should be recorded verbatim %#v", pb.Items[0].ResponseHeaders)
 	}
 }
 
