@@ -298,7 +298,7 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 	// The payload as it goes upstream. This plugin rewrites headers and never
 	// the body, so what arrives here is what is sent.
 	pr.current.requestBody, pr.current.requestBytes = maskRequestBody(req.Body), len(req.Body)
-	pr.current.RequestEffort = requestReasoningEffort(req.Body)
+	pr.current.RequestEffort = requestThinkingLevel(req.Body, req.SourceFormat, sentModel(req.Model, req.RequestedModel))
 	state.mu.Unlock()
 	return requestInterceptResponse{Headers: updates, ClearHeaders: clears}, nil
 }

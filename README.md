@@ -71,7 +71,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.21.9.so` | `codex-header-rewrite` | `0.21.9` |
+| `codex-header-rewrite-v0.21.10.so` | `codex-header-rewrite` | `0.21.10` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -84,7 +84,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.21.9.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.21.10.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -249,7 +249,33 @@ node scripts/make-preview.mjs
 
 终局事件（`response.completed` 等）的声明优先于过程中的声明。最外层是 JSON **数组**时会逐个元素读取，事件被包在 `data` 键下时也会往里看一层——这两种形状以前会整体读不到。
 
-**推理强度（v0.21.5）**：两种请求格式的说法不同 —— Codex Responses 给的是等级 `reasoning.effort`（low/medium/high/xhigh），Claude Messages 给的是 token 预算 `thinking.budget_tokens`（显示成 `10k` / `1.5k` / `800`），并且会明说关掉了（`type:"disabled"` 显示为空，因为没要求思考就没有等级可报）。两者与响应声明的 effort 分别记为 `request_effort` / `upstream_effort`，在模型链上以小一号的灰字跟在各自的模型名后面：`gpt-6-astra high → gpt-6-astra high`。它**不参与模型比对** —— effort 是一个设置，不是「哪个模型回答了」的声明，所以两边不同也不算不一致（有测试钉住这一点）。
+**推理强度（v0.21.10 起按 CPA 的口径）**：这一项不再自己解释，而是移植 CPA 的 `thinking.ExtractReasoningEffort` —— 宿主自己记用量时用的就是它，所以面板显示的等级和宿主会记录的是同一个。
+
+请求钩子跑在格式转换之前，body 是客户端自己的协议，五种说法都可能到：
+
+| 来源 | 字段 |
+|---|---|
+| 模型名后缀 | `model(high)` / `model(16384)` / `model(none)` / `model(auto)` —— **优先级高于 body**，与宿主一致（后缀由执行器在本钩子之后才剥掉） |
+| Codex / OpenAI Responses | `reasoning.effort`；`input[]` 里最后一个 `configuration_update` 的 `reasoning.effort` 更优先（会话中途改强度就靠它） |
+| Claude Messages | `thinking.type`（`disabled` 压过一切）、`thinking.budget_tokens`、adaptive 时的 `output_config.effort` |
+| OpenAI chat-completions | 顶层 `reasoning_effort` |
+| Gemini / Antigravity | `generationConfig.thinkingConfig.thinkingLevel` / `thinkingBudget`（含 Google Python SDK 的 snake_case 写法，Antigravity 多一层 `request.`） |
+
+**token 预算按宿主的阈值折算成等级**，而不是原样显示数字，这样不同客户端之间才可比：
+
+| 预算 | 等级 |
+|---|---|
+| `-1` | auto |
+| `0` | none |
+| 1–512 | minimal |
+| 513–1024 | low |
+| 1025–8192 | medium |
+| 8193–24576 | high |
+| > 24576 | xhigh |
+
+词表是 none / auto / minimal / low / medium / high / xhigh / max。「什么都没说」和「说了 none」是两个不同的答案，不会合并成一个。
+
+请求与响应各自的等级记为 `request_effort` / `upstream_effort`
 
 历史列表里模型名和 effort **都不会被遮住**：模型列的宽度按页面上最宽的那条链实测得出（`syncModelColumn`，与 sticky 偏移一样是测量而非猜测），表格自身的最小宽度跟着它走；视口放不下时由横向滚动让位，而不是裁掉文字。名字超过 520px 上限才退回省略号，完整值在详情里。
 
