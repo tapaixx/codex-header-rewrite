@@ -71,7 +71,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.21.8.so` | `codex-header-rewrite` | `0.21.8` |
+| `codex-header-rewrite-v0.21.9.so` | `codex-header-rewrite` | `0.21.9` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -84,7 +84,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.21.8.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.21.9.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -163,10 +163,12 @@ Request Header 标签页里「未改动的 N 个 Header」默认展开 —— �
 
 **按字段遮蔽**：写盘前替换为 `[MASKED N bytes]`，`N` 是被替换值序列化后的大小。遮蔽是递归的，嵌在任意层级的同名字段一样处理。两个方向遮的字段不同，各自只遮被指定的那些：
 
-| 方向 | 遮蔽的字段 |
-|---|---|
-| 请求体 | `input` |
-| 响应体 | `output`、`tools`（v0.21.7 起）、`usage`（v0.21.8 起） |
+请求钩子跑在格式转换**之前**，所以 body 仍然是**客户端自己的格式**；响应侧的 chunk 也是客户端格式。两种格式都可能到达，字段名不同，所以两边都列上（不存在的字段自然不匹配）：
+
+| 方向 | Codex Responses | Claude Messages |
+|---|---|---|
+| 请求体 | `input` | `messages`、`system` |
+| 响应体 | `output`、`tools`、`usage` | `content`、`tools`、`usage` |
 
 `tools` 之所以要遮：那是每一轮都重复一遍的同一份工具声明，约 15 KB，知道「带了工具」和把声明再读一遍信息量一样。`usage` 同理：这个插件不做用量核算，而真实响应里的逐项归因比整个帧的其余部分加起来还长。详情里的遮蔽说明会列出当次实际遮掉的字段名。
 
@@ -174,10 +176,12 @@ Request Header 标签页里「未改动的 N 个 Header」默认展开 —— �
 
 | 帧 | 处理 | 保留的理由 |
 |---|---|---|
-| `response.created` | 保留，按字段遮蔽后 | 模型、reasoning、service_tier、store、temperature 都在这里 |
-| 终局帧（`response.completed` / `done` / `failed` / `incomplete` / `cancelled`） | 保留，按字段遮蔽后 | 终局声明是模型判定优先采用的那条，还带最终状态 |
-| `error` / `response.error` | 保留 | 上游报错原文，短且是唯一的事故记录 |
-| 其余全部 | 载荷换成 `{"type":…,"masked":"N bytes"}` | `in_progress` 只是把 created 重复一遍；`output_text.delta` / `output_item.*` / `content_part.*` 是正在流出的答案 |
+| 帧（Codex） | 帧（Claude） | 处理 | 理由 |
+|---|---|---|---|
+| `response.created` | `message_start` | 保留，按字段遮蔽后 | 模型在这里；Codex 另有 reasoning / service_tier |
+| 终局帧（`response.completed` / `done` / `failed` / `incomplete` / `cancelled`） | `message_delta` | 保留，按字段遮蔽后 | 终局声明是模型判定优先采用的那条，还带停止原因 |
+| `error` / `response.error` | `error` | 保留 | 上游报错原文，短且是唯一的事故记录 |
+| 其余全部 | `content_block_*`、`message_stop`、`ping` | 载荷换成 `{"type":…,"masked":"N bytes"}` | `in_progress` 只是把 created 重复一遍；`output_text.delta` / `content_block_delta` 是正在流出的答案 |
 
 这同时堵掉了按字段名遮蔽碰不到的地方：`delta` 字段带的也是输出正文，但它不叫 `output`。现在整帧都不留。
 
@@ -247,7 +251,7 @@ node scripts/make-preview.mjs
 
 终局事件（`response.completed` 等）的声明优先于过程中的声明。最外层是 JSON **数组**时会逐个元素读取，事件被包在 `data` 键下时也会往里看一层——这两种形状以前会整体读不到。
 
-**推理强度（v0.21.5）**：请求体里的 `reasoning.effort` 与响应声明的 effort 分别记为 `request_effort` / `upstream_effort`，在模型链上以小一号的灰字跟在各自的模型名后面：`gpt-6-astra high → gpt-6-astra high`。它**不参与模型比对** —— effort 是一个设置，不是「哪个模型回答了」的声明，所以两边不同也不算不一致（有测试钉住这一点）。
+**推理强度（v0.21.5）**：两种请求格式的说法不同 —— Codex Responses 给的是等级 `reasoning.effort`（low/medium/high/xhigh），Claude Messages 给的是 token 预算 `thinking.budget_tokens`（显示成 `10k` / `1.5k` / `800`），并且会明说关掉了（`type:"disabled"` 显示为空，因为没要求思考就没有等级可报）。两者与响应声明的 effort 分别记为 `request_effort` / `upstream_effort`，在模型链上以小一号的灰字跟在各自的模型名后面：`gpt-6-astra high → gpt-6-astra high`。它**不参与模型比对** —— effort 是一个设置，不是「哪个模型回答了」的声明，所以两边不同也不算不一致（有测试钉住这一点）。
 
 历史列表里模型名和 effort **都不会被遮住**：模型列的宽度按页面上最宽的那条链实测得出（`syncModelColumn`，与 sticky 偏移一样是测量而非猜测），表格自身的最小宽度跟着它走；视口放不下时由横向滚动让位，而不是裁掉文字。名字超过 520px 上限才退回省略号，完整值在详情里。
 

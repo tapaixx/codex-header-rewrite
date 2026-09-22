@@ -350,3 +350,24 @@ func TestRequestReasoningEffort(t *testing.T) {
 		}
 	}
 }
+
+// The two request formats say the thinking level differently: Codex names a
+// level, Claude names a token budget and says when thinking is off.
+func TestThinkingLevelFromBothRequestFormats(t *testing.T) {
+	cases := []struct{ name, body, want string }{
+		{"codex effort", `{"reasoning":{"effort":"xhigh"}}`, "xhigh"},
+		{"claude budget", `{"thinking":{"type":"enabled","budget_tokens":10000}}`, "10k"},
+		{"claude small budget", `{"thinking":{"type":"enabled","budget_tokens":1500}}`, "1.5k"},
+		{"claude tiny budget", `{"thinking":{"type":"enabled","budget_tokens":800}}`, "800"},
+		{"claude round budget", `{"thinking":{"type":"enabled","budget_tokens":64000}}`, "64k"},
+		{"claude thinking off", `{"thinking":{"type":"disabled","budget_tokens":0}}`, ""},
+		{"claude disabled with a budget", `{"thinking":{"type":"disabled","budget_tokens":10000}}`, ""},
+		{"effort wins over budget", `{"reasoning":{"effort":"high"},"thinking":{"budget_tokens":10000}}`, "high"},
+		{"neither", `{"model":"m"}`, ""},
+	}
+	for _, tc := range cases {
+		if got := requestReasoningEffort([]byte(tc.body)); got != tc.want {
+			t.Fatalf("%s: got %q want %q", tc.name, got, tc.want)
+		}
+	}
+}

@@ -21,8 +21,14 @@ var (
 	// same way: this plugin does not account for tokens, and the per-item
 	// attribution a real response carries is larger than everything else in
 	// the frame put together.
-	requestContentFields  = []string{"input"}
-	responseContentFields = []string{"output", "tools", "usage"}
+	// Two request shapes reach this plugin, because the body is still in the
+	// client's own format when the request hook runs: Codex Responses carries
+	// the conversation in input, Claude Messages in messages and system. A
+	// field that is absent simply does not match, so naming both is how one
+	// pass covers both.
+	requestContentFields = []string{"input", "messages", "system"}
+	// Likewise on the way back: Codex answers in output, Claude in content.
+	responseContentFields = []string{"output", "content", "tools", "usage"}
 )
 
 const (
@@ -107,23 +113,29 @@ func jsonSize(value any) int {
 }
 
 // keepsResponseFrame reports whether a streamed frame is kept for what it
-// says. Three are:
+// says. In the Codex Responses stream those are:
 //
 //   - response.created carries the model, the reasoning settings, the tools
 //     and the service tier -- the whole shape of what was asked.
 //   - a terminal frame carries the declaration the model verdict prefers,
 //     plus the final status and the usage.
-//   - an error frame carries the upstream's own words, which are short and
-//     the only account of what went wrong.
 //
-// Everything else -- in_progress, which merely repeats created, and the
-// output_text.delta / output_item / content_part run -- is the answer being
-// streamed. Keeping it would store the conversation one fragment at a time,
-// which is the thing these bodies are not for: delta is not named output, so
-// masking by field name never touched it.
+// A Claude Messages stream says the same things under different names:
+// message_start carries the model and the input usage, message_delta the stop
+// reason and the output usage. An error frame in either carries the upstream's
+// own words, which are short and the only account of what went wrong.
+//
+// Everything else is the answer being streamed -- response.output_text.delta
+// and the content_block run -- or a repeat of what is already kept, like
+// response.in_progress. Keeping those would store the conversation one
+// fragment at a time, which is the thing these bodies are not for: neither
+// delta nor content_block_delta is named output, so masking by field name
+// never touched them.
 func keepsResponseFrame(eventType string) bool {
 	switch trimmed := strings.TrimSpace(eventType); trimmed {
 	case "response.created":
+		return true
+	case "message_start", "message_delta":
 		return true
 	case "error", "response.error":
 		return true

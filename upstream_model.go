@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"strconv"
 	"strings"
 )
 
@@ -477,9 +478,15 @@ func sentModel(model, requestedModel string) string {
 	return strings.TrimSpace(requestedModel)
 }
 
-// requestReasoningEffort reads the effort a request asked for. It is read from
-// the outgoing payload rather than inferred, and read once: the body is not
-// kept for this, only the short value is.
+// requestReasoningEffort reads how hard a request asked the model to think. It
+// is read from the outgoing payload rather than inferred, and read once: the
+// body is not kept for this, only the short value is.
+//
+// The two request formats say it differently. Codex Responses names a level --
+// low, medium, high, xhigh. Claude Messages names a token budget instead, and
+// says explicitly when extended thinking is off; a budget is shown compactly,
+// and "off" is shown as nothing, since a request that did not ask to think has
+// no level to report.
 func requestReasoningEffort(body []byte) string {
 	trimmed := bytes.TrimSpace(body)
 	if len(trimmed) == 0 || trimmed[0] != '{' {
@@ -489,13 +496,38 @@ func requestReasoningEffort(body []byte) string {
 		Reasoning struct {
 			Effort string `json:"effort"`
 		} `json:"reasoning"`
+		Thinking struct {
+			Type         string `json:"type"`
+			BudgetTokens int    `json:"budget_tokens"`
+		} `json:"thinking"`
 	}
 	if err := json.Unmarshal(trimmed, &asked); err != nil {
 		return ""
 	}
-	effort := strings.TrimSpace(asked.Reasoning.Effort)
-	if len([]rune(effort)) > 32 {
+	if effort := strings.TrimSpace(asked.Reasoning.Effort); effort != "" {
+		if len([]rune(effort)) > 32 {
+			return ""
+		}
+		return effort
+	}
+	if strings.EqualFold(strings.TrimSpace(asked.Thinking.Type), "disabled") {
 		return ""
 	}
-	return effort
+	if asked.Thinking.BudgetTokens > 0 {
+		return compactTokenBudget(asked.Thinking.BudgetTokens)
+	}
+	return ""
+}
+
+// compactTokenBudget renders a thinking budget short enough to sit beside a
+// model name: 800, 1.5k, 10k.
+func compactTokenBudget(tokens int) string {
+	switch {
+	case tokens < 1000:
+		return strconv.Itoa(tokens)
+	case tokens < 10000:
+		return strings.TrimSuffix(strconv.FormatFloat(float64(tokens)/1000, 'f', 1, 64), ".0") + "k"
+	default:
+		return strconv.Itoa(tokens/1000) + "k"
+	}
 }

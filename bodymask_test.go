@@ -219,3 +219,97 @@ func TestMaskedFieldsPerDirection(t *testing.T) {
 		}
 	}
 }
+
+// The request body is still in the client's own format when the request hook
+// runs, so a Claude Messages client's conversation arrives under messages and
+// system rather than input. Naming only input meant none of it was masked and
+// the whole conversation went to disk in clear.
+func TestClaudeMessagesRequestIsMasked(t *testing.T) {
+	request := `{"model":"claude-opus-5","max_tokens":4096,"system":"You are Codex.",` +
+		`"thinking":{"type":"enabled","budget_tokens":10000},` +
+		`"messages":[{"role":"user","content":[{"type":"text","text":"my private prompt"}]}],` +
+		`"tools":[{"name":"bash"}],"temperature":1}`
+	masked := string(maskRequestBody([]byte(request)))
+	for _, secret := range []string{"my private prompt", "You are Codex."} {
+		if strings.Contains(masked, secret) {
+			t.Fatalf("%q survived masking: %s", secret, masked)
+		}
+	}
+	for _, name := range []string{"messages", "system"} {
+		if !strings.Contains(masked, `"`+name+`":"[MASKED `) {
+			t.Fatalf("%s should be masked by name: %s", name, masked)
+		}
+	}
+	// What explains the request is kept, including the request's own tools:
+	// only a response masks those.
+	for _, keep := range []string{`"model":"claude-opus-5"`, `"max_tokens":4096`, `"budget_tokens":10000`, `"name":"bash"`} {
+		if !strings.Contains(masked, keep) {
+			t.Fatalf("masking dropped %s: %s", keep, masked)
+		}
+	}
+}
+
+// A Claude response answers in content, not output.
+func TestClaudeMessagesResponseIsMasked(t *testing.T) {
+	body := `{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-5",` +
+		`"content":[{"type":"text","text":"my private answer"}],"stop_reason":"end_turn","usage":{"input_tokens":10}}`
+	masked := string(maskResponseBody([]byte(body)))
+	if strings.Contains(masked, "my private answer") {
+		t.Fatalf("the answer survived: %s", masked)
+	}
+	if !strings.Contains(masked, `"content":"[MASKED `) {
+		t.Fatalf("content should be masked by name: %s", masked)
+	}
+	for _, keep := range []string{`"model":"claude-opus-5"`, `"stop_reason":"end_turn"`} {
+		if !strings.Contains(masked, keep) {
+			t.Fatalf("masking dropped %s: %s", keep, masked)
+		}
+	}
+}
+
+// A Claude stream says the same things as a Codex one under other names, so
+// the frames worth keeping are different. Keeping none of them meant the
+// recorded body no longer said which model answered.
+func TestClaudeMessagesStreamKeepsWhatItSays(t *testing.T) {
+	stream := strings.Join([]string{
+		`event: message_start`,
+		`data: {"type":"message_start","message":{"id":"msg_1","model":"claude-opus-5","content":[],"usage":{"input_tokens":10}}}`,
+		``,
+		`event: content_block_start`,
+		`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		``,
+		`event: content_block_delta`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"my private answer"}}`,
+		``,
+		`event: message_delta`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}`,
+		``,
+		`event: message_stop`,
+		`data: {"type":"message_stop"}`,
+		``,
+	}, "\n")
+	masked := string(maskResponseBody([]byte(stream)))
+
+	if strings.Contains(masked, "my private answer") {
+		t.Fatalf("the answer survived:\n%s", masked)
+	}
+	for _, keep := range []string{`"model":"claude-opus-5"`, `"stop_reason":"end_turn"`} {
+		if !strings.Contains(masked, keep) {
+			t.Fatalf("masking dropped %s:\n%s", keep, masked)
+		}
+	}
+	for _, replaced := range []string{"content_block_start", "content_block_delta", "message_stop"} {
+		if !strings.Contains(masked, `"type":"`+replaced+`"`) {
+			t.Fatalf("the sequence lost %s:\n%s", replaced, masked)
+		}
+	}
+	if strings.Count(masked, `"masked":"`) != 3 {
+		t.Fatalf("three frames should be replaced:\n%s", masked)
+	}
+	// And the masked stream still declares its model.
+	var observer modelObserver
+	observer.observeBody([]byte(masked))
+	if got := observer.model(); got != "claude-opus-5" {
+		t.Fatalf("model=%q after masking a Claude stream", got)
+	}
+}
