@@ -228,3 +228,80 @@ func TestATruncatedFrameKeepsBuffering(t *testing.T) {
 		t.Fatal("the two halves are one declaration, not two")
 	}
 }
+
+// A host can hand over a stream with the framing gone: "event: response.created"
+// written straight against "data: {...}" with no newline between them. The
+// line-based parse sees one event line containing no data at all, so every
+// declaration in the run is lost. Payloads are recovered by balancing brackets
+// from each data: marker instead.
+func TestAStreamWithNoFramingIsStillRead(t *testing.T) {
+	const created = `{"type":"response.created","response":{"id":"r","model":"gpt-6-astra","output":[]}}`
+	const delta = `{"type":"response.output_text.delta","delta":"hi","obfuscation":"a{b}c\"d"}`
+	const completed = `{"type":"response.completed","response":{"id":"r","model":"gpt-6-astra","status":"completed"}}`
+	cases := []struct {
+		name   string
+		chunks []string
+	}{
+		{"no newline between event and data", []string{
+			"event: response.created" + "data: " + created +
+				"event: response.output_text.delta" + "data: " + delta +
+				"event: response.completed" + "data: " + completed}},
+		{"one run-together event per chunk", []string{
+			"event: response.createddata: " + created,
+			"event: response.completeddata: " + completed}},
+		{"newline after the payload only", []string{
+			"event: response.createddata: " + created + "\nevent: response.completeddata: " + completed}},
+		{"framing gone and [DONE] still present", []string{
+			"event: response.completeddata: " + completed + "data: [DONE]"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var observer modelObserver
+			for _, chunk := range tc.chunks {
+				observer.observeCallback([]byte(chunk))
+			}
+			observer.flushStream()
+			if got := observer.model(); got != "gpt-6-astra" {
+				t.Fatalf("model=%q", got)
+			}
+			if observer.conflicted() {
+				t.Fatal("one model was declared, so there is no conflict")
+			}
+		})
+	}
+}
+
+// Recovering payloads without framing must not swallow a truncated one: the
+// bytes after the last complete value stay buffered for the next chunk.
+func TestAnUnframedTruncatedPayloadKeepsBuffering(t *testing.T) {
+	const completed = `{"type":"response.completed","response":{"model":"gpt-6-astra"}}`
+	const created = `{"type":"response.created","response":{"model":"gpt-5.6-luna"}}`
+	var observer modelObserver
+	// One whole event, then half of the next, in a single chunk.
+	observer.observeCallback([]byte("event: response.createddata: " + created + "event: response.completeddata: " + completed[:30]))
+	if got := observer.model(); got != "gpt-5.6-luna" {
+		t.Fatalf("the complete event should have been read, got %q", got)
+	}
+	if len(observer.residual) == 0 {
+		t.Fatal("the truncated event should still be buffered")
+	}
+	observer.observeCallback([]byte(completed[30:]))
+	if got := observer.model(); got != "gpt-6-astra" {
+		t.Fatalf("model=%q once the truncated event completed", got)
+	}
+}
+
+// A brace inside a string must not end the scan early, which is exactly what
+// the obfuscation field in a real delta frame contains.
+func TestBracketsInsideStringsDoNotEndAPayload(t *testing.T) {
+	payloads := salvageDataPayloads([]byte(`data: {"a":"}{[]","b":{"c":1}}data: {"d":2}`))
+	if len(payloads) != 2 {
+		t.Fatalf("got %d payloads", len(payloads))
+	}
+	if string(payloads[0].payload) != `{"a":"}{[]","b":{"c":1}}` {
+		t.Fatalf("first=%s", payloads[0].payload)
+	}
+	if string(payloads[1].payload) != `{"d":2}` {
+		t.Fatalf("second=%s", payloads[1].payload)
+	}
+}

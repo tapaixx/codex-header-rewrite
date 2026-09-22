@@ -25,7 +25,7 @@ await page.route('http://panel.test/**', async route => {
     assert.equal(u.searchParams.get('id'),'rec-1');
     d = {id:'rec-1',found:true,masked_request_field:'input',masked_response_field:'output',max_stored_bytes:262144,
          request_body:'{"model":"gpt-6-astra","input":"[MASKED 4096 bytes]","tools":[]}', request_bytes:400000,
-         response_body:'event: response.completed\ndata: {"type":"response.completed","response":{"model":"gpt-6-astra","output":"[MASKED 88 bytes]"}}\n\n',
+         response_body:'event: response.completed\ndata: {"type":"response.completed","sequence_number":13,"stream":true,"response":{"model":"gpt-6-astra","output":"[MASKED 88 bytes]"}}\n\n',
          response_bytes:1024};
   } else if (u.pathname.endsWith('/history')) d = {total:1,page:1,total_pages:1,items:[record]};
   if (u.pathname.endsWith('/turn-states')) d = {turn_states:[],reuse_window_seconds:200};
@@ -67,6 +67,21 @@ try {
   assert.ok(resText.startsWith('event: response.completed'), 'sse framing survives: '+JSON.stringify(resText.slice(0,40)));
   assert.ok(resText.includes('\n  "type": "response.completed"'), 'the data payload is formatted');
   assert.ok(!(await page.locator('#detailPane-resb .body-meta').textContent()).includes('已截断'), 'a 1 KB body is not truncated');
+
+  // Bodies are syntax coloured: keys, strings, numbers, and the masked value
+  // called out on its own.
+  const classes = await page.$$eval('#detailPane-resb .body-view span', els => [...new Set(els.map(e=>e.className))].sort());
+  assert.deepEqual(classes, ['jb','jk','jm','jn','jp','js'], JSON.stringify(classes));
+
+  // A stream whose framing the host dropped is put back on separate lines for
+  // display, and still coloured.
+  await page.evaluate(()=>{
+    document.querySelector('#detailResponseBody').innerHTML =
+      bodyPaneHTML('Response Body', 'event: response.createddata: {"type":"response.created","response":{"model":"gpt-6-astra"}}', 120, 'output', 262144);
+  });
+  const unframed = await page.locator('#detailPane-resb .body-view').textContent();
+  assert.ok(unframed.startsWith('event: response.created\ndata: {'), 'framing restored: '+JSON.stringify(unframed.slice(0,40)));
+  assert.ok((await page.locator('#detailPane-resb .body-view .jk').count()) > 0, 'still coloured');
 
   // Keyboard moves along the strip.
   await page.locator('.detail-tab[data-pane="resb"]').press('ArrowRight');

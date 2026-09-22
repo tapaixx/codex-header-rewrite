@@ -201,13 +201,12 @@ func (o *modelObserver) observeStream(chunk []byte) {
 	}
 	// A host that hands over one event per callback strips the blank line, so
 	// there is no separator left to find and waiting for one would buffer the
-	// entire stream and read none of it. Parse the tail as a frame: if it is
-	// complete its payload is valid JSON, and if it is merely truncated it is
-	// not, so a frame genuinely split across chunks keeps buffering.
-	if o.observeFrame(data) {
-		return
+	// entire stream and read none of it. Read the tail: what is complete is
+	// consumed, what is truncated stays for the next chunk.
+	if consumed := o.observeTail(data); consumed > 0 {
+		data = data[consumed:]
 	}
-	if len(data) > maxStreamResidual {
+	if len(bytes.TrimSpace(data)) == 0 || len(data) > maxStreamResidual {
 		return
 	}
 	o.residual = append([]byte(nil), data...)
@@ -225,9 +224,9 @@ func (o *modelObserver) flushStream() {
 	o.observeFrame(residual)
 }
 
-// observeFrame reads one SSE frame and reports whether any payload in it
-// parsed as JSON.
-func (o *modelObserver) observeFrame(frame []byte) bool {
+// parseSSEFrame splits one frame into its event type, its joined data payload
+// and the individual data lines it was joined from.
+func parseSSEFrame(frame []byte) (string, []byte, [][]byte) {
 	eventType := ""
 	var payload []byte
 	var lines [][]byte
@@ -246,6 +245,11 @@ func (o *modelObserver) observeFrame(frame []byte) bool {
 			payload = append(payload, value...)
 		}
 	}
+	return eventType, payload, lines
+}
+
+// observeFrameParts reads what parseSSEFrame produced.
+func (o *modelObserver) observeFrameParts(eventType string, payload []byte, lines [][]byte) bool {
 	if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
 		return false
 	}
@@ -274,6 +278,123 @@ func (o *modelObserver) observeFrame(frame []byte) bool {
 		}
 	}
 	return parsed
+}
+
+// salvagedPayload is one JSON value recovered from unframed bytes, with the
+// offset just past it so a caller can tell how much it consumed.
+type salvagedPayload struct {
+	payload []byte
+	end     int
+}
+
+// salvageDataPayloads pulls every JSON value that follows a data: marker even
+// when the newlines that should frame them are gone. A host that writes
+// "event: response.created" and "data: {...}" with nothing between them leaves
+// bytes the line-based parse cannot see at all: the whole run reads as one
+// event line containing no data, and every model declaration in it is lost.
+//
+// Each value is taken by balancing brackets from the first { or [ after the
+// marker, which is what makes the end of one event findable without the
+// separator that should have marked it. A value that is still truncated
+// yields nothing, so the caller keeps buffering instead of reading half of it.
+func salvageDataPayloads(frame []byte) []salvagedPayload {
+	var out []salvagedPayload
+	marker := []byte("data:")
+	for offset := 0; offset < len(frame); {
+		index := bytes.Index(frame[offset:], marker)
+		if index < 0 {
+			break
+		}
+		start := offset + index + len(marker)
+		value, end := firstJSONValue(frame[start:])
+		if value == nil {
+			offset = start
+			continue
+		}
+		out = append(out, salvagedPayload{payload: value, end: start + end})
+		offset = start + end
+	}
+	return out
+}
+
+// firstJSONValue returns the first balanced JSON object or array in data and
+// the offset just past it. Strings and their escapes are respected, so a
+// bracket inside a value never ends the scan early.
+func firstJSONValue(data []byte) ([]byte, int) {
+	start := -1
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		if c == ' ' || c == '\t' || c == '\r' || c == '\n' {
+			continue
+		}
+		if c == '{' || c == '[' {
+			start = i
+		}
+		break
+	}
+	if start < 0 {
+		return nil, 0
+	}
+	depth, inString, escaped := 0, false, false
+	for i := start; i < len(data); i++ {
+		c := data[i]
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inString = true
+		case '{', '[':
+			depth++
+		case '}', ']':
+			depth--
+			if depth == 0 {
+				return data[start : i+1], i + 1
+			}
+		}
+	}
+	return nil, 0
+}
+
+// observeFrame reads one SSE frame whose boundaries are known, and reports
+// whether any payload in it parsed.
+func (o *modelObserver) observeFrame(frame []byte) bool {
+	eventType, payload, lines := parseSSEFrame(frame)
+	if o.observeFrameParts(eventType, payload, lines) {
+		return true
+	}
+	parsed := false
+	for _, salvaged := range salvageDataPayloads(frame) {
+		if o.observePayload(salvaged.payload, "chunk") {
+			parsed = true
+		}
+	}
+	return parsed
+}
+
+// observeTail reads a trailing run that no separator ended and reports how many
+// bytes it consumed. One complete frame is consumed whole; a run of frames the
+// host concatenated without framing is consumed up to the end of the last
+// complete payload, leaving a truncated one for the next chunk.
+func (o *modelObserver) observeTail(data []byte) int {
+	eventType, payload, lines := parseSSEFrame(data)
+	if o.observeFrameParts(eventType, payload, lines) {
+		return len(data)
+	}
+	consumed := 0
+	for _, salvaged := range salvageDataPayloads(data) {
+		o.observePayload(salvaged.payload, "chunk")
+		consumed = salvaged.end
+	}
+	return consumed
 }
 
 func firstNonEmpty(values ...string) string {

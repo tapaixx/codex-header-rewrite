@@ -1753,6 +1753,17 @@ body[data-workspace="history"] #historyPanel{grid-row:3!important}
 }
 .body-meta{display:flex;flex-wrap:wrap;gap:4px 10px;margin:0 0 7px;font-size:10.5px;color:var(--text-mute)}
 .body-meta .warn-text{color:var(--warn)}
+/* Syntax colour for a recorded payload. The tokens are the panel's existing
+   diff semantics rather than a new palette, so the two themes stay in step:
+   keys take the accent, strings the added colour, numbers the overridden one.
+   A masked value is called out on its own -- it is the one string in the
+   document that is not what the upstream sent. */
+.body-view .jk{color:var(--accent)}
+.body-view .js{color:var(--set)}
+.body-view .jn{color:var(--over)}
+.body-view .jb{color:var(--gone)}
+.body-view .jp{color:var(--text-mute);font-weight:600}
+.body-view .jm{color:var(--warn);background:var(--over-weak);border-radius:3px;padding:0 3px}
 /* Locking the page with overflow:hidden collapsed the viewport's scroll range
    and snapped it to the top the moment the drawer opened. Fixing the body at
    its current offset keeps the pixels where they were; the offset is put back
@@ -3509,19 +3520,51 @@ function formatBytes(bytes) {
   return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${BYTE_UNITS[unit]}`;
 }
 
+// Colours a pretty-printed JSON document. The input is this function's own
+// output from JSON.stringify, so the scan only has to recognise tokens, not
+// validate them; every token is escaped before it is wrapped.
+function paintJSON(text) {
+  const token = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+  let out = "";
+  let last = 0;
+  let match;
+  while ((match = token.exec(text))) {
+    out += esc(text.slice(last, match.index));
+    if (match[1] !== undefined) {
+      const cls = match[2] ? "jk" : (/^"\[MASKED /.test(match[1]) ? "jm" : "js");
+      out += `<span class="${cls}">${esc(match[1])}</span>${match[2] ? esc(match[2]) : ""}`;
+    } else if (match[3] !== undefined) {
+      out += `<span class="jb">${esc(match[3])}</span>`;
+    } else {
+      out += `<span class="jn">${esc(match[4])}</span>`;
+    }
+    last = match.index + match[0].length;
+  }
+  return out + esc(text.slice(last));
+}
+
+// A host may write "event: x" straight against "data: {...}" with nothing
+// between them, which reads as one unbroken line. Put the breaks back for
+// display; the recorded bytes are not changed.
+function reframeSSE(text) {
+  return text.replace(/(\S)(event:|data:)/g, "$1\n$2");
+}
+
 // A body is JSON, an SSE stream of JSON, or something else. The first two are
-// formatted; the third is shown as it came rather than guessed at.
-function formatBodyText(text) {
+// formatted and coloured; the third is shown as it came rather than guessed at.
+function renderBody(text) {
   const trimmed = String(text || "").trim();
   if (!trimmed) return "";
   if (trimmed[0] === "{" || trimmed[0] === "[") {
-    try { return JSON.stringify(JSON.parse(trimmed), null, 2); } catch { /* fall through */ }
+    try { return paintJSON(JSON.stringify(JSON.parse(trimmed), null, 2)); } catch { /* fall through */ }
   }
-  if (!/(^|\n)\s*(event:|data:)/.test(trimmed)) return trimmed;
-  return trimmed.split(/\n/).map((line) => {
-    const match = /^\s*data:\s*(.*)$/.exec(line);
-    if (!match || !match[1] || match[1] === "[DONE]") return line;
-    try { return "data: " + JSON.stringify(JSON.parse(match[1]), null, 2); } catch { return line; }
+  if (!/(event:|data:)/.test(trimmed)) return esc(trimmed);
+  return reframeSSE(trimmed).split(/\n/).map((line) => {
+    const match = /^(\s*)(event:|data:)\s*(.*)$/.exec(line);
+    if (!match) return esc(line);
+    const head = esc(match[1]) + `<span class="jp">${esc(match[2])}</span> `;
+    if (!match[3] || match[3] === "[DONE]") return head + esc(match[3] || "");
+    try { return head + paintJSON(JSON.stringify(JSON.parse(match[3]), null, 2)); } catch { return head + esc(match[3]); }
   }).join("\n");
 }
 
@@ -3530,7 +3573,6 @@ function bodyPaneHTML(label, text, bytes, maskedField, maxStored) {
     return `<div class="history-detail-label"><span>${esc(label)}</span></div>
       <div class="empty">没有记录到${esc(label)}</div>`;
   }
-  const formatted = formatBodyText(text);
   const stored = new TextEncoder().encode(text).length;
   const truncated = bytes > 0 && maxStored > 0 && bytes > maxStored;
   return `<div class="history-detail-label"><span>${esc(label)}</span><span class="num">${esc(formatBytes(bytes || stored))}</span></div>
@@ -3538,7 +3580,7 @@ function bodyPaneHTML(label, text, bytes, maskedField, maxStored) {
       ${maskedField ? `<span><code>${esc(maskedField)}</code> 已遮蔽</span>` : ""}
       ${truncated ? `<span class="warn-text">已截断，只保留前 ${esc(formatBytes(maxStored))}</span>` : ""}
     </div>
-    <pre class="body-view">${esc(formatted)}</pre>`;
+    <pre class="body-view">${renderBody(text)}</pre>`;
 }
 
 // Bodies are fetched per record rather than carried in the list: a page of

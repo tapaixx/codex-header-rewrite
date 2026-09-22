@@ -25,6 +25,16 @@ const requestBody = JSON.stringify({
   store: false,
 });
 
+// Written the way a real stream arrived: the separators between event and data
+// are gone, which is exactly the shape that used to read as no model at all.
+const unframedResponseBody =
+  'event: response.created' +
+  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_68f2","object":"response","created_at":1790057487,"status":"in_progress","model":"gpt-6-astra","output":"[MASKED 2 bytes]","reasoning":{"context":"all_turns","effort":"low","summary":"detailed"},"service_tier":"auto","store":false,"temperature":1.0}}' +
+  'event: response.output_text.delta' +
+  'data: {"type":"response.output_text.delta","content_index":0,"delta":"\u55e8","output_index":0,"sequence_number":4}' +
+  'event: response.completed' +
+  'data: {"type":"response.completed","sequence_number":13,"response":{"id":"resp_68f2","object":"response","status":"completed","model":"gpt-6-astra","output":"[MASKED 2210 bytes]","service_tier":"default","usage":{"input_tokens":21190,"output_tokens":11,"total_tokens":21201}}}';
+
 const responseBody = [
   'event: response.created',
   'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_68f2","object":"response","model":"gpt-6-astra","status":"in_progress","output":"[MASKED 2 bytes]"}}',
@@ -108,7 +118,7 @@ const items = [
 
 const bodies = {
   'rec-1#1': { request_body: requestBody, request_bytes: 413021, response_body: responseBody, response_bytes: 2480 },
-  'rec-2#1': { request_body: requestBody, request_bytes: 3324118, response_body: responseBody, response_bytes: 1960 },
+  'rec-2#1': { request_body: requestBody, request_bytes: 3324118, response_body: unframedResponseBody, response_bytes: 1960 },
   'retry-1789952479137822421-6#1': {
     request_body: JSON.stringify({ model: 'gpt-6-astra', instructions: 'You are Codex, a coding agent.', input: '[MASKED 74 bytes]', stream: true, store: false, tools: [], parallel_tool_calls: false }),
     request_bytes: 286,
@@ -130,7 +140,22 @@ const stub = `
 (() => {
   const F = ${JSON.stringify(fixtures)};
   const json = (payload) => new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
-  try { localStorage.setItem("managementKey", "preview"); } catch {}
+  // Opened from the filesystem, localStorage is unavailable in some browsers
+  // and throws in others, so the panel found no key and asked for one. Give it
+  // a working in-memory store instead of hoping the real one is there.
+  const memory = new Map([["managementKey", "preview"]]);
+  const shim = {
+    getItem: (k) => (memory.has(String(k)) ? memory.get(String(k)) : null),
+    setItem: (k, v) => { memory.set(String(k), String(v)); },
+    removeItem: (k) => { memory.delete(String(k)); },
+    clear: () => memory.clear(),
+    key: (i) => [...memory.keys()][i] ?? null,
+    get length() { return memory.size; },
+  };
+  for (const name of ["localStorage", "sessionStorage"]) {
+    try { Object.defineProperty(window, name, { configurable: true, get: () => shim }); } catch {}
+  }
+  try { window.localStorage.setItem("managementKey", "preview"); } catch {}
   const real = window.fetch;
   window.fetch = async (input, init = {}) => {
     const url = new URL(String(input && input.url ? input.url : input), location.href);
