@@ -30,19 +30,26 @@ try {
   await page.goto('http://panel.test/v0/resource/plugins/codex-header-rewrite/index');
   await page.waitForFunction(()=>!document.querySelector('#ruleStripTurnState').disabled);
 
+  // The control lives on the pool panel now, which renders in the history
+  // workspace, so that is where it is exercised.
+  await page.evaluate(()=>setWorkspace('history',false));
+  await page.waitForFunction(()=>document.querySelectorAll('.pool-row').length===2);
+
   // A rule with no value shows the default.
   assert.equal(await page.locator('#ruleStateTTL').inputValue(), '200', 'zero shows the default');
 
-  // The field is inside the rewrite fieldset, so it follows 启用改写.
+  // The window belongs to the pool it governs, not to the rewrite rule, so it
+  // no longer follows 启用改写 -- the same way the response-side settings do
+  // not. It is live whenever a rule is loaded.
+  assert.equal(await page.locator('#turnStatePanel #ruleStateTTL').count(), 1, 'the control lives on the pool panel');
+  assert.equal(await page.locator('#rulePanel #ruleStateTTL').count(), 0, 'and no longer in the rule editor');
   await page.evaluate(()=>document.querySelector('#ruleEnabled').click());
-  assert.equal(await page.locator('#ruleStateTTL').isDisabled(), true, 'disabled with rewriting off');
+  assert.equal(await page.locator('#ruleStateTTL').isDisabled(), false, 'independent of 启用改写');
   await page.evaluate(()=>document.querySelector('#ruleEnabled').click());
-  assert.equal(await page.locator('#ruleStateTTL').isDisabled(), false);
 
-  // What is typed is what is sent.
+  // It saves itself on change; there is no second save button for one field.
   await page.fill('#ruleStateTTL','45');
-  await page.evaluate(()=>document.querySelector('#saveRule').click());
-  await page.waitForFunction(()=>true);
+  await page.dispatchEvent('#ruleStateTTL','change');
   await new Promise(r=>setTimeout(r,300));
   assert.equal(saved.state_ttl_seconds, 45, `sent ${JSON.stringify(saved && saved.state_ttl_seconds)}`);
 
@@ -55,13 +62,11 @@ try {
   assert.equal(await page.locator('#ruleStateTTL').inputValue(), '5');
   // Blank means "use the default", which the plugin spells as zero.
   await page.fill('#ruleStateTTL','');
-  await page.evaluate(()=>document.querySelector('#saveRule').click());
+  await page.dispatchEvent('#ruleStateTTL','change');
   await new Promise(r=>setTimeout(r,300));
   assert.equal(saved.state_ttl_seconds, 0, 'blank sends zero');
 
   // The pool header states the credential's own window, in seconds when short.
-  await page.evaluate(()=>setWorkspace('pool',false));
-  await page.waitForFunction(()=>document.querySelectorAll('.pool-row').length===2);
   assert.equal(await page.locator('#turnStateWindow').textContent(), '200 秒');
   const ages = await page.locator('.pool-row td.num:nth-child(4)').allTextContents();
   assert.ok(ages[0].endsWith('45 秒前'), `sub-minute age reads in seconds: ${ages[0]}`);

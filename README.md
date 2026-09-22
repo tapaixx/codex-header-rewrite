@@ -22,6 +22,7 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - 保存 request / response body（v0.21.0），但**会话内容被遮蔽**：请求体的 `input` / `messages` / `system`、响应体的 `output` / `content` / `tools` / `usage` 一律替换为 `[MASKED N bytes]`，Codex Responses 与 Claude Messages 两种格式都覆盖；只留下模型、instructions、reasoning、turn metadata、错误结构这些解释请求本身的字段。单个 body 最多保留 256 KB，超出截断并记录原始大小。
 - 自定义测试请求：从凭证可用模型中选择模型、发送默认 `hi` 或自定义 JSON、预览改写结果，或向自定义端点发一次真实请求。
 - 模型一致性核对：记录上游实际声明的模型，与发出的模型比对，不一致时标红。
+- 自动 State 探针（v0.23.0）：按凭证定时补池，与「拦截后重试」互斥；可配生效时段、模型、独立代理池、cookie 来源与间隔；探针历史单独保留 500 条。
 - 回合状态（X-Codex-Turn-State）溯源：按套餐判定是否降智，合格值按「凭证 + 模型」持久化入池，发现跨账号回带并可按规则摘除；内置 Fernet 信封解码。
 - 中文内嵌 UI，单文档零外部依赖；敏感数据接口走 CPA Management API。
 - Linux amd64 / arm64 CI 与 tag Release。
@@ -71,7 +72,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.22.0.so` | `codex-header-rewrite` | `0.22.0` |
+| `codex-header-rewrite-v0.23.0.so` | `codex-header-rewrite` | `0.23.0` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -84,7 +85,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.22.0.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.23.0.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -145,6 +146,54 @@ curl -s -H "Authorization: Bearer <management-key>" \
 `installed=false` 说明文件名导致 ID 对不上；`installed_version` 为空说明文件名没带版本
 且插件未成功加载；`install_source_status` 是 `different` 或 `unknown` 说明来源不匹配，
 需要先卸载再从商店安装。
+
+## 自动 State 探针（v0.23.0）
+
+按时补池，而不是等降智了才反应。和「拦截后重试」**双向互斥** —— 两者都在给同一个池补货，同时开就是两个写者抢一个池。两者都与「启用改写」无关。
+
+**任务**（每凭证一个，到期才跑，1 秒全局扫描）
+
+```
+开关关 / 不在生效时段 / now − 最近一次真实请求 > 活跃判定时间  → 跳过
+集合 = 探针模型中「池里没有 state」或「state 超过 state_ttl_seconds」的
+      按紧急度排序：从没入过池的最前，其余按入池时间升序
+集合为空 → 结束
+依序逐个模型发请求（header / payload 同重试），不降智则 state 连同会话与代理一起入池
+                                              每个模型请求写一行探针历史
+结束时把下次到期时间设为 now + 间隔
+```
+
+「下次 = **结束**时间 + 间隔」而不是固定节拍，所以相邻两次上游调用的间距恒等于你配的间隔。到期时间同时表达「正在跑」和「还没到期」，一个值不可能和自己不一致，所以不需要额外的重入锁。
+
+**活跃判定与 cookie 新鲜度是两个时钟。** 前者只由**真实客户端流量**更新，探针自己的请求**不更新它** —— 否则探针会自己给自己续命，账号闲置几天还在烧额度。
+
+**配置**
+
+| 项 | 说明 |
+|---|---|
+| 生效时段 | 按浏览器时间填，存 UTC 分钟数；留空全天；**允许跨午夜**（本地工作时段换算成 UTC 后经常就是跨午夜的） |
+| 探针模型 | 开启时必填，标签式维护 |
+| 探针 SOCKS 代理 | 可选，与重试代理池可互相一键复制（复制是**替换**不是合并） |
+| Cookie 来源 | 有代理时**必须显式选**，没有默认值 |
+| 活跃判定时间 | 必填，秒 |
+| 间隔 | 必填，秒，≥1，**无上限** |
+| 解析代理出口 IP | 默认开；动态代理池模式下取不到真实值，留空 |
+
+**Cookie 来源的三种模式不是偏好，是三种出口各自唯一正确的答案** —— Cloudflare 的 `__cf_bm` 绑定获取它的那个 IP，拿一个 IP 的令牌从另一个 IP 发出去比不带更可疑：
+
+| 模式 | 用哪个罐 | 谁喂它 | 上游请求数 |
+|---|---|---|---|
+| 凭证级 | 直连出口那个罐 | 真实流量 | 1× |
+| 静态代理 | 每个代理各一个罐 | 经过该代理的探针响应 | 1× |
+| 动态代理池 | 不存 | 同一条连接上先预热再用 | **2×** |
+
+动态代理池之所以能成立：SOCKS5 的出口 IP 在**一条 TCP 隧道的生命周期内必然固定**，所以「预热 + 使用」共用一个 transport 就保证了同一个出口。预热那次拿到的 state **不入池** —— 没带 cookie 拿到的 state 不是这次探针要的那个。
+
+**一个罐只由「从它对应的出口回来的响应」更新**，所以走代理的探针永远不会污染真实流量填的那个罐。
+
+**历史**：探针行**单独一个桶，保留最近 500 条**，在请求历史区域用标签页区分。共用那 50 条的话，间隔几秒的探针一小时内就会把真实请求全冲掉 —— 而那是这个插件唯一的可观测面。预热请求算作**同一行**的一个标记，不单独占一行，这样「500 条」才等于「最近 500 次探针」。行里记出口、入口机房（取自 `Cf-Ray` 尾部的 IATA 码，免费且对该次请求准确）、cookie 模式。
+
+**配额**：面板上直接显示上游在每个响应里报的**真实用量**（`X-Codex-Primary-Used-Percent` 等），保存前另给一个按当前配置的估算。每次探针都是一次计费的真实调用。
 
 ## 请求与响应 Body（v0.21.0）
 

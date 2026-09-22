@@ -65,8 +65,17 @@ const rules = {
     remove: ['X-Openai-Internal-Codex-Responses-Lite'],
     inject_turn_state: true, state_ttl_seconds: 200,
     reject_degraded_response: true, reject_degraded_models: ['gpt-6-astra'],
-    retry_on_degraded: true, retry_attempts: 2,
+    retry_on_degraded: false, retry_attempts: 2,
     retry_proxies: ['socks5://127.0.0.1:1080'],
+    probe_enabled: true,
+    probe_models: ['gpt-6-astra', 'gpt-5.6-luna'],
+    probe_proxies: ['socks5://user:secret@127.0.0.1:1080'],
+    probe_cookie_mode: 'rotating_proxy',
+    probe_cookie_ttl_seconds: 1800,
+    probe_interval_seconds: 30,
+    probe_window_start_minute: 60,
+    probe_window_end_minute: 900,
+    probe_resolve_exit_ip: true,
     updated_at: at(3600),
   },
   'acct-b': { auth_index: 'acct-b', enabled: false, set: {}, remove: [], inject_turn_state: false, state_ttl_seconds: 0, updated_at: at(86400) },
@@ -140,7 +149,34 @@ const turnStates = [
   { state: teamState, digest: 'b7710f3e55aa', auth_index: 'acct-a', label: 'alex@example.com', model: 'gpt-5.6-luna', plan_type: 'team', chars: 332, max_chars: 332, minted_at: at(900), age_seconds: 900, expired: true, reuse_window_seconds: 200, cookie: '' },
 ];
 
-const fixtures = { credentials, rules, items, bodies, turnStates, teamState };
+// Probe rows: one succeeded and pooled, one primed through a rotating exit,
+// one failed, so the list shows each shape it can take.
+const probeRow = (over) => ({
+  auth_index: 'acct-a', auth_id: 'auth-a', credential_name: 'alex.json', credential_label: 'alex@example.com',
+  attempt: 1, source_format: 'plugin_probe', stream: true, origin: 'probe',
+  model: 'gpt-6-astra', requested_model: 'gpt-6-astra', upstream_model: 'gpt-6-astra', model_mismatch: false,
+  request_effort: 'low', upstream_effort: 'low', status_code: 200, outcome: 'succeeded',
+  probe_cookie_mode: 'rotating_proxy', probe_exit_region: 'IAD',
+  before_headers: { 'Authorization': ['Bearer [REDACTED]'], 'Content-Type': ['application/json'], 'Originator': ['codex-cli'], 'Cookie': ['__cf_bm=for-this-exit'] },
+  after_headers: { 'Authorization': ['Bearer [REDACTED]'], 'Content-Type': ['application/json'], 'Originator': ['codex-cli'], 'Cookie': ['__cf_bm=for-this-exit'] },
+  response_headers: { 'X-Codex-Turn-State': [teamState], 'Cf-Ray': ['a3e22f4439f2dddf-IAD'], 'X-Codex-Primary-Used-Percent': ['47'] },
+  ...over,
+});
+const probes = [
+  probeRow({ id: 'probe-1#1', request_id: 'probe-1', started_at: at(12), completed_at: at(10),
+    probe_egress: 'socks5://127.0.0.1:1080', probe_primed: true,
+    turn_state_minted: { digest: 'c91a0e77bb42', chars: 332, bytes: 249, version: 128, issued_at: at(11), fernet_like: true, decodable: true, plan_type: 'team', max_chars: 332, non_degraded: true, pooled: true } }),
+  probeRow({ id: 'probe-2#1', request_id: 'probe-2', started_at: at(75), completed_at: at(73),
+    model: 'gpt-5.6-luna', requested_model: 'gpt-5.6-luna', upstream_model: 'gpt-5.6-luna',
+    probe_egress: '', probe_primed: false, probe_cookie_mode: 'credential', probe_exit_region: 'LHR',
+    turn_state_minted: { digest: '2f80ab19cc63', chars: 356, bytes: 265, version: 128, issued_at: at(74), fernet_like: true, decodable: true, plan_type: 'team', max_chars: 332, non_degraded: false, pooled: false } }),
+  probeRow({ id: 'probe-3#1', request_id: 'probe-3', started_at: at(140), completed_at: at(139),
+    probe_egress: 'socks5://127.0.0.1:1080', probe_primed: true, outcome: 'failed', status_code: 429,
+    upstream_model: '', model_mismatch: null, probe_exit_region: '',
+    error: 'probe returned HTTP 429' }),
+];
+
+const fixtures = { credentials, rules, items, bodies, turnStates, teamState, probes };
 
 const stub = `
 <script>
@@ -185,6 +221,14 @@ const stub = `
         max_stored_bytes: 262144, request_body: "", response_body: "", request_bytes: 0, response_bytes: 0, ...(found || {}) });
     }
     if (path.endsWith("/history/clear")) return json({ cleared: authIndex });
+    if (path.endsWith("/probes/clear")) return json({ cleared: authIndex });
+    if (path.endsWith("/probes")) {
+      const rows = authIndex === "acct-a" ? F.probes : [];
+      return json({ auth_index: authIndex, page: 1, page_size: 10, total: rows.length, total_pages: 1,
+        items: rows, limit: 500, enabled: true, within_window: true,
+        last_live_at: new Date(Date.now() - 42000).toISOString(), live_age_seconds: 42,
+        next_due_at: new Date(Date.now() + 18000).toISOString() });
+    }
     if (path.endsWith("/history")) {
       const items = authIndex === "acct-a" ? F.items : [];
       return json({ auth_index: authIndex, page: 1, page_size: 10, total: items.length, total_pages: 1, items });

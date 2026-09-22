@@ -1457,6 +1457,7 @@ body[data-workspace="history"] #turnStatePanel .state-pool{display:block}
 /* Final workspace separation: Rules contains rules/diff/summary only; History owns State. */
 body[data-workspace="history"] #historyPanel,
 body[data-workspace="history"] #degradedPanel,
+body[data-workspace="history"] #probePanel,
 body[data-workspace="history"] #turnStatePanel{display:block!important;grid-column:1/-1!important}
 @media(max-width:820px){.mobile-nav{grid-template-columns:repeat(3,1fr)!important}}
 
@@ -1660,7 +1661,8 @@ body[data-workspace="rules"] #testPanel{display:block}
 }
 body[data-workspace="history"] #turnStatePanel{grid-row:1!important;margin-top:0!important}
 body[data-workspace="history"] #degradedPanel{grid-row:2!important}
-body[data-workspace="history"] #historyPanel{grid-row:3!important}
+body[data-workspace="history"] #probePanel{grid-row:3!important}
+body[data-workspace="history"] #historyPanel{grid-row:4!important}
 .degraded-grid{display:flex;align-items:center;flex-wrap:wrap;gap:10px 22px}
 .field-inline{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--text-soft)}
 .field-inline input{width:72px;min-height:30px;text-align:center}
@@ -1758,6 +1760,36 @@ body[data-workspace="history"] #historyPanel{grid-row:3!important}
 .body-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:0 0 7px;font-size:10.5px;color:var(--text-mute)}
 .body-meta .warn-text{color:var(--warn)}
 .body-meta .spacer{flex:1 1 auto}
+/* The probe block reuses the degraded block's grid: same kind of content, a
+   switch and a few bounded numbers, so it should not look like a new species. */
+.probe-grid{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+.probe-window{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+/* The base sheet gives every input width:100%, which is right for the stacked
+   fields it was written for and wrong for anything sitting on a row. */
+.probe-window input[type=time]{width:auto;flex:none;min-width:8.5em;min-height:32px;padding:0 8px}
+.probe-copy{display:flex;flex-wrap:wrap;gap:8px;margin-top:7px}
+/* The three cookie modes are stacked rather than inline: each needs a sentence
+   to say which egress it is correct for, and a row of bare labels would invite
+   picking one by name. */
+.probe-modes{display:grid;gap:7px}
+.probe-mode{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+.probe-mode:hover{border-color:var(--line-strong)}
+.probe-mode input{width:auto;flex:none;margin-top:3px}
+.probe-mode>span{flex:1 1 auto;min-width:0}
+/* Only the mode name is a block; a bold run inside the sentence below it is
+   emphasis, not a heading. */
+.probe-mode>span>b{display:block;font-size:12.5px;color:var(--text)}
+.probe-mode small{display:block;margin-top:2px;font-size:10.5px;line-height:1.5;color:var(--text-mute);text-wrap:pretty}
+.probe-mode:has(input:checked){border-color:var(--accent);background:var(--accent-weak)}
+.probe-meter{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11px;color:var(--text-mute)}
+.probe-meter .num{font-variant-numeric:tabular-nums;color:var(--text-soft)}
+.probe-status{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0 0 10px;font-size:11px;color:var(--text-mute)}
+/* The pool's own control sits above the table it governs. */
+.pool-ttl{
+  display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;
+  margin:0 0 12px;padding:0 0 10px;border-bottom:1px solid var(--line)
+}
+.pool-ttl .muted{flex:1 1 240px;min-width:0;font-size:10.5px;line-height:1.5;text-wrap:pretty}
 .body-meta .body-act{min-height:26px;padding:0 8px;font-size:10.5px;border-radius:6px}
 /* The tree: one row per value, children indented behind a guide line so a deep
    frame can be followed by eye. Rows are dense because a body is machine
@@ -2253,10 +2285,6 @@ html[data-theme="dark"]{
             <span class="rule-block-copy"><b>X-Codex-Turn-State 注入</b><small id="guardNowText"></small></span>
             <span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="State 注入开关的说明">!</button><span class="hint-text"><span class="hint-k">开启</span><span class="hint-v">从 State 池取「该凭证 + 当前模型」的合格 state，写入本次请求的 <code>X-Codex-Turn-State</code>；池里没有就不写。确认来自其他凭证或其他模型的回带值会被摘掉。</span><span class="hint-k">关闭</span><span class="hint-v">完全不碰这个 Header，客户端带什么就原样发什么。</span><span class="hint-p">规则里手工设置或移除了这个 Header 时以手工为准；「启用改写」关着时整条规则都不生效。</span></span></span></span>
             <label class="switch guard-switch"><input type="checkbox" id="ruleStripTurnState"><span>注入 State</span></label>
-            <div class="guard-ttl">
-              <label class="field-inline" for="ruleStateTTL">State 有效期<input id="ruleStateTTL" type="number" inputmode="numeric" min="5" max="7200" step="5" value="200" autocomplete="off"><span class="field-unit">秒</span></label>
-              <span class="muted">按凭证维护。超过这个时长的 state 标记为过期，仍会注入；但过期的 state 注入后还降智，就把它从池里清掉。留空按 200 秒。</span>
-            </div>
           </div>
         </fieldset>
 
@@ -2391,7 +2419,59 @@ html[data-theme="dark"]{
         <button class="quiet icon" id="turnStateRefresh" title="刷新" aria-label="刷新回合状态"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
       <div class="panel-body">
+        <div class="pool-ttl">
+          <label class="field-inline" for="ruleStateTTL">State 有效期<input id="ruleStateTTL" type="number" inputmode="numeric" min="5" max="7200" step="5" value="200" autocomplete="off" disabled><span class="field-unit">秒</span></label>
+          <span class="muted">按凭证维护，改完离开输入框即保存。超过这个时长的 state 标记为过期，仍会注入；但过期的 state 注入后还降智，就把它从池里清掉。留空按 200 秒。</span>
+        </div>
         <div id="turnStateBody" class="state-pool"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="probePanel">
+      <div class="panel-head"><svg class="i"><use href="#i-refresh"/></svg><div class="panel-title"><h2>自动 State 探针</h2><div class="panel-caption">按时补池，而不是等降智了才反应<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="探针的说明">!</button><span class="hint-text"><span class="hint-k">做什么</span><span class="hint-v">按间隔检查探针模型，池里没有 state 或已过期的就补发一次最小 <code>hi</code> 请求，拿到不降智的就连同会话一起入池。</span><span class="hint-k">何时不跑</span><span class="hint-v">开关关着、不在生效时段、或者距离上一次<b>真实请求</b>超过下面的活跃判定时间 —— 账号没人用就不该继续烧额度。探针自己的请求不算「真实请求」。</span><span class="hint-p">与「拦截后重试」互斥，两者都在给同一个池补货。每次探针都是一次计费的真实调用。</span></span></span></div></div></div>
+      <div class="panel-body probe-grid">
+        <label class="switch"><input type="checkbox" id="probeEnabled"><span>启用自动探针</span></label>
+        <label class="field-inline" for="probeInterval">间隔<input id="probeInterval" type="number" inputmode="numeric" min="1" step="1" value="30" autocomplete="off" disabled><span class="field-unit">秒</span></label>
+        <label class="field-inline" for="probeCookieTTL">活跃判定<input id="probeCookieTTL" type="number" inputmode="numeric" min="1" step="30" value="1800" autocomplete="off" disabled><span class="field-unit">秒</span></label>
+
+        <div class="field" style="flex-basis:100%">
+          <label id="probeWindowLabel">生效时段（按浏览器时间填写，留空为全天）</label>
+          <div class="probe-window" role="group" aria-labelledby="probeWindowLabel">
+            <input id="probeWindowStart" type="time" step="60" autocomplete="off" disabled>
+            <span class="arrow">→</span>
+            <input id="probeWindowEnd" type="time" step="60" autocomplete="off" disabled>
+            <button class="quiet" type="button" id="probeWindowClear" disabled>全天</button>
+            <span class="muted" id="probeWindowHint"></span>
+          </div>
+        </div>
+
+        <div class="field" style="flex-basis:100%">
+          <label id="probeModelsLabel">探针模型（开启时必填）</label>
+          <div class="chips" id="probeModels" data-kind="model" data-disabled="1" role="group" aria-labelledby="probeModelsLabel"></div>
+          <span class="muted">回车或逗号添加，点标签改，✕ 删除；按模型 ID 精确匹配。</span>
+        </div>
+
+        <div class="field" style="flex-basis:100%">
+          <label id="probeProxiesLabel">探针 SOCKS 代理（留空直连）</label>
+          <div class="chips" id="probeProxies" data-kind="proxy" data-disabled="1" role="group" aria-labelledby="probeProxiesLabel"></div>
+          <div class="probe-copy">
+            <button class="quiet" type="button" id="copyRetryToProbe" disabled>← 从重试代理池复制</button>
+            <button class="quiet" type="button" id="copyProbeToRetry" disabled>复制到重试代理池 →</button>
+          </div>
+        </div>
+
+        <div class="field" style="flex-basis:100%" id="probeCookieField" hidden>
+          <label id="probeCookieLabel">Cookie 来源（配了代理就必须选，没有默认值）</label>
+          <div class="probe-modes" role="radiogroup" aria-labelledby="probeCookieLabel">
+            <label class="probe-mode"><input type="radio" name="probeCookieMode" value="credential" disabled><span><b>凭证级</b><small>用真实请求留下的 cookie。代理出口和真实出口不同时，这份 cookie 绑的是另一个 IP。</small></span></label>
+            <label class="probe-mode"><input type="radio" name="probeCookieMode" value="static_proxy" disabled><span><b>静态代理</b><small>每个代理各自一个 cookie 罐，由经过它的探针响应维护。出口 IP 稳定时用这个。</small></span></label>
+            <label class="probe-mode"><input type="radio" name="probeCookieMode" value="rotating_proxy" disabled><span><b>动态代理池</b><small>不存 cookie。每次在同一条连接上先取一次再用，<b>请求数翻倍</b>。出口每次都变时只有这个是对的。</small></span></label>
+          </div>
+        </div>
+
+        <label class="switch" style="flex-basis:100%"><input type="checkbox" id="probeResolveIP" checked disabled><span>解析代理出口 IP<small class="muted" style="margin-left:6px">动态代理池模式下取不到真实值，留空</small></span></label>
+
+        <div class="probe-meter" id="probeMeter" style="flex-basis:100%"></div>
       </div>
     </section>
 
@@ -2415,8 +2495,13 @@ html[data-theme="dark"]{
     </section>
 
     <section class="panel" id="historyPanel">
-      <div class="panel-head"><div class="panel-title"><h2>请求历史</h2><div class="panel-caption">当前凭证的请求记录，点任意一行查看详情</div></div><div class="spacer"></div><span class="muted" id="historyMeta"></span><button class="quiet" id="historyRefresh" title="刷新请求历史"><svg class="i" id="historyRefreshIcon"><use href="#i-refresh"/></svg>刷新</button><button class="quiet destructive" id="clearHistory"><svg class="i"><use href="#i-trash"/></svg>清空</button></div>
+      <div class="panel-head"><div class="panel-title"><h2 id="historyHeading">请求历史</h2><div class="panel-caption" id="historyCaption">当前凭证的请求记录，点任意一行查看详情</div></div><div class="spacer"></div><span class="muted" id="historyMeta"></span><button class="quiet" id="historyRefresh" title="刷新"><svg class="i" id="historyRefreshIcon"><use href="#i-refresh"/></svg>刷新</button><button class="quiet destructive" id="clearHistory"><svg class="i"><use href="#i-trash"/></svg>清空</button></div>
       <div class="panel-body">
+        <div class="detail-tabs" role="tablist" aria-label="历史分类">
+          <button class="detail-tab" role="tab" id="historyTab-live" aria-controls="historyBody" aria-selected="true" data-history="live" tabindex="0">请求历史</button>
+          <button class="detail-tab" role="tab" id="historyTab-probe" aria-controls="historyBody" aria-selected="false" data-history="probe" tabindex="-1">探针历史<span class="count" id="probeTabCount" hidden></span></button>
+        </div>
+        <div id="probeStatus" class="probe-status" hidden></div>
         <div class="table-scroll">
         <table class="history-table">
             <thead><tr><th class="history-time">时间</th><th class="history-origin">来源</th><th class="history-model">模型：发出 → 上游</th><th class="history-outcome">结果</th><th class="history-latency">耗时</th><th class="history-status" style="text-align:right">状态码</th></tr></thead>
@@ -2464,7 +2549,7 @@ const SESSION_KEY = "chr.key";
 const CUSTOM_MODEL = "__custom__";
 const store = {
   creds: [], selected: "", rule: null, defaults: {}, models: [], version: "",
-  history: [], page: 1, totalPages: 0, selectedRecord: "", selectedState: "", attachTouched: false,
+  history: [], historyTab: "live", page: 1, totalPages: 0, selectedRecord: "", selectedState: "", attachTouched: false,
   turnStates: [], diffBefore: {}, diffAfter: {}, diffMode: "rule", credentialFilter: "", selectionEpoch: 0,
 };
 
@@ -2904,7 +2989,16 @@ async function selectCredential(authIndex) {
   if ($("rejectDegraded")) $("rejectDegraded").checked = false;
   if ($("retryDegraded")) $("retryDegraded").checked = false;
   if ($("retryAttempts")) $("retryAttempts").value = "2";
-  if ($("ruleStateTTL")) $("ruleStateTTL").value = String(defaultStateTTL);
+  if ($("ruleStateTTL")) {
+    $("ruleStateTTL").value = String(defaultStateTTL);
+    $("ruleStateTTL").disabled = true;
+  }
+  if ($("probeEnabled")) {
+    $("probeEnabled").checked = false;
+    setChips("probeModels", []);
+    setChips("probeProxies", []);
+    syncProbeControls();
+  }
   setChips("retryProxies", []);
   $("ruleFields").disabled = true;
   setChips("rejectDegradedModels", []);
@@ -2997,7 +3091,11 @@ async function loadRule() {
   if ($("rejectDegraded")) $("rejectDegraded").checked = !!store.rule.reject_degraded_response;
   if ($("retryDegraded")) $("retryDegraded").checked = !!store.rule.retry_on_degraded;
   if ($("retryAttempts")) $("retryAttempts").value = String(store.rule.retry_attempts || 2);
-  if ($("ruleStateTTL")) $("ruleStateTTL").value = String(store.rule.state_ttl_seconds || defaultStateTTL);
+  if ($("ruleStateTTL")) {
+    $("ruleStateTTL").value = String(store.rule.state_ttl_seconds || defaultStateTTL);
+    $("ruleStateTTL").disabled = false;
+  }
+  fillProbeForm(store.rule);
   setChips("rejectDegradedModels", store.rule.reject_degraded_models);
   renderRetryProxies();
   syncDegradedControls();
@@ -3017,7 +3115,10 @@ function renderWarnings(warnings) {
     $("ruleWarnText").innerHTML = `${warnings.map((name) => `<code class="mono" translate="no">${esc(name)}</code>`).join("、")} 属于 Codex executor 的特殊字段，改写可能在 interceptor 之后被覆盖。`;
   }
 }
-const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), inject_turn_state: $("ruleStripTurnState").checked, state_ttl_seconds: ruleStateTTL(), reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts(), retry_proxies: degradedProxies() });
+// Spread first: the rule carries response-side and probe settings this form
+// does not render, and rebuilding it from the visible fields alone would save
+// them away as zero.
+const collectRule = () => ({ ...(store.rule || {}), auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), inject_turn_state: $("ruleStripTurnState").checked, state_ttl_seconds: ruleStateTTL(), reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts(), retry_proxies: degradedProxies(), ...collectProbe() });
 
 /* ---------- the header diff -------------------------------------------
    One row per header. The name is written once and the value change is shown
@@ -3284,6 +3385,20 @@ function modelChain(record) {
   if (record.model_conflict) parts.push('<span class="tag warn" title="同一次响应里出现互相矛盾的模型声明">上游声明冲突</span>');
   return `<div class="chain">${parts.join("")}</div>`;
 }
+// Four kinds of request reach this list, and which one a row is changes how
+// its numbers should be read: a probe burns quota on a schedule, a retry burns
+// it in response to something, a test burns it because someone asked.
+const ORIGINS = {
+  live: { label: "线上", tone: "flat" },
+  test: { label: "测试", tone: "flat" },
+  retry: { label: "重试", tone: "warn" },
+  probe: { label: "探针", tone: "ok" },
+};
+const originTag = (origin) => {
+  const entry = ORIGINS[origin] || ORIGINS.live;
+  return `<span class="tag ${entry.tone}">${entry.label}</span>`;
+};
+
 const OUTCOMES = {
   succeeded: ["ok", "成功"], failed: ["bad", "失败"], error: ["bad", "错误"],
   switched: ["warn", "已换凭证"], in_flight: ["flat", "进行中"], dry_run: ["flat", "预览"],
@@ -3298,17 +3413,25 @@ function historySkeleton() {
   $("historyBody").innerHTML = Array.from({ length: 4 }, () =>
     '<tr><td colspan="6"><div class="skel" style="width:100%;height:16px"></div></td></tr>').join("");
 }
+// One table, two sources. The probe writes far more rows than the traffic
+// does, so they are bounded separately and read separately; sharing the list
+// would have buried the real requests within the hour.
 async function loadHistory(page = 1) {
   if (!store.selected) return;
   const epoch = store.selectionEpoch;
   if (!store.history.length) historySkeleton();
-  const payload = await api(`/history?auth_index=${encodeURIComponent(store.selected)}&page=${page}`);
+  const probes = store.historyTab === "probe";
+  const path = probes ? "/probes" : "/history";
+  const payload = await api(`${path}?auth_index=${encodeURIComponent(store.selected)}&page=${page}`);
   if (epoch !== store.selectionEpoch) return;
+  renderProbeStatus(probes ? payload : null);
   store.history = payload.items || [];
   closeHistoryDrawer();
   store.page = payload.page || 1;
   store.totalPages = payload.total_pages || 0;
   $("historyMeta").textContent = payload.total ? `${payload.total} 条，第 ${store.page}/${store.totalPages} 页` : "";
+  if (probes) $("probeTabCount").textContent = String(payload.total || 0);
+  $("probeTabCount").hidden = !probes || !payload.total;
   $("historyMeta").classList.toggle("num", !!payload.total);
   const body = $("historyBody");
   body.replaceChildren();
@@ -3326,7 +3449,7 @@ async function loadHistory(page = 1) {
     row.setAttribute("aria-selected", String(record.id === store.selectedRecord));
     row.setAttribute("aria-haspopup", "dialog");
     row.innerHTML = `<td class="history-time num">${esc(new Date(record.started_at).toLocaleString())}</td>
-      <td class="history-origin"><span class="tag ${record.origin === "retry" ? "warn" : "flat"}">${record.origin === "test" ? "测试" : (record.origin === "retry" ? "重试" : "线上")}</span></td>
+      <td class="history-origin">${originTag(record.origin)}</td>
       <td class="history-model">${modelChain(record)}</td>
       <td class="history-outcome"><span class="history-outcome-wrap">${outcomeTag(record.outcome)}${turnStateTags(record)}</span></td>
       <td class="history-latency num">${formatLatency(recordLatency(record))}</td>
@@ -3479,6 +3602,38 @@ async function showPoolState(item) {
     }
   }
 }
+const COOKIE_MODES = {
+  credential: "凭证级 cookie",
+  static_proxy: "静态代理 cookie 罐",
+  rotating_proxy: "动态代理池（每次现取）",
+};
+
+// A probe chose its own exit and its own cookie, and neither is visible
+// anywhere else. Without this the row cannot be told apart from any other.
+function probeDetail(record) {
+  if (record.origin !== "probe") return "";
+  const rows = [];
+  rows.push(`<dt>出口</dt><dd>${record.probe_egress
+    ? `<span class="mono">${esc(maskProxyURL(record.probe_egress))}</span>`
+    : "直连（CPA 自己的出口）"}</dd>`);
+  rows.push(`<dt>入口机房</dt><dd>${record.probe_exit_region
+    ? `<span class="mono">${esc(record.probe_exit_region)}</span><span class="muted"> · 来自 Cf-Ray</span>`
+    : '<span class="muted">响应里没有 Cf-Ray</span>'}</dd>`);
+  if (record.probe_exit_ip) {
+    rows.push(`<dt>出口 IP</dt><dd class="mono">${esc(record.probe_exit_ip)}</dd>`);
+  } else if (record.probe_cookie_mode === "rotating_proxy") {
+    rows.push('<dt>出口 IP</dt><dd><span class="muted">动态代理池下取不到真实值</span></dd>');
+  }
+  rows.push(`<dt>Cookie 来源</dt><dd>${esc(COOKIE_MODES[record.probe_cookie_mode] || "未记录")}</dd>`);
+  rows.push(`<dt>预热请求</dt><dd>${record.probe_primed
+    ? '有<span class="muted"> · 这次探针共两次上游调用</span>'
+    : '<span class="muted">无</span>'}</dd>`);
+  return `<div class="history-detail-section">
+    <div class="history-detail-label"><span>探针</span></div>
+    <dl class="ts-grid">${rows.join("")}</dl>
+  </div>`;
+}
+
 function showRecord(record) {
   if (store.selectedRecord === record.id) { closeHistoryDrawer(); return; }
   store.selectedRecord = record.id;
@@ -3508,6 +3663,7 @@ function showRecord(record) {
       <div class="history-detail-label"><span>上游错误</span><span>${record.status_code ? `HTTP ${esc(String(record.status_code))}` : ""}</span></div>
       <pre class="history-error-full">${esc(prettyError(record.error))}</pre>
     </div>` : ""}
+    ${probeDetail(record)}
     ${turnStateDetail(record) || '<div class="history-detail-section"><div class="empty">这次请求没有回带，上游也没有返回 X-Codex-Turn-State</div></div>'}
     <div class="detail-tabs" role="tablist" aria-label="请求详情分页">
       ${tabs.map(([key, label, count], index) => `<button class="detail-tab" role="tab" id="detailTab-${key}"
@@ -4048,16 +4204,23 @@ $("historyRefresh").addEventListener("click", async () => {
     icon.classList.remove("spin");
   }
 });
+// Clearing acts on the list that is open: the two are bounded separately, and
+// wiping the traffic because someone wanted to reset the probe log would be a
+// surprise that cannot be undone.
 $("clearHistory").addEventListener("click", async () => {
-  if (!store.selected || !confirm("清空该凭证的全部请求历史？")) return;
+  const probes = store.historyTab === "probe";
+  const what = probes ? "探针历史" : "请求历史";
+  if (!store.selected || !confirm(`清空该凭证的全部${what}？`)) return;
   try {
-    await api("/history/clear", { method: "POST", body: { auth_index: store.selected } });
+    await api(probes ? "/probes/clear" : "/history/clear", { method: "POST", body: { auth_index: store.selected } });
     store.history = [];
     closeHistoryDrawer();
     await Promise.all([loadHistory(1), loadCredentials()]);
-    renderDiff(null, null, "");
-    renderResponseHeaders(null);
-    toast("历史已清空");
+    if (!probes) {
+      renderDiff(null, null, "");
+      renderResponseHeaders(null);
+    }
+    toast(`${what}已清空`);
   } catch (error) { fail(error); }
 });
 $("cleanupBtn").addEventListener("click", async () => {
@@ -4130,7 +4293,7 @@ function formatAge(seconds) {
 }
 // Each list is held here while it is edited; every change saves immediately,
 // so this is only ever a moment ahead of the stored rule.
-const chipValues = { rejectDegradedModels: [], retryProxies: [] };
+const chipValues = { rejectDegradedModels: [], retryProxies: [], probeModels: [], probeProxies: [] };
 const CHIP_SPLIT = { model: /[,，\s]+/, proxy: /[\s,，]+/ };
 
 function setChips(id, list) {
@@ -4167,8 +4330,14 @@ function commitChip(id, index, raw) {
     return;
   } else list[index] = value;
   setChips(id, list);
-  saveDegradedSettings(() => {});
+  chipSaver(id)();
 }
+
+// Each chip list belongs to one settings block, and each block saves itself.
+const PROBE_CHIPS = new Set(["probeModels", "probeProxies"]);
+const chipSaver = (id) => (PROBE_CHIPS.has(id)
+  ? () => saveProbeSettings(() => {})
+  : () => saveDegradedSettings(() => {}));
 
 // A duplicate is dropped either way; saying so beats silently swallowing it.
 function flashDuplicate(id, values) {
@@ -4389,6 +4558,258 @@ function syncDegradedControls() {
 
   $("retryProxies").title = proxiesDisabled ? "开启拦截降智响应及拦截后重试后可配置" : "";
 }
+// A probe list that is empty reads the same whether there was nothing to do,
+// nothing due yet, or the account went quiet -- so the schedule is reported
+// beside the rows rather than left to be inferred from their absence.
+function renderProbeStatus(payload) {
+  const host = $("probeStatus");
+  if (!host) return;
+  if (!payload) { host.hidden = true; host.innerHTML = ""; return; }
+  const parts = [];
+  parts.push(payload.enabled ? '<span class="tag ok">探针已启用</span>' : '<span class="tag flat">探针未启用</span>');
+  if (payload.enabled && !payload.within_window) parts.push('<span class="tag warn">不在生效时段</span>');
+  if (payload.running) parts.push('<span class="tag flat">正在运行</span>');
+  else if (payload.next_due_at) {
+    const seconds = Math.max(0, Math.round((new Date(payload.next_due_at) - Date.now()) / 1000));
+    parts.push(`下次 <span class="num">${seconds}</span> 秒后`);
+  }
+  if (payload.live_age_seconds !== undefined) {
+    parts.push(`最近真实请求 ${esc(formatAge(payload.live_age_seconds))}`);
+  } else if (payload.enabled) {
+    parts.push('<span class="tag warn">没有真实请求记录，探针不会运行</span>');
+  }
+  parts.push(`保留最近 <span class="num">${payload.limit || 500}</span> 条`);
+  host.innerHTML = parts.join(" · ");
+  host.hidden = false;
+}
+
+function wireHistoryTabs() {
+  const tabs = [...document.querySelectorAll(".detail-tabs [data-history]")];
+  if (!tabs.length) return;
+  for (const [index, tab] of tabs.entries()) {
+    const select = () => {
+      if (store.historyTab === tab.dataset.history) return;
+      store.historyTab = tab.dataset.history;
+      for (const other of tabs) {
+        const chosen = other === tab;
+        other.setAttribute("aria-selected", String(chosen));
+        other.tabIndex = chosen ? 0 : -1;
+      }
+      const probes = store.historyTab === "probe";
+      $("historyHeading").textContent = probes ? "探针历史" : "请求历史";
+      $("historyCaption").textContent = probes
+        ? "自动 State 探针发出的请求，一个模型一行"
+        : "当前凭证的请求记录，点任意一行查看详情";
+      store.history = [];
+      loadHistory(1).catch(fail);
+    };
+    tab.addEventListener("click", select);
+    tab.addEventListener("keydown", (event) => {
+      const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+      if (!step) return;
+      event.preventDefault();
+      const next = tabs[(index + step + tabs.length) % tabs.length];
+      next.focus();
+      next.click();
+    });
+  }
+}
+
+let poolTTLSaving = false;
+async function savePoolTTL() {
+  if (!store.selected || !store.rule || poolTTLSaving) return;
+  const epoch = store.selectionEpoch;
+  const previous = store.rule;
+  poolTTLSaving = true;
+  try {
+    const payload = await api("/rule", { method: "PUT", body: { ...store.rule, auth_index: store.selected, state_ttl_seconds: ruleStateTTL() } });
+    if (epoch !== store.selectionEpoch) return;
+    store.rule = payload.rule || store.rule;
+    toast("已保存");
+    loadTurnStates();
+  } catch (error) {
+    if (epoch !== store.selectionEpoch) return;
+    $("ruleStateTTL").value = String(previous.state_ttl_seconds || defaultStateTTL);
+    fail(error);
+  } finally {
+    poolTTLSaving = false;
+  }
+}
+
+/* ---------- automatic state probe ---------------------------------------
+   The window is stored as minutes into a UTC day and edited in browser time,
+   because an operator thinks in their own clock and a server has to compare
+   against one that does not move. Everything else here saves on its own, the
+   same way the response-side settings do, so toggling one never carries an
+   unsaved rule edit along with it. */
+let probeSaving = false;
+
+const probeModelList = () => [...chipValues.probeModels];
+const probeProxyList = () => [...chipValues.probeProxies];
+const probeInterval = () => Math.max(1, Math.round(Number($("probeInterval")?.value) || 30));
+const probeCookieTTL = () => Math.max(1, Math.round(Number($("probeCookieTTL")?.value) || 1800));
+const probeCookieMode = () => document.querySelector('input[name="probeCookieMode"]:checked')?.value || "";
+
+// Browser time in, UTC minutes out. The reference date is today, so a window
+// written during one offset keeps meaning the same wall-clock hours.
+function localTimeToUTCMinute(value) {
+  const match = /^(\d{2}):(\d{2})$/.exec(String(value || "").trim());
+  if (!match) return null;
+  const when = new Date();
+  when.setHours(Number(match[1]), Number(match[2]), 0, 0);
+  return when.getUTCHours() * 60 + when.getUTCMinutes();
+}
+function utcMinuteToLocalTime(minute) {
+  if (!(minute >= 0 && minute < 1440)) return "";
+  const when = new Date();
+  when.setUTCHours(Math.floor(minute / 60), minute % 60, 0, 0);
+  return `${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
+}
+
+function probeWindowMinutes() {
+  const start = localTimeToUTCMinute($("probeWindowStart")?.value);
+  const end = localTimeToUTCMinute($("probeWindowEnd")?.value);
+  // One bound alone says nothing, so a half-filled window is all day.
+  if (start === null || end === null) return { start: 0, end: 0 };
+  return { start, end };
+}
+
+function collectProbe() {
+  const window = probeWindowMinutes();
+  return {
+    probe_enabled: !!$("probeEnabled")?.checked,
+    probe_models: probeModelList(),
+    probe_proxies: probeProxyList(),
+    probe_cookie_mode: probeCookieMode(),
+    probe_cookie_ttl_seconds: probeCookieTTL(),
+    probe_interval_seconds: probeInterval(),
+    probe_window_start_minute: window.start,
+    probe_window_end_minute: window.end,
+    probe_resolve_exit_ip: !!$("probeResolveIP")?.checked,
+  };
+}
+
+function fillProbeForm(rule) {
+  if (!$("probeEnabled")) return;
+  $("probeEnabled").checked = !!rule.probe_enabled;
+  $("probeInterval").value = String(rule.probe_interval_seconds || 30);
+  $("probeCookieTTL").value = String(rule.probe_cookie_ttl_seconds || 1800);
+  $("probeResolveIP").checked = rule.probe_resolve_exit_ip !== false;
+  const start = rule.probe_window_start_minute || 0;
+  const end = rule.probe_window_end_minute || 0;
+  $("probeWindowStart").value = start === end ? "" : utcMinuteToLocalTime(start);
+  $("probeWindowEnd").value = start === end ? "" : utcMinuteToLocalTime(end);
+  setChips("probeModels", rule.probe_models);
+  setChips("probeProxies", rule.probe_proxies);
+  for (const radio of document.querySelectorAll('input[name="probeCookieMode"]')) {
+    radio.checked = radio.value === rule.probe_cookie_mode;
+  }
+  syncProbeControls();
+}
+
+// The rate is shown because the cost of this feature is invisible otherwise:
+// every probe is a billed call, and a rotating pool doubles it.
+function probeRateText() {
+  const models = probeModelList().length;
+  if (!models) return "";
+  const perRound = probeCookieMode() === "rotating_proxy" ? 2 : 1;
+  const perHour = Math.round((3600 / probeInterval()) * models * perRound);
+  const note = perRound === 2 ? "（含预热请求）" : "";
+  return `按当前配置最多约 ${perHour.toLocaleString()} 次/小时${note}`;
+}
+
+// Real usage beats an estimate, and the upstream reports it on every response.
+function probeQuotaText() {
+  for (const record of store.history || []) {
+    const headers = record.response_headers || {};
+    const read = (name) => {
+      for (const [key, values] of Object.entries(headers)) {
+        if (key.toLowerCase() === name) return Array.isArray(values) ? values[0] : values;
+      }
+      return "";
+    };
+    const primary = read("x-codex-primary-used-percent");
+    if (primary === "") continue;
+    const secondary = read("x-codex-secondary-used-percent");
+    const resets = Number(read("x-codex-primary-reset-after-seconds"));
+    const parts = [`主配额 <span class="num">${esc(primary)}%</span>`];
+    if (secondary !== "") parts.push(`次配额 <span class="num">${esc(secondary)}%</span>`);
+    if (resets > 0) parts.push(`${formatWindow(resets)}后重置`);
+    return parts.join(" · ");
+  }
+  return "";
+}
+
+function syncProbeControls() {
+  if (!$("probeEnabled")) return;
+  const ready = !!store.rule && store.rule.auth_index === store.selected && !probeSaving;
+  const on = ready && $("probeEnabled").checked;
+  $("probeEnabled").disabled = !ready;
+  for (const id of ["probeInterval", "probeCookieTTL", "probeWindowStart", "probeWindowEnd", "probeWindowClear", "probeResolveIP"]) {
+    if ($(id)) $(id).disabled = !on;
+  }
+  for (const id of ["probeModels", "probeProxies"]) {
+    $(id).dataset.disabled = on ? "" : "1";
+    renderChips(id);
+    $(id).title = on ? "" : "开启自动探针后可配置";
+  }
+  for (const id of ["copyRetryToProbe", "copyProbeToRetry"]) {
+    if ($(id)) $(id).disabled = !on;
+  }
+  // With no proxy the egress is the host's own, so there is one coherent jar
+  // and nothing to ask. With proxies there is no safe default.
+  const proxied = probeProxyList().length > 0;
+  $("probeCookieField").hidden = !proxied;
+  for (const radio of document.querySelectorAll('input[name="probeCookieMode"]')) radio.disabled = !on;
+  const rotating = probeCookieMode() === "rotating_proxy";
+  if ($("probeResolveIP")) {
+    $("probeResolveIP").disabled = !on || rotating;
+    $("probeResolveIP").parentElement.title = rotating ? "动态代理池下取不到真实出口，留空" : "";
+  }
+  const window = probeWindowMinutes();
+  $("probeWindowHint").textContent = window.start === window.end
+    ? "全天生效"
+    : `UTC ${utcLabel(window.start)} → ${utcLabel(window.end)}${window.start > window.end ? "（跨午夜）" : ""}`;
+  const rate = probeRateText();
+  const quota = probeQuotaText();
+  $("probeMeter").innerHTML = on
+    ? [quota, rate && esc(rate)].filter(Boolean).join(" · ") || ""
+    : "";
+}
+
+const utcLabel = (minute) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+
+async function saveProbeSettings(revert) {
+  if (!store.selected || !store.rule) { revert?.(); toast("先选择一个凭证", true); return; }
+  if (probeSaving) return;
+  const epoch = store.selectionEpoch;
+  const previous = store.rule;
+  probeSaving = true;
+  syncProbeControls();
+  try {
+    const probe = collectProbe();
+    // The two switches feed the same pool on separate schedules, so turning
+    // one on turns the other off rather than letting both run.
+    const body = { ...store.rule, auth_index: store.selected, ...probe };
+    if (probe.probe_enabled) body.retry_on_degraded = false;
+    const payload = await api("/rule", { method: "PUT", body });
+    if (epoch !== store.selectionEpoch) return;
+    store.rule = payload.rule || store.rule;
+    if (probe.probe_enabled && $("retryDegraded")) {
+      $("retryDegraded").checked = false;
+      syncDegradedControls();
+    }
+    toast("已保存");
+  } catch (error) {
+    if (epoch !== store.selectionEpoch) return;
+    fillProbeForm(previous);
+    fail(error);
+  } finally {
+    probeSaving = false;
+    syncProbeControls();
+  }
+}
+
 // These are response-side settings, saved on their own rather than with the
 // rule form, so toggling one never carries an unsaved rule edit with it.
 async function saveDegradedSettings(revert) {
@@ -4422,15 +4843,61 @@ async function saveDegradedSettings(revert) {
   }
 }
 $("rejectDegraded").addEventListener("change", () => saveDegradedSettings(() => { $("rejectDegraded").checked = !$("rejectDegraded").checked; }));
-$("retryDegraded").addEventListener("change", () => saveDegradedSettings(() => { $("retryDegraded").checked = !$("retryDegraded").checked; }));
+$("retryDegraded").addEventListener("change", () => {
+  // The probe and the retry both fill the same pool on their own schedule, so
+  // the one being switched on switches the other off.
+  if ($("retryDegraded").checked && $("probeEnabled")?.checked) {
+    $("probeEnabled").checked = false;
+    syncProbeControls();
+  }
+  saveDegradedSettings(() => { $("retryDegraded").checked = !$("retryDegraded").checked; });
+});
+// The pool's own control saves itself: it is the only editable thing on that
+// panel, so a second "save rule" button there would mean two buttons writing
+// one rule, one of them only a single field of it.
 $("ruleStateTTL")?.addEventListener("change", () => {
   const seconds = ruleStateTTL();
   $("ruleStateTTL").value = seconds ? String(seconds) : "";
+  savePoolTTL();
+});
+
+$("probeEnabled")?.addEventListener("change", () => {
+  if ($("probeEnabled").checked && $("retryDegraded")?.checked) {
+    $("retryDegraded").checked = false;
+    syncDegradedControls();
+  }
+  syncProbeControls();
+  saveProbeSettings(() => { $("probeEnabled").checked = !$("probeEnabled").checked; });
+});
+for (const id of ["probeInterval", "probeCookieTTL", "probeWindowStart", "probeWindowEnd", "probeResolveIP"]) {
+  $(id)?.addEventListener("change", () => { syncProbeControls(); saveProbeSettings(() => {}); });
+}
+$("probeWindowClear")?.addEventListener("click", () => {
+  $("probeWindowStart").value = "";
+  $("probeWindowEnd").value = "";
+  syncProbeControls();
+  saveProbeSettings(() => {});
+});
+for (const radio of document.querySelectorAll('input[name="probeCookieMode"]')) {
+  radio.addEventListener("change", () => { syncProbeControls(); saveProbeSettings(() => {}); });
+}
+// The two proxy pools are usually the same machines; copying replaces rather
+// than merges, because a pool is a set of exits, not an accumulation.
+$("copyRetryToProbe")?.addEventListener("click", () => {
+  setChips("probeProxies", storedProxies());
+  syncProbeControls();
+  saveProbeSettings(() => {});
+});
+$("copyProbeToRetry")?.addEventListener("click", () => {
+  setChips("retryProxies", probeProxyList());
+  syncDegradedControls();
+  saveDegradedSettings(() => {});
 });
 $("retryAttempts").addEventListener("change", () => {
   $("retryAttempts").value = String(degradedRetryAttempts());
   saveDegradedSettings(() => {});
 });
+wireHistoryTabs();
 $("drawerClose").addEventListener("click", closeHistoryDrawer);
 $("drawerBackdrop").addEventListener("click", closeHistoryDrawer);
 document.addEventListener("click", (event) => {
