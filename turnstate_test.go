@@ -336,8 +336,11 @@ func TestCrossAccountOutranksModelComparison(t *testing.T) {
 
 func TestStaleBlobIsReportedExpiredButStaysUsableForStripping(t *testing.T) {
 	resetTurnStates(t)
-	fresh := fernetToken(0x80, time.Now().Add(-5*time.Minute), 1)
-	stale := fernetToken(0x80, time.Now().Add(-turnStateReuseWindow-10*time.Minute), 1)
+	// Ages are expressed against the window rather than in fixed minutes, so
+	// changing the default does not silently move what the test asserts.
+	const window = defaultStateTTLSeconds * time.Second
+	fresh := fernetToken(0x80, time.Now().Add(-window/2), 1)
+	stale := fernetToken(0x80, time.Now().Add(-2*window), 1)
 	state.mu.Lock()
 	noteTurnStateMintLocked(fresh, "idx-a", "team-a", "m", "team")
 	noteTurnStateMintLocked(stale, "idx-a", "team-a", "m", "team")
@@ -346,10 +349,10 @@ func TestStaleBlobIsReportedExpiredButStaysUsableForStripping(t *testing.T) {
 	state.mu.Unlock()
 
 	if freshEcho.expired {
-		t.Fatalf("a five minute old blob is fresh: %#v", freshEcho)
+		t.Fatalf("a blob half the window old is fresh: %#v", freshEcho)
 	}
-	if freshEcho.ageSeconds < 240 || freshEcho.ageSeconds > 360 {
-		t.Fatalf("age=%d", freshEcho.ageSeconds)
+	if want := int64((window / 2).Seconds()); freshEcho.ageSeconds < want-30 || freshEcho.ageSeconds > want+30 {
+		t.Fatalf("age=%d want about %d", freshEcho.ageSeconds, want)
 	}
 	if !staleEcho.expired {
 		t.Fatalf("a blob past the reuse window is expired: %#v", staleEcho)
@@ -363,7 +366,7 @@ func TestStaleBlobIsReportedExpiredButStaysUsableForStripping(t *testing.T) {
 
 func TestExpiryIsJudgedWithoutAnyProvenance(t *testing.T) {
 	resetTurnStates(t)
-	stale := fernetToken(0x80, time.Now().Add(-2*turnStateReuseWindow), 1)
+	stale := fernetToken(0x80, time.Now().Add(-2*defaultStateTTLSeconds*time.Second), 1)
 	state.mu.Lock()
 	echo, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {stale}}, "idx-a", "m")
 	state.mu.Unlock()
@@ -415,4 +418,64 @@ func TestOlderMintDoesNotReplaceANewerOne(t *testing.T) {
 	if len(recent) != 1 || recent[0].digest != turnStateDigest(newer) {
 		t.Fatalf("out of order mints must not rewind the latest entry: %#v", recent)
 	}
+}
+
+// The freshness window is the operator's number now, kept per credential. A
+// rule saved before the field existed carries zero, which has to read as the
+// default rather than as "everything is expired".
+func TestReuseWindowComesFromTheRule(t *testing.T) {
+	resetRules(t)
+	resetTurnStates(t)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if got := turnStateReuseWindowLocked("idx-none"); got != defaultStateTTLSeconds*time.Second {
+		t.Fatalf("a credential with no rule uses the default, got %s", got)
+	}
+	state.rules["idx-zero"] = headerRule{AuthIndex: "idx-zero", StateTTLSeconds: 0}
+	if got := turnStateReuseWindowLocked("idx-zero"); got != defaultStateTTLSeconds*time.Second {
+		t.Fatalf("zero means the default, got %s", got)
+	}
+	state.rules["idx-short"] = headerRule{AuthIndex: "idx-short", StateTTLSeconds: 30}
+	state.rules["idx-long"] = headerRule{AuthIndex: "idx-long", StateTTLSeconds: 1800}
+	if got := turnStateReuseWindowLocked("idx-short"); got != 30*time.Second {
+		t.Fatalf("short window=%s", got)
+	}
+	if got := turnStateReuseWindowLocked("idx-long"); got != 1800*time.Second {
+		t.Fatalf("long window=%s", got)
+	}
+}
+
+// Two credentials can disagree about how long a state stays fresh, and the same
+// blob age must be judged by whichever rule is serving the request.
+func TestTheSameAgeIsJudgedPerCredential(t *testing.T) {
+	resetRules(t)
+	resetTurnStates(t)
+	blob := fernetToken(0x80, time.Now().Add(-120*time.Second), 1)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.rules["idx-short"] = headerRule{AuthIndex: "idx-short", StateTTLSeconds: 60}
+	state.rules["idx-long"] = headerRule{AuthIndex: "idx-long", StateTTLSeconds: 600}
+	short, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-short", "m")
+	long, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-long", "m")
+	if !short.expired {
+		t.Fatalf("a two minute old blob is past a one minute window: %#v", short)
+	}
+	if long.expired {
+		t.Fatalf("a two minute old blob is inside a ten minute window: %#v", long)
+	}
+}
+
+// resetRules gives a test its own rule table without needing the request-path
+// fixtures, which only exist in the localtest build.
+func resetRules(t *testing.T) {
+	t.Helper()
+	state.mu.Lock()
+	previous := state.rules
+	state.rules = map[string]headerRule{}
+	state.mu.Unlock()
+	t.Cleanup(func() {
+		state.mu.Lock()
+		state.rules = previous
+		state.mu.Unlock()
+	})
 }

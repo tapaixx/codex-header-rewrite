@@ -58,7 +58,7 @@ request.intercept_after
 
 跨号回带不是客户端的错误行为，而是代理选号的结果：CPA 的 `routing.strategy` 默认 `round-robin`，按请求轮换凭证，`routing.session-affinity` 默认关闭；即使开启，绑定凭证不可用时仍会自动故障转移。客户端只看到一个端点，原样回带它收到的 state。
 
-复用判定按三条规则：同凭证、同模型、在复用窗口（经验值 1 小时）内。跨号与跨模型是确定不可复用，注入开关打开时会摘除；过期只标记不摘除，因为窗口未经上游确认。
+复用判定按三条规则：同凭证、同模型、在复用窗口内。窗口是 `headerRule.state_ttl_seconds`，按凭证维护，单位秒，默认 200；读取时走 `turnStateReuseWindowLocked(authIndex)`，字段为 0 的旧规则读成默认值。跨号与跨模型是确定不可复用，注入开关打开时会摘除；过期只标记不摘除，因为窗口未经上游确认。
 
 每个上游返回值都会分类：Team 套餐 `≤ 332` 字符、个人套餐（非 Team）`≤ 292` 字符才是不降智。分档只判断套餐名是不是 `team`，没见过的套餐名一律走个人档，因此不需要枚举个人套餐；未声明套餐或超限值不入池。不降智值铸造进「凭证 + 模型 → 最新原始 blob」持久池，写入配置的 bbolt `data_path`，启动时恢复，乱序返回不回退。内存摘要索引仍有 2 小时 TTL 与 512 条上限；它只负责短期来源关联，不决定持久池是否保留。
 
@@ -79,7 +79,7 @@ request.intercept_after
 ```text
 response（header-init / response.intercept_after）
  -> 铸造判定为疑似降智
-    -> 本次注入的是已过期的池 state（注入时 mintedAt 距今 > 复用窗口）
+    -> 本次注入的是已过期的池 state（注入时 mintedAt 距今 > 该凭证的 state_ttl_seconds）
        -> 池里该 (凭证 + 模型) 仍是同一 digest -> 删除池项（内存 + bbolt），attempt 记 turn_state_invalidated
        -> 池里已是更新的 state -> 不动
     -> 注入的 state 尚在窗口内 -> 不动（单次降智不足为证）
@@ -100,6 +100,8 @@ response.intercept_after / stream header-init
 ABI 只允许替换 Headers / Body 与按 chunk 丢弃（`DropChunk`），不能改状态码、不能中止连接，也不会触发宿主的凭证故障转移；上游仍会把响应流完。
 
 范围由 `reject_degraded_models` 指定：空列表匹配全部，非空与 `sentModel(Model, RequestedModel)` 精确比较。响应拦截不依赖请求改写开关。只有被拦截且启用 `retry_on_degraded` 的请求才启动后台最小请求；`retry_attempts` 是最大次数，拿到合格 state 后提前结束。
+
+重试的 Header 由 `retryHeaders` 组装：`Content-Type` / `Accept` / `Originator` / `Authorization` / `Chatgpt-Account-Id`，再加上被拦截那次请求的 `Cookie`（`joinCookieHeader` 把 HTTP/2 拆开的多段按 `; ` 拼回）。Cookie 存在 `pendingAttempt.clientCookie` 上，不是 `historyRecord` 的字段，因此不会被序列化或落盘；`recordRetrySeries` 写历史时走 `redactHeaders`。
 
 ## 测试请求
 

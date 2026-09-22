@@ -15,6 +15,10 @@ var exactSensitiveHeaders = map[string]struct{}{
 	"x-api-key": {}, "api-key": {}, "x-goog-api-key": {}, "x-auth-token": {},
 }
 var sensitiveHeaderFragments = []string{"token", "secret", "password", "credential", "api-key", "apikey"}
+
+// schemeHeaders are the sensitive headers whose value begins with an
+// authentication scheme rather than with the secret itself.
+var schemeHeaders = map[string]struct{}{"authorization": {}, "proxy-authorization": {}}
 var warningHeaders = map[string]struct{}{
 	"authorization": {}, "content-type": {}, "content-length": {}, "host": {},
 	"user-agent": {}, "chatgpt-account-id": {}, "originator": {}, "openai-beta": {},
@@ -90,6 +94,16 @@ func validateRule(rule headerRule) (headerRule, error) {
 	if rule.RetryAttempts > maxRetryAttempts {
 		return rule, fmt.Errorf("retry_attempts must not exceed %d", maxRetryAttempts)
 	}
+	// Zero is how the field says "use the default", so it is kept rather than
+	// clamped up. A number outside the range is refused instead of silently
+	// rewritten: the operator is tuning a window, and a saved value that is not
+	// the one they typed would mislead them about what the pool is doing.
+	if rule.StateTTLSeconds < 0 || (rule.StateTTLSeconds > 0 && rule.StateTTLSeconds < minStateTTLSeconds) {
+		return rule, fmt.Errorf("state_ttl_seconds must be at least %d", minStateTTLSeconds)
+	}
+	if rule.StateTTLSeconds > maxStateTTLSeconds {
+		return rule, fmt.Errorf("state_ttl_seconds must not exceed %d", maxStateTTLSeconds)
+	}
 	return rule, nil
 }
 
@@ -125,9 +139,15 @@ func redactHeaderValue(name, value string) string {
 	if !isSensitiveHeader(name) {
 		return value
 	}
-	parts := strings.SplitN(strings.TrimSpace(value), " ", 2)
-	if len(parts) == 2 && parts[0] != "" {
-		return parts[0] + " [REDACTED]"
+	// Only an authorization value carries a scheme worth keeping: "Bearer
+	// [REDACTED]" tells the operator more than "[REDACTED]" does. No other
+	// sensitive header has one, and assuming they all did leaked material --
+	// a Cookie's first crumb is itself a name=value pair, so keeping whatever
+	// preceded the first space published one entire cookie.
+	if _, ok := schemeHeaders[strings.ToLower(strings.TrimSpace(name))]; ok {
+		if parts := strings.SplitN(strings.TrimSpace(value), " ", 2); len(parts) == 2 && parts[0] != "" {
+			return parts[0] + " [REDACTED]"
+		}
 	}
 	return "[REDACTED]"
 }

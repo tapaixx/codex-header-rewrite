@@ -291,9 +291,10 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 	pr.current.TurnStateInjected = injected
 	if injected {
 		pr.current.injectedDigest = injectedFrom.digest
-		pr.current.injectedExpired = time.Since(injectedFrom.mintedAt) > turnStateReuseWindow
+		pr.current.injectedExpired = time.Since(injectedFrom.mintedAt) > turnStateReuseWindowLocked(authIndex)
 	}
 	pr.current.TurnStateSessionID = clientSessionID(req.Headers)
+	pr.current.clientCookie = joinCookieHeader(req.Headers)
 	state.mu.Unlock()
 	return requestInterceptResponse{Headers: updates, ClearHeaders: clears}, nil
 }

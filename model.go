@@ -44,8 +44,12 @@ type headerRule struct {
 	RetryOnDegraded bool `json:"retry_on_degraded"`
 	RetryAttempts   int  `json:"retry_attempts,omitempty"`
 	// Empty means direct; each background retry randomly selects one SOCKS URL.
-	RetryProxies []string  `json:"retry_proxies,omitempty"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	RetryProxies []string `json:"retry_proxies,omitempty"`
+	// StateTTLSeconds is how long a pooled state counts as fresh for this
+	// credential. Zero means defaultStateTTLSeconds, which is what every rule
+	// saved before the field existed carries.
+	StateTTLSeconds int       `json:"state_ttl_seconds,omitempty"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type credentialSnapshot struct {
@@ -142,6 +146,12 @@ type pendingAttempt struct {
 	// are dropped.
 	rejecting      bool
 	rejectedChunks int
+	// clientCookie is the Cookie header of the request whose response was
+	// withheld, kept so the retry can present the same browser session the
+	// intercepted request did. It lives on the in-flight attempt only: it is
+	// not part of historyRecord, so it is never serialised or persisted, and
+	// the copy that reaches the history goes through redactHeaders.
+	clientCookie string
 	// A streamed response calls the mint path on its header chunk and again
 	// per chunk; the retry series must be started once.
 	retryScheduled bool

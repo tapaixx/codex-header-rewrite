@@ -168,10 +168,19 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 		// One row per credential and model: a newer pooled state for the same pair
 		// replaces the older one, so this is exactly the set a client could
 		// still be echoing.
+		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
+		// The freshness window belongs to the credential now, so it is read
+		// under the same lock as the pool rather than being a constant.
 		state.mu.Lock()
 		recent := recentTurnStatesLocked()
+		windows := make(map[string]time.Duration, len(recent)+1)
+		for _, origin := range recent {
+			if _, ok := windows[origin.authIndex]; !ok {
+				windows[origin.authIndex] = turnStateReuseWindowLocked(origin.authIndex)
+			}
+		}
+		window := turnStateReuseWindowLocked(authIndex)
 		state.mu.Unlock()
-		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
 		items := make([]map[string]any, 0, len(recent))
 		for _, origin := range recent {
 			if authIndex != "" && origin.authIndex != authIndex {
@@ -189,12 +198,15 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 				"max_chars":   origin.maxChars,
 				"minted_at":   origin.mintedAt,
 				"age_seconds": age,
-				"expired":     time.Since(origin.mintedAt) > turnStateReuseWindow,
+				"expired":     time.Since(origin.mintedAt) > windows[origin.authIndex],
+				// Per item as well, so a view that is not filtered to a single
+				// credential can still say what each row was judged against.
+				"reuse_window_seconds": int64(windows[origin.authIndex].Seconds()),
 			})
 		}
 		return jsonResponse(http.StatusOK, map[string]any{
 			"turn_states":          items,
-			"reuse_window_seconds": int64(turnStateReuseWindow.Seconds()),
+			"reuse_window_seconds": int64(window.Seconds()),
 		}), nil
 	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiTurnStateDecodePath):
 		var body struct {

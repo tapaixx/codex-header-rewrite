@@ -174,10 +174,28 @@ func classifyTurnState(info turnStateInfo, blob, plan string) turnStateInfo {
 // legitimate; failing any of them makes the echo a contradiction the upstream
 // can see.
 //
-// The freshness window is an observed rule of thumb rather than a documented
-// guarantee, so an expired echo is reported and never stripped: guessing the
-// window wrong would break a turn chain that would otherwise have worked.
-const turnStateReuseWindow = time.Hour
+// How long "fresh" lasts is an observed rule of thumb, not something the
+// upstream documents, and it differs between accounts -- so it is a number the
+// operator maintains per credential rather than a constant compiled in. An
+// expired state is still reported and never stripped: guessing the window
+// wrong would break a turn chain that would otherwise have worked. What the
+// window does decide is when a still-degraded response is taken as proof that
+// the injected state has stopped carrying the chain.
+const (
+	defaultStateTTLSeconds = 200
+	minStateTTLSeconds     = 5
+	maxStateTTLSeconds     = 7200
+)
+
+// turnStateReuseWindowLocked is the freshness window for one credential.
+// A rule that has never been saved since the field existed carries zero, which
+// reads as the default. Callers hold state.mu.
+func turnStateReuseWindowLocked(authIndex string) time.Duration {
+	if rule, ok := state.rules[authIndex]; ok && rule.StateTTLSeconds > 0 {
+		return time.Duration(rule.StateTTLSeconds) * time.Second
+	}
+	return defaultStateTTLSeconds * time.Second
+}
 
 // turnStateOrigin records the credential and model that returned a blob.
 type turnStateOrigin struct {
@@ -272,6 +290,33 @@ func headerValueFold(h http.Header, name string) string {
 
 func headerTurnState(h http.Header) string {
 	return headerValueFold(h, turnStateHeader)
+}
+
+// joinCookieHeader returns the request's cookies as a single header value.
+// HTTP/2 may split Cookie into several crumbs, and the wire form joins them
+// with "; ", so a request that arrives split is put back together rather than
+// half-copied. Header names are matched case-insensitively, the same way the
+// rest of this file reads them.
+func joinCookieHeader(h http.Header) string {
+	if h == nil {
+		return ""
+	}
+	values := h.Values("Cookie")
+	if len(values) == 0 {
+		for key, candidate := range h {
+			if strings.EqualFold(key, "Cookie") {
+				values = candidate
+				break
+			}
+		}
+	}
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+	return strings.Join(parts, "; ")
 }
 
 // clientSessionID matches the header the Codex client uses to identify a
@@ -442,7 +487,7 @@ func evaluateTurnStateEchoLocked(headers http.Header, authIndex, model string) (
 	if !echo.info.IssuedAt.IsZero() {
 		age := time.Since(echo.info.IssuedAt)
 		echo.ageSeconds = int64(age.Seconds())
-		echo.expired = age > turnStateReuseWindow
+		echo.expired = age > turnStateReuseWindowLocked(authIndex)
 	}
 	origin, known := lookupTurnStateOriginLocked(blob)
 	if !known {

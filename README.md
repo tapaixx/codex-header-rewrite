@@ -71,7 +71,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.19.1.so` | `codex-header-rewrite` | `0.19.1` |
+| `codex-header-rewrite-v0.20.0.so` | `codex-header-rewrite` | `0.20.0` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -84,7 +84,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.19.1.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.20.0.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -200,7 +200,7 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 1. **同一个凭证** —— 换号之后回带旧号返回的 blob，是只有代理链才会出现的矛盾。
 2. **同一个模型** —— 同号但换了模型，blob 属于另一条回合链，上游同样用不了。
-3. **还在有效期内** —— 经验窗口约 1 小时（不保证，上游未公开）。
+3. **还在有效期内** —— 由 `state_ttl_seconds` 决定，按凭证维护，单位秒，默认 **200**。
 
 插件按这三条判定，并在历史里给出结论：
 
@@ -210,10 +210,14 @@ curl -s -H "Authorization: Bearer <management-key>" \
 | 跨账号回带 | 该 blob 来自另一个凭证，详情显示是哪一个 |
 | 跨模型回带 | 同凭证但来自另一个模型，详情显示是哪个模型 |
 | 回带来源未知 | 没记到来源（超出溯源窗口、未入池或发生在装插件之前）—— 是「未知」，不是「一致」 |
-| 已过期 N 分钟 | 信封里的签发时间已超过复用窗口 |
+| 已过期 N 分钟 | 信封里的签发时间已超过该凭证的 `state_ttl_seconds` |
 | 已摘除 | 注入开关打开，本次回带被判定不可复用并已摘掉 |
 
 **为什么会出现跨号回带**：账号不是客户端选的。CPA 的 `routing.strategy` 默认为 `round-robin`，**按请求**轮换凭证，而 `routing.session-affinity` 默认关闭 —— 同一段对话的相邻两轮很可能由不同账号伺服。客户端只看到一个端点，它只是把上游给它的 `X-Codex-Turn-State` 原样带回来，于是 A 号铸的 state 被发给了 B 号。即使打开 `session-affinity`，CPA 在绑定凭证不可用时仍会自动故障转移（401 / 429 / 冷却），回合链照样换号。跨模型同理：state 绑在铸造它的模型上，会话中途换模型或发生回退后，回带的仍是旧模型的 state。单机直连 Codex 两种都不会发生——那里只有一个账号。
+
+**State 有效期（v0.20.0）**：`state_ttl_seconds` 是 `headerRule` 的字段，按凭证保存，取值 5–7200 秒，留空（存为 `0`）按默认 200 秒。之前这是编译进去的 1 小时常量，但这个窗口上游从没公开过，而且各账号表现不同，所以改成面板里可填的数字。两个凭证可以各填各的，同一条 blob 的年龄按当时服务这次请求的那条规则判定。超出范围的值保存时直接报错，不会被悄悄改写成别的数——否则面板上显示的就不是你填的那个窗口了。
+
+窗口决定的不是「是否注入」：**过期的 state 照样会注入**，因为窗口是经验值。它决定的是什么时候把「注入后仍降智」当成这条 state 已经失效的证据（见下文）。把它调短，失效的 state 就更快被清出池子；调长则更保守。
 
 **一个开关**：`inject_turn_state` 是 `headerRule` 的字段。开启时插件从 State 池取「该凭证 + 当前模型」的合格 state 写入请求（池里没有就不写），并摘除确认来自其他凭证或其他模型的回带值；关闭时完全不碰这个 Header。规则里手工设置或移除该 Header 时以手工为准，「启用改写」关闭时整条规则都不生效。早先以 `strip_foreign_turn_state` 保存的规则在读取时会折算成这个开关。
 
@@ -250,9 +254,13 @@ curl -s -H "Authorization: Bearer <management-key>" \
 3. **套餐已知且该 state 合格** —— 套餐读不到、或长度超过该套餐阈值（疑似降智）都不注入。
 4. **你没有在规则里手工写过这个 Header** —— 规则里「设置/覆盖」里钉了值，以你钉的为准；规则里「移除」了它，就保持移除，不会被池悄悄填回去。
 
-**注入后的回执会反过来校验池子**：如果注入的那条 state 在注入时已经**超过复用窗口**，而这次上游铸回来的仍是**疑似降智**的 state，说明这条旧 state 已经带不动回合链了——它会立刻从池中删除（内存和 bbolt 一起），历史里标「注入后仍降智 · 已失效」，下一次请求不再注入它，让上游重新签发。窗口内的 state 出现同样结果时不动它：一次降智回合不足以否定一条新鲜的 state。若这期间池里已经换成了更新的 state，只删注入的那条，不误伤新的。
+**注入后的回执会反过来校验池子**：如果注入的那条 state 在注入时已经**超过该凭证的 `state_ttl_seconds`**，而这次上游铸回来的仍是**疑似降智**的 state，说明这条旧 state 已经带不动回合链了——它会立刻从池中删除（内存和 bbolt 一起），历史里标「注入后仍降智 · 已失效」，下一次请求不再注入它，让上游重新签发。窗口内的 state 出现同样结果时不动它：一次降智回合不足以否定一条新鲜的 state。若这期间池里已经换成了更新的 state，只删注入的那条，不误伤新的。
 
-**重试请求与线上请求并不等价**：重试发的是最小请求——只有 `Content-Type` / `Accept` / `Originator` / `Authorization` / `Chatgpt-Account-Id` 五个头，`tools: []`、提示词 `hi`，不带 `X-Codex-Turn-Metadata`、`X-Codex-Beta-Features`、`X-Openai-Internal-Codex-Responses-Lite`，也不带会话上下文；线上请求这些全都带，请求体可达数 MB。上游据此铸出的 state 长度不同，所以**重试拿到"不降智"不等于该账号已恢复**，详情页现在会把重试实际发出与收到的 Header 一并显示，便于自行比对。
+**重试会带上被拦截请求的 Cookie（v0.20.0）**：重试要在上游看来是同一个调用方，而 Cookie 是原请求里唯一承载这层会话身份的东西，所以被拦截那次请求的 `Cookie` 会随重试一起发出（HTTP/2 拆成多段时按 `; ` 拼回完整值）。原请求没带 Cookie 就不带，不会凭空造一个空头。它只存在于内存中的在途 attempt 上，不进 `historyRecord`，因此不会被序列化或落盘；写进历史的那份和其他凭证材料一样脱敏。
+
+> 顺带修掉一个脱敏漏洞：`redactHeaderValue` 原本会保留第一个空格之前的内容（为了让 `Authorization` 显示成 `Bearer [REDACTED]`），而 Cookie 的第一段本身就是 `name=value`，于是整条 cookie 被写进了历史。现在只有 `Authorization` / `Proxy-Authorization` 保留 scheme，其余敏感头整体替换为 `[REDACTED]`。
+
+**重试请求与线上请求并不等价**：重试发的是最小请求——只有 `Content-Type` / `Accept` / `Originator` / `Authorization` / `Chatgpt-Account-Id`（以及原请求带了的 `Cookie`），`tools: []`、提示词 `hi`，不带 `X-Codex-Turn-Metadata`、`X-Codex-Beta-Features`、`X-Openai-Internal-Codex-Responses-Lite`，也不带会话上下文；线上请求这些全都带，请求体可达数 MB。上游据此铸出的 state 长度不同，所以**重试拿到"不降智"不等于该账号已恢复**，详情页现在会把重试实际发出与收到的 Header 一并显示，便于自行比对。
 
 命中注入的记录在历史里标「已注入」，差异视图里也能看到该 Header 是被新增或替换的。客户端本来带了一个不可复用的回带值时，注入会直接替换它 —— 一次响应里不会同时出现"设置"和"移除"同一个 Header 这种自相矛盾的指令。
 

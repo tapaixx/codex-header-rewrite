@@ -671,7 +671,7 @@ func TestFreshInjectedStateSurvivesADegradedResponse(t *testing.T) {
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
-	fresh := pooledAt(t, time.Now().Add(-5*time.Minute))
+	fresh := pooledAt(t, time.Now().Add(-defaultStateTTLSeconds*time.Second/2))
 	injectTestRequest(t, "fresh", nil)
 	observeResponse(responseInterceptRequest{RequestID: "fresh", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {fernetToken(0x80, time.Now(), 40)}}})
 	completeRequest(requestCompletion{RequestID: "fresh", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})

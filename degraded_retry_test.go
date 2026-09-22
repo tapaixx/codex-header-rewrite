@@ -32,11 +32,11 @@ func TestRetryRejectsRotatedIdentityAndUsesCurrentPlan(t *testing.T) {
 	resetState(t)
 	resetTurnStates(t)
 	sent := retryStub(t, "pro", []string{strings.Repeat("x", 300)})
-	out := retryOnce(context.Background(), "idx-a", "old-auth", "m")
+	out := retryOnce(context.Background(), "idx-a", "old-auth", "m", "")
 	if !out.stop || len(*sent) != 0 {
 		t.Fatal("rotated credential was used")
 	}
-	out = retryOnce(context.Background(), "idx-a", "auth-a", "m")
+	out = retryOnce(context.Background(), "idx-a", "auth-a", "m", "")
 	if out.plan != "pro" || out.nonDegraded {
 		t.Fatalf("wrong plan classification: %#v", out)
 	}
@@ -133,7 +133,7 @@ func TestRetryPoolsTheFirstNonDegradedStateAndRecordsOneRow(t *testing.T) {
 	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
 	state.mu.Unlock()
 
-	runDegradedRetry("idx-a", "auth-a", "A", "a.json", "gpt-5.6-luna", "team", 3, nil)
+	runDegradedRetry(retrySeries{authIndex: "idx-a", authID: "auth-a", label: "A", name: "a.json", model: "gpt-5.6-luna"}, 3, nil)
 
 	if len(*sent) != 2 {
 		t.Fatalf("should have stopped at the first good state, sent %d", len(*sent))
@@ -181,7 +181,7 @@ func TestRetryStopsAtTheCapAndReportsFailure(t *testing.T) {
 	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
 	state.mu.Unlock()
 
-	runDegradedRetry("idx-a", "auth-a", "A", "a.json", "gpt-5.6-luna", "team", 2, nil)
+	runDegradedRetry(retrySeries{authIndex: "idx-a", authID: "auth-a", label: "A", name: "a.json", model: "gpt-5.6-luna"}, 2, nil)
 
 	if len(*sent) != 2 {
 		t.Fatalf("the cap should bound the series, sent %d", len(*sent))
@@ -230,7 +230,7 @@ func TestRetrySelectsProxyPerCallAndKeepsCredentialsIsolated(t *testing.T) {
 		return hostHTTPResponse{StatusCode: 503, Headers: http.Header{turnStateHeader: {"short-but-error"}}}, nil
 	}
 	for i := 0; i < 64; i++ {
-		out := retryOnce(context.Background(), "idx-a", "auth-a", "m")
+		out := retryOnce(context.Background(), "idx-a", "auth-a", "m", "")
 		if out.err == "" || out.nonDegraded {
 			t.Fatal("accepted state from error response")
 		}
@@ -239,7 +239,7 @@ func TestRetrySelectsProxyPerCallAndKeepsCredentialsIsolated(t *testing.T) {
 		t.Fatalf("not choosing per call from current credential: %v", seen)
 	}
 	seen = map[string]bool{}
-	_ = retryOnce(context.Background(), "idx-b", "auth-a", "m")
+	_ = retryOnce(context.Background(), "idx-b", "auth-a", "m", "")
 	if !seen[""] || len(seen) != 1 {
 		t.Fatal("inherited another credential's proxies")
 	}
@@ -248,7 +248,7 @@ func TestRetrySelectsProxyPerCallAndKeepsCredentialsIsolated(t *testing.T) {
 		t.Fatal(err)
 	}
 	seen = map[string]bool{}
-	_ = retryOnce(context.Background(), "idx-a", "auth-a", "m")
+	_ = retryOnce(context.Background(), "idx-a", "auth-a", "m", "")
 	if !seen[""] || len(seen) != 1 {
 		t.Fatal("cleared proxies did not select direct")
 	}
@@ -313,5 +313,100 @@ func TestWithheldResponseWaitsForTheRetrySeries(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the response never returned after the retry finished")
+	}
+}
+
+// The retry answers for a request that was withheld, so it has to look like the
+// same caller to the upstream: the Cookie of that request travels with the
+// series. What lands in the history is redacted, like every other piece of
+// credential material the plugin records.
+func TestRetryCarriesTheInterceptedCookieAndRecordsItRedacted(t *testing.T) {
+	resetState(t)
+	resetTurnStates(t)
+	good := fernetToken(0x80, time.Now(), 1)
+	sent := retryStub(t, "team", []string{good})
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, RejectDegradedResponse: true, RetryOnDegraded: true, RetryAttempts: 1}
+	state.mu.Unlock()
+
+	const cookie = "__Secure-next-auth.session-token=session-value; oai-did=device-value"
+	if _, err := interceptAfter(requestInterceptRequest{RequestID: "r", Model: "gpt-5.6-luna",
+		Headers:  http.Header{"Cookie": {cookie}},
+		Metadata: map[string]any{"selected_auth_index": "idx-a", "selected_auth_id": "auth-a"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The response is withheld, so this call returns only once the series ends.
+	observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200,
+		ResponseHeaders: http.Header{turnStateHeader: {fernetToken(0x80, time.Now(), 40)}}})
+
+	if len(*sent) != 1 {
+		t.Fatalf("the series should have made one attempt, made %d", len(*sent))
+	}
+	if got := (*sent)[0].Headers.Get("Cookie"); got != cookie {
+		t.Fatalf("the retry sent cookie %q, want the intercepted one", got)
+	}
+	rec := lastAttempt(t)
+	if rec.Origin != originRetry {
+		t.Fatalf("the last row should be the retry: %#v", rec)
+	}
+	if got := rec.BeforeHeaders.Get("Cookie"); got != "[REDACTED]" {
+		t.Fatalf("the recorded cookie must be redacted, got %q", got)
+	}
+	// The record travels through JSON on its way to the store, so the raw value
+	// must not survive anywhere in it.
+	raw, err := json.Marshal(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"session-value", "device-value"} {
+		if strings.Contains(string(raw), secret) {
+			t.Fatalf("the serialised record leaks %q: %s", secret, raw)
+		}
+	}
+}
+
+// A request without a Cookie must not grow one: the retry sends what the
+// original sent, and an empty header would be a header the client never set.
+func TestRetryOmitsTheCookieWhenTheRequestHadNone(t *testing.T) {
+	resetState(t)
+	resetTurnStates(t)
+	sent := retryStub(t, "team", []string{fernetToken(0x80, time.Now(), 1)})
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.mu.Unlock()
+
+	runDegradedRetry(retrySeries{authIndex: "idx-a", authID: "auth-a", label: "A", name: "a.json", model: "gpt-5.6-luna"}, 1, nil)
+
+	if len(*sent) != 1 {
+		t.Fatalf("one attempt expected, made %d", len(*sent))
+	}
+	if _, ok := (*sent)[0].Headers["Cookie"]; ok {
+		t.Fatalf("no cookie was sent, so none should be set: %v", (*sent)[0].Headers)
+	}
+}
+
+// HTTP/2 may deliver Cookie split into crumbs; the wire form joins them, so a
+// request that arrives split must not be half-copied.
+func TestSplitCookieCrumbsAreRejoined(t *testing.T) {
+	cases := []struct {
+		name    string
+		headers http.Header
+		want    string
+	}{
+		{"one value", http.Header{"Cookie": {"a=1; b=2"}}, "a=1; b=2"},
+		{"crumbs", http.Header{"Cookie": {"a=1", "b=2"}}, "a=1; b=2"},
+		{"lowercase key", http.Header{"cookie": {"a=1"}}, "a=1"},
+		{"blank crumb", http.Header{"Cookie": {"a=1", "  "}}, "a=1"},
+		{"absent", http.Header{"Accept": {"*/*"}}, ""},
+		{"nil", nil, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := joinCookieHeader(tc.headers); got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+		})
 	}
 }

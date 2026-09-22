@@ -1284,6 +1284,14 @@ body[data-workspace="rules"] .shell main{grid-template-columns:minmax(620px,1fr)
 .rule-block-flat .rule-block-copy small{transition:color .18s var(--ease)}
 .rule-block-guard[data-guard="on"] .rule-block-copy small{color:var(--accent)}
 .guard-switch{white-space:nowrap;align-self:center}
+/* The window is this switch's one setting, so it sits under it on its own row
+   rather than becoming a fifth column that would crush the title on a phone. */
+.guard-ttl{
+  grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;
+  border-top:1px solid var(--line);padding-top:8px;margin-top:1px
+}
+.guard-ttl .muted{flex:1 1 220px;min-width:0;font-size:10.5px;line-height:1.5;text-wrap:pretty}
+.field-unit{font-size:11px;font-weight:600;color:var(--text-mute)}
 
 #ruleStrategyPanel{grid-column:1!important;grid-row:2!important}
 #ruleStrategyPanel .panel-head{display:none}
@@ -2155,6 +2163,10 @@ html[data-theme="dark"]{
             <span class="rule-block-copy"><b>X-Codex-Turn-State 注入</b><small id="guardNowText"></small></span>
             <span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="State 注入开关的说明">!</button><span class="hint-text"><span class="hint-k">开启</span><span class="hint-v">从 State 池取「该凭证 + 当前模型」的合格 state，写入本次请求的 <code>X-Codex-Turn-State</code>；池里没有就不写。确认来自其他凭证或其他模型的回带值会被摘掉。</span><span class="hint-k">关闭</span><span class="hint-v">完全不碰这个 Header，客户端带什么就原样发什么。</span><span class="hint-p">规则里手工设置或移除了这个 Header 时以手工为准；「启用改写」关着时整条规则都不生效。</span></span></span></span>
             <label class="switch guard-switch"><input type="checkbox" id="ruleStripTurnState"><span>注入 State</span></label>
+            <div class="guard-ttl">
+              <label class="field-inline" for="ruleStateTTL">State 有效期<input id="ruleStateTTL" type="number" inputmode="numeric" min="5" max="7200" step="5" value="200" autocomplete="off"><span class="field-unit">秒</span></label>
+              <span class="muted">按凭证维护。超过这个时长的 state 标记为过期，仍会注入；但过期的 state 注入后还降智，就把它从池里清掉。留空按 200 秒。</span>
+            </div>
           </div>
         </fieldset>
 
@@ -2284,7 +2296,7 @@ html[data-theme="dark"]{
     </section>
 
     <section class="panel" id="turnStatePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>State 池</h2><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只有不降智 state 才入池：Team 套餐 ≤ 332 字符，个人套餐（非 Team）≤ 292 字符；凭证没有套餐声明时不判定，也不入池。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">1 小时</span>只标记过期。</span></span></span></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>State 池</h2><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只有不降智 state 才入池：Team 套餐 ≤ 332 字符，个人套餐（非 Team）≤ 292 字符；凭证没有套餐声明时不判定，也不入池。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">200 秒</span>只标记过期。</span></span></span></div></div>
         <div class="spacer"></div><span class="muted" id="turnStateMeta"></span>
         <button class="quiet icon" id="turnStateRefresh" title="刷新" aria-label="刷新回合状态"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
@@ -2354,6 +2366,9 @@ html[data-theme="dark"]{
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const PLUGIN_SEGMENT = "/codex-header-rewrite";
+// Mirrors defaultStateTTLSeconds in the plugin: what a rule that has never set
+// the field is served with, and what a blank input means.
+const defaultStateTTL = 200;
 const SESSION_KEY = "chr.key";
 
 const CUSTOM_MODEL = "__custom__";
@@ -2796,6 +2811,7 @@ async function selectCredential(authIndex) {
   if ($("rejectDegraded")) $("rejectDegraded").checked = false;
   if ($("retryDegraded")) $("retryDegraded").checked = false;
   if ($("retryAttempts")) $("retryAttempts").value = "2";
+  if ($("ruleStateTTL")) $("ruleStateTTL").value = String(defaultStateTTL);
   setChips("retryProxies", []);
   $("ruleFields").disabled = true;
   setChips("rejectDegradedModels", []);
@@ -2888,6 +2904,7 @@ async function loadRule() {
   if ($("rejectDegraded")) $("rejectDegraded").checked = !!store.rule.reject_degraded_response;
   if ($("retryDegraded")) $("retryDegraded").checked = !!store.rule.retry_on_degraded;
   if ($("retryAttempts")) $("retryAttempts").value = String(store.rule.retry_attempts || 2);
+  if ($("ruleStateTTL")) $("ruleStateTTL").value = String(store.rule.state_ttl_seconds || defaultStateTTL);
   setChips("rejectDegradedModels", store.rule.reject_degraded_models);
   renderRetryProxies();
   syncDegradedControls();
@@ -2907,7 +2924,7 @@ function renderWarnings(warnings) {
     $("ruleWarnText").innerHTML = `${warnings.map((name) => `<code class="mono" translate="no">${esc(name)}</code>`).join("、")} 属于 Codex executor 的特殊字段，改写可能在 interceptor 之后被覆盖。`;
   }
 }
-const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), inject_turn_state: $("ruleStripTurnState").checked, reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts(), retry_proxies: degradedProxies() });
+const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), inject_turn_state: $("ruleStripTurnState").checked, state_ttl_seconds: ruleStateTTL(), reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts(), retry_proxies: degradedProxies() });
 
 /* ---------- the header diff -------------------------------------------
    One row per header. The name is written once and the value change is shown
@@ -3023,10 +3040,7 @@ function turnStateTags(record) {
 }
 function turnStateAge(info) {
   if (!info?.issued_at || info.issued_at.startsWith("0001")) return "";
-  const seconds = Math.max(0, Math.round((Date.now() - new Date(info.issued_at).getTime()) / 1000));
-  if (seconds < 90) return `${seconds} 秒前`;
-  if (seconds < 5400) return `${Math.round(seconds / 60)} 分钟前`;
-  return `${Math.round(seconds / 3600)} 小时前`;
+  return formatAge((Date.now() - new Date(info.issued_at).getTime()) / 1000);
 }
 function turnStateRows(label, info, extra = "", blob = "", model = "") {
   if (!info) {
@@ -3330,7 +3344,7 @@ async function showPoolState(item) {
         <dt>不降智阈值</dt><dd class="num">${item.max_chars ? `≤ ${item.max_chars} 个字符` : "-"}</dd>
         <dt>质量判定</dt><dd>${verdict}</dd>
         <dt>入池时间</dt><dd>${esc(minted.toLocaleString())}<span class="muted"> · ${age} 分钟前</span></dd>
-        <dt>复用窗口</dt><dd>${$("turnStateWindow")?.textContent || "1 小时"}</dd>
+        <dt>复用窗口</dt><dd>${$("turnStateWindow")?.textContent || formatWindow(0)}</dd>
       </dl>
     </div>
     <div class="history-detail-section">
@@ -3406,8 +3420,7 @@ async function loadTurnStates() {
     store.turnStates = items;
     const current = store.creds.find((item) => item.auth_index === authIndex);
     const identity = current ? credentialDisplayName(current) : authIndex;
-    const window = payload.reuse_window_seconds || 3600;
-    $("turnStateWindow").textContent = `${Math.round(window / 60)} 分钟`;
+    $("turnStateWindow").textContent = formatWindow(payload.reuse_window_seconds);
     $("turnStateMeta").textContent = identity + " · " + items.length + " 条";
     body.replaceChildren();
     if (!items.length) {
@@ -3423,7 +3436,7 @@ async function loadTurnStates() {
     const tbody = body.querySelector("tbody");
     items.forEach((item, index) => {
       const minted = new Date(item.minted_at);
-      const age = Math.max(0, Math.round((item.age_seconds || 0) / 60));
+      const age = formatAge(item.age_seconds);
       const row = document.createElement("tr");
       row.className = "pool-row";
       row.dataset.index = String(index);
@@ -3434,7 +3447,7 @@ async function loadTurnStates() {
       row.innerHTML = `<td class="mono pool-model-cell" translate="no">${esc(item.model || "未记录")}</td>
         <td><span class="tag flat">${esc(item.plan_type || "未知套餐")}</span></td>
         <td class="num">${item.chars || "-"} / ≤ ${item.max_chars || "-"} 字符</td>
-        <td class="num">${esc(minted.toLocaleString())} · ${age} 分钟前</td>
+        <td class="num">${esc(minted.toLocaleString())} · ${age}</td>
         <td>${item.expired ? '<span class="tag warn">已过期</span>' : '<span class="tag ok">不降智</span>'}</td>`;
       row.addEventListener("click", () => showPoolState(item));
       row.addEventListener("keydown", (event) => {
@@ -3704,6 +3717,25 @@ $("keyConnect").addEventListener("click", () => {
 $("keyInput").addEventListener("keydown", (event) => { if (event.key === "Enter") $("keyConnect").click(); });
 $("keyOverlay").addEventListener("click", (event) => { if (event.target === $("keyOverlay")) closeKeyDialog(); });
 const degradedRetryAttempts = () => Math.min(5, Math.max(1, Number($("retryAttempts")?.value) || 2));
+// Blank means "use the default", which the plugin spells as zero. Anything
+// typed is clamped to the range the plugin would otherwise refuse.
+function ruleStateTTL() {
+  const raw = $("ruleStateTTL")?.value?.trim();
+  if (!raw) return 0;
+  return Math.min(7200, Math.max(5, Math.round(Number(raw)) || defaultStateTTL));
+}
+function formatWindow(seconds) {
+  if (!(seconds > 0)) return `${defaultStateTTL} 秒`;
+  if (seconds < 600) return `${seconds} 秒`;
+  if (seconds < 5400) return `${Math.round(seconds / 60)} 分钟`;
+  return `${Math.round(seconds / 3600)} 小时`;
+}
+function formatAge(seconds) {
+  const value = Math.max(0, Math.round(seconds || 0));
+  if (value < 600) return `${value} 秒前`;
+  if (value < 5400) return `${Math.round(value / 60)} 分钟前`;
+  return `${Math.round(value / 3600)} 小时前`;
+}
 // Each list is held here while it is edited; every change saves immediately,
 // so this is only ever a moment ahead of the stored rule.
 const chipValues = { rejectDegradedModels: [], retryProxies: [] };
@@ -3951,6 +3983,10 @@ async function saveDegradedSettings(revert) {
 }
 $("rejectDegraded").addEventListener("change", () => saveDegradedSettings(() => { $("rejectDegraded").checked = !$("rejectDegraded").checked; }));
 $("retryDegraded").addEventListener("change", () => saveDegradedSettings(() => { $("retryDegraded").checked = !$("retryDegraded").checked; }));
+$("ruleStateTTL")?.addEventListener("change", () => {
+  const seconds = ruleStateTTL();
+  $("ruleStateTTL").value = seconds ? String(seconds) : "";
+});
 $("retryAttempts").addEventListener("change", () => {
   $("retryAttempts").value = String(degradedRetryAttempts());
   saveDegradedSettings(() => {});

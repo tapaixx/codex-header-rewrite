@@ -28,8 +28,59 @@ func TestRedactHeaders(t *testing.T) {
 	if out.Get("Authorization") != "Bearer [REDACTED]" || out.Get("X-Api-Key") != "[REDACTED]" || out.Get("X-Custom") != "visible" { t.Fatalf("out=%#v", out) }
 }
 
+// Only a scheme survives redaction. A Cookie has no scheme: its first crumb is
+// a name=value pair, and keeping everything before the first space published it.
+func TestRedactionKeepsSchemesAndNothingElse(t *testing.T) {
+	cases := []struct{ name, value, want string }{
+		{"Authorization", "Bearer secret-token", "Bearer [REDACTED]"},
+		{"Authorization", "Basic dXNlcjpwYXNz", "Basic [REDACTED]"},
+		{"Cookie", "session=secret-value; oai-did=device", "[REDACTED]"},
+		{"Cookie", "a=1", "[REDACTED]"},
+		{"Set-Cookie", "session=secret-value; Path=/; HttpOnly", "[REDACTED]"},
+		{"X-Auth-Token", "tok en", "[REDACTED]"},
+	}
+	for _, tc := range cases {
+		if got := redactHeaderValue(tc.name, tc.value); got != tc.want {
+			t.Fatalf("%s: got %q want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestCodexCredentialProviderPrecedence(t *testing.T) {
 	if !isCodexCredential("codex", "anything") { t.Fatal("codex provider should match") }
 	if !isCodexCredential("", "CoDeX") { t.Fatal("type fallback") }
 	if isCodexCredential("xai", "codex") { t.Fatal("provider must take precedence") }
+}
+
+// The window is typed in by an operator, so a value outside the range is
+// refused rather than quietly rewritten: a saved number that is not the one
+// they typed would misreport what the pool is doing.
+func TestStateTTLRange(t *testing.T) {
+	cases := []struct {
+		seconds int
+		ok      bool
+	}{
+		{0, true}, // the field's way of saying "use the default"
+		{minStateTTLSeconds, true},
+		{200, true},
+		{maxStateTTLSeconds, true},
+		{minStateTTLSeconds - 1, false},
+		{-1, false},
+		{maxStateTTLSeconds + 1, false},
+	}
+	for _, tc := range cases {
+		out, err := validateRule(headerRule{AuthIndex: "i", StateTTLSeconds: tc.seconds})
+		if tc.ok {
+			if err != nil {
+				t.Fatalf("%d should be accepted: %v", tc.seconds, err)
+			}
+			if out.StateTTLSeconds != tc.seconds {
+				t.Fatalf("%d was rewritten to %d", tc.seconds, out.StateTTLSeconds)
+			}
+			continue
+		}
+		if err == nil {
+			t.Fatalf("%d should be refused", tc.seconds)
+		}
+	}
 }

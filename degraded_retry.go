@@ -78,14 +78,17 @@ func scheduleDegradedRetry(attempt *pendingAttempt, attempts int) chan struct{} 
 		return nil
 	}
 	state.retryWG.Add(1)
-	authIndex, authID := attempt.AuthIndex, attempt.AuthID
-	model := sentModel(attempt.Model, attempt.RequestedModel)
-	label, name, plan := attempt.CredentialLabel, attempt.CredentialName, attempt.CredentialPlan
+	series := retrySeries{
+		authIndex: attempt.AuthIndex, authID: attempt.AuthID,
+		label: attempt.CredentialLabel, name: attempt.CredentialName,
+		model:  sentModel(attempt.Model, attempt.RequestedModel),
+		cookie: attempt.clientCookie,
+	}
 	go func() {
 		defer close(done)
 		defer state.retryWG.Done()
 		defer func() { <-retryInFlight }()
-		runDegradedRetry(authIndex, authID, label, name, model, plan, attempts, stop)
+		runDegradedRetry(series, attempts, stop)
 	}()
 	return done
 }
@@ -112,7 +115,7 @@ func waitForDegradedRetry(done chan struct{}) {
 
 // runDegradedRetry makes up to attempts requests, stopping at the first
 // non-degraded state, and records the whole series as one history row.
-func runDegradedRetry(authIndex, authID, label, name, model, plan string, attempts int, stop <-chan struct{}) {
+func runDegradedRetry(series retrySeries, attempts int, stop <-chan struct{}) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
@@ -122,7 +125,7 @@ func runDegradedRetry(authIndex, authID, label, name, model, plan string, attemp
 		case <-ctx.Done():
 		}
 	}()
-	started := time.Now().UTC()
+	series.started = time.Now().UTC()
 	var (
 		used   int
 		last   retryOutcome
@@ -145,7 +148,7 @@ func runDegradedRetry(authIndex, authID, label, name, model, plan string, attemp
 		default:
 		}
 		used++
-		last = retryOnce(ctx, authIndex, authID, model)
+		last = retryOnce(ctx, series.authIndex, series.authID, series.model, series.cookie)
 		select {
 		case <-stop:
 			return
@@ -163,7 +166,7 @@ func runDegradedRetry(authIndex, authID, label, name, model, plan string, attemp
 			return
 		}
 		classified := classifyTurnState(decodeTurnState(last.blob), last.blob, last.plan)
-		classified.Pooled = noteTurnStateMintLocked(last.blob, authIndex, label, model, last.plan)
+		classified.Pooled = noteTurnStateMintLocked(last.blob, series.authIndex, series.label, series.model, last.plan)
 		state.mu.Unlock()
 		info = classified
 		if last.nonDegraded {
@@ -171,16 +174,13 @@ func runDegradedRetry(authIndex, authID, label, name, model, plan string, attemp
 			break
 		}
 	}
-	recordRetrySeries(retrySeries{
-		authIndex: authIndex, authID: authID, label: label, name: name,
-		model: model, attempts: used, started: started, last: last,
-		pooled: pooled, info: info,
-	})
+	series.attempts, series.last, series.pooled, series.info = used, last, pooled, info
+	recordRetrySeries(series)
 }
 
 // retryOnce sends one minimal Codex request and reports only what the
 // response header said. The body is discarded unread.
-func retryOnce(ctx context.Context, authIndex, authID, model string) retryOutcome {
+func retryOnce(ctx context.Context, authIndex, authID, model, cookie string) retryOutcome {
 	if !retryIdentityMatches(authIndex, authID) {
 		return retryOutcome{err: "credential identity changed or unavailable", stop: true}
 	}
@@ -199,7 +199,7 @@ func retryOnce(ctx context.Context, authIndex, authID, model string) retryOutcom
 	if material.accessToken == "" {
 		return retryOutcome{err: "credential has no usable access token"}
 	}
-	headers := retryHeaders(material)
+	headers := retryHeaders(material, cookie)
 	body, err := json.Marshal(retryPayload(model))
 	if err != nil {
 		return retryOutcome{err: err.Error()}
@@ -237,9 +237,13 @@ func retryIdentityMatches(authIndex, authID string) bool {
 	return err == nil && runtime.Auth.ID == authID && isCodexCredential(runtime.Auth.Provider, runtime.Auth.Type)
 }
 
-// retryHeaders is the smallest set the Codex backend needs. Nothing about the
-// operator or the original request is copied in.
-func retryHeaders(material testAuthMaterial) http.Header {
+// retryHeaders is the smallest set the Codex backend needs, plus the Cookie of
+// the request whose response was withheld. The cookie is the one piece of the
+// original request that identifies the same browser session to the upstream,
+// so a retry sent without it is not asking as the same caller. Nothing else
+// about the original request is copied in, and the copy that reaches the
+// history goes through redactHeaders like any other credential material.
+func retryHeaders(material testAuthMaterial, cookie string) http.Header {
 	headers := http.Header{
 		"Content-Type": {"application/json"},
 		"Accept":       {"text/event-stream"},
@@ -248,6 +252,9 @@ func retryHeaders(material testAuthMaterial) http.Header {
 	headers.Set("Authorization", "Bearer "+material.accessToken)
 	if material.accountID != "" {
 		headers.Set("Chatgpt-Account-Id", material.accountID)
+	}
+	if cookie != "" {
+		headers.Set("Cookie", cookie)
 	}
 	return headers
 }
@@ -266,11 +273,13 @@ func retryPayload(model string) map[string]any {
 
 type retrySeries struct {
 	authIndex, authID, label, name, model string
-	attempts                              int
-	started                               time.Time
-	last                                  retryOutcome
-	pooled                                bool
-	info                                  turnStateInfo
+	// cookie travels with the series and never reaches the history record.
+	cookie   string
+	attempts int
+	started  time.Time
+	last     retryOutcome
+	pooled   bool
+	info     turnStateInfo
 }
 
 var retryRecordSeq struct {

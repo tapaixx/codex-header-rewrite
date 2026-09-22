@@ -21,7 +21,7 @@ await page.route('http://panel.test/**', async route => {
     if (route.request().method() === 'PUT') writes.push(route.request().postDataJSON());
     if (idx === 'b' && holdB) await new Promise(r=>{releaseB=r;});
     if (idx === 'b' && rejectB) return route.fulfill({status:500,contentType:'application/json',body:'{"error":"unavailable"}'});
-    data = {rule:{auth_index:idx,enabled:true,set:{'X-Owner':idx},remove:[],strip_foreign_turn_state:true}};
+    data = {rule:{auth_index:idx,enabled:true,set:{'X-Owner':idx},remove:[],inject_turn_state:true}};
   }
   if (url.pathname.endsWith('/models')) data = {models:[{id:'m'}]};
   if (url.pathname.endsWith('/history')) data = {total:1,page:1,total_pages:1,items:[{id:idx,auth_index:idx,model:'m',started_at:'2026-09-19T00:00:00Z',outcome:'failed',status_code:500,error:'ERROR'.repeat(300)}]};
@@ -33,11 +33,13 @@ try {
   await page.addInitScript(()=>localStorage.setItem('managementKey','fixture'));
   await page.goto('http://panel.test/v0/resource/plugins/codex-header-rewrite/index');
   await page.waitForFunction(()=>document.querySelector('#summaryHealth').textContent==='已加载');
-  await page.waitForFunction(()=>document.querySelector('#overviewStateCount').textContent==='1');
-  assert.equal(await page.locator('#turnStateBody .state-card').count(),2);
-  assert.equal(await page.locator('#overviewStateList').textContent().then(s=>s.includes('state-b')),false);
+  // The endpoint answers with every credential's pool; the panel must show only
+  // the selected one's rows, which is the filtering this guards.
+  await page.evaluate(()=>setWorkspace('pool',false));
+  await page.waitForFunction(()=>document.querySelectorAll('#turnStateBody .pool-row').length===2);
+  assert.equal((await page.locator('#turnStateBody').textContent()).includes('state-b'),false);
   assert.equal(await page.evaluate(()=>previewAfterHeaders({'x-codex-turn-state':'client'})['x-codex-turn-state']),'client');
-  assert.equal(await page.locator('#overviewTestHeaders').textContent().then(s=>s.includes('OpenAI/Python')),false);
+  await page.evaluate(()=>setWorkspace('rules',false));
   holdB=true;
   await page.evaluate(()=>{selectCredential('b').catch(()=>{});});
   await page.waitForFunction(()=>document.querySelector('#saveRule').disabled);
