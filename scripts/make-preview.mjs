@@ -156,11 +156,15 @@ const stub = `
     try { Object.defineProperty(window, name, { configurable: true, get: () => shim }); } catch {}
   }
   try { window.localStorage.setItem("managementKey", "preview"); } catch {}
-  const real = window.fetch;
+  // The path is split by hand rather than with new URL(path, location.href):
+  // resolving a root-relative path against a file: base is rejected outright by
+  // some browsers, and the whole preview died on the first request with
+  // "Failed to construct 'URL': Invalid URL". Nothing here needs a real URL.
   window.fetch = async (input, init = {}) => {
-    const url = new URL(String(input && input.url ? input.url : input), location.href);
-    const path = url.pathname;
-    const q = url.searchParams;
+    const raw = String((input && input.url) || input || "");
+    const mark = raw.indexOf("?");
+    const path = (mark < 0 ? raw : raw.slice(0, mark)).split("#")[0];
+    const q = new URLSearchParams(mark < 0 ? "" : raw.slice(mark + 1));
     const authIndex = q.get("auth_index") || "acct-a";
     const body = init.body ? JSON.parse(init.body) : null;
     if (path.endsWith("/credentials")) {
@@ -196,15 +200,55 @@ const stub = `
         before_headers: F.items[0].before_headers, after_headers: F.items[0].after_headers, response_headers: F.items[0].response_headers });
     }
     if (path.includes("/models")) return json({ models: [{ id: "gpt-6-astra" }, { id: "gpt-5.6-luna" }, { id: "gpt-5.6-sol" }] });
-    if (path.includes("/v0/management/")) return json({});
-    return real(input, init);
+    // Anything unmatched is answered empty rather than attempted for real: a
+    // preview opened from the filesystem has nothing to reach.
+    return json({});
   };
+})();
+</script>
+`;
+
+// Runs after the panel. The pre-script shim covers browsers that let a page
+// replace window.localStorage; this covers the ones that do not, by taking over
+// key resolution itself and restarting the load the panel had already abandoned.
+// It also puts any error on screen: a preview that fails silently is a preview
+// that cannot be reported.
+const takeover = `
+<script>
+(() => {
+  const show = (what) => {
+    let bar = document.getElementById("previewError");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "previewError";
+      bar.setAttribute("style", "position:fixed;left:0;right:0;bottom:0;z-index:9999;padding:9px 14px;"
+        + "font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;"
+        + "background:#7f1d1d;color:#fff;max-height:40vh;overflow:auto");
+      document.body.appendChild(bar);
+    }
+    bar.textContent = "preview.html 出错（把这段发给我）：\\n" + what;
+  };
+  addEventListener("error", (e) => show((e.message || "error") + "\\n" + (e.filename || "") + ":" + (e.lineno || 0)));
+  addEventListener("unhandledrejection", (e) => show("unhandled rejection: " + ((e.reason && (e.reason.stack || e.reason.message)) || String(e.reason))));
+  try {
+    // hostKey is a top-level function declaration, so it is a property of the
+    // global object and can be replaced from here.
+    if (typeof hostKey === "function") window.hostKey = () => "preview";
+    const overlay = document.getElementById("keyOverlay");
+    if (overlay) overlay.classList.remove("open");
+    if (typeof renderKeyChip === "function") renderKeyChip();
+    if (typeof loadCredentials === "function") loadCredentials().catch((error) => show("loadCredentials: " + (error && error.message || error)));
+  } catch (error) {
+    show("takeover: " + (error && error.stack || error));
+  }
 })();
 </script>
 `;
 
 const marker = '<script>\n"use strict";';
 if (!panel.includes(marker)) throw new Error('panel script preamble not found; update the injection point');
-const out = panel.replace(marker, stub.trim() + '\n' + marker);
+let out = panel.replace(marker, stub.trim() + '\n' + marker);
+if (!out.includes('</body>')) throw new Error('no </body> to append the takeover to');
+out = out.replace('</body>', takeover.trim() + '\n</body>');
 fs.writeFileSync(new URL('../preview.html', import.meta.url), out);
 console.log(`preview.html written (${(out.length / 1024).toFixed(0)} KB)`);
