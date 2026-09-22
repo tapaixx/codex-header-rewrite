@@ -160,6 +160,16 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 装这个版本之前的旧记录没有 body，详情里显示「没有记录到 Request Body」，不是错误。
 
+## 离线预览
+
+`preview.html` 是把 `web/index.html` 原样打包、只把管理 API 换成内置假数据的单文件，双击就能在浏览器里看，不需要 CPA、凭证或数据库。里面有两个凭证、一条启用的规则、五条历史（注入成功 / 被拦截 + 过期回带 / 重试 / 模型不一致 / 429 失败）、两条池内 state，以及带遮蔽和截断标记的 Request / Response Body。
+
+面板本身没有任何一处为预览做特判——预览渲染出来的就是插件渲染出来的。改完面板重新生成：
+
+```bash
+node scripts/make-preview.mjs
+```
+
 ## 测试请求
 
 「测试请求」放在「Header 规则」页内、默认折叠，与规则编辑共用同一个 Header 差异预览；点开即用。它可以从当前凭证的可用模型里选择模型（宿主未返回列表时回退为手填），设置提示词、推理强度、流式开关、临时 Header、临时移除、自定义端点与原始 JSON 请求体。默认提示词是 `hi`，自动生成 Responses API JSON 请求体；填写原始 JSON 后会按原文发送。
