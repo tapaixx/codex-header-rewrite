@@ -73,8 +73,25 @@ func normalizeObservedModel(model string) string {
 // It reports whether the payload parsed, which is what tells a caller the
 // bytes it held were a complete frame rather than a truncated one.
 func (o *modelObserver) observePayload(payload []byte, eventType string) bool {
-	if o == nil || len(bytes.TrimSpace(payload)) == 0 {
+	trimmed := bytes.TrimSpace(payload)
+	if o == nil || len(trimmed) == 0 {
 		return false
+	}
+	// A whole stream can arrive as one JSON array of events rather than as an
+	// object. Unmarshalling that into the struct below fails, which read as
+	// "declared nothing" and lost every event in it.
+	if trimmed[0] == '[' {
+		var elements []json.RawMessage
+		if err := json.Unmarshal(trimmed, &elements); err != nil {
+			return false
+		}
+		parsed := false
+		for _, element := range elements {
+			if o.observePayload(element, eventType) {
+				parsed = true
+			}
+		}
+		return parsed
 	}
 	var declared struct {
 		Type     string `json:"type"`
@@ -85,19 +102,30 @@ func (o *modelObserver) observePayload(payload []byte, eventType string) bool {
 		Message struct {
 			Model string `json:"model"`
 		} `json:"message"`
+		// Some hosts nest the event under a data key instead of sending it at
+		// the top level.
+		Data struct {
+			Type     string `json:"type"`
+			Model    string `json:"model"`
+			Response struct {
+				Model string `json:"model"`
+			} `json:"response"`
+			Message struct {
+				Model string `json:"model"`
+			} `json:"message"`
+		} `json:"data"`
 	}
-	if err := json.Unmarshal(payload, &declared); err != nil {
+	if err := json.Unmarshal(trimmed, &declared); err != nil {
 		return false
 	}
-	model := declared.Response.Model
-	if model == "" {
-		model = declared.Model
-	}
-	if model == "" {
-		model = declared.Message.Model
-	}
+	model := firstNonEmpty(
+		declared.Response.Model, declared.Model, declared.Message.Model,
+		declared.Data.Response.Model, declared.Data.Model, declared.Data.Message.Model,
+	)
 	if declared.Type != "" {
 		eventType = declared.Type
+	} else if declared.Data.Type != "" {
+		eventType = declared.Data.Type
 	}
 	o.observe(model, eventType == "" || isTerminalModelEvent(eventType))
 	return true
@@ -246,6 +274,15 @@ func (o *modelObserver) observeFrame(frame []byte) bool {
 		}
 	}
 	return parsed
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func isTerminalModelEvent(eventType string) bool {

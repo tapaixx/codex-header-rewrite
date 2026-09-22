@@ -18,6 +18,10 @@ var (
 	rulesBucket      = []byte("rules")
 	historyBucket    = []byte("history")
 	turnStatesBucket = []byte("turn_states")
+	// Bodies live apart from the records they belong to. A page of the history
+	// decodes every record in the bucket to order it; carrying payloads there
+	// would mean reading megabytes to render a list that shows none of them.
+	historyBodiesBucket = []byte("history_bodies")
 )
 
 type boltPersistence struct{ db *bolt.DB }
@@ -36,6 +40,9 @@ func openPersistence(path string) (persistence, error) {
 			return err
 		}
 		if _, err := tx.CreateBucketIfNotExists(historyBucket); err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucketIfNotExists(historyBodiesBucket); err != nil {
 			return err
 		}
 		_, err := tx.CreateBucketIfNotExists(turnStatesBucket)
@@ -126,7 +133,25 @@ func (p *boltPersistence) ListTurnStates() ([]persistedTurnState, error) {
 }
 
 func historyChild(tx *bolt.Tx, authIndex string, create bool) (*bolt.Bucket, error) {
-	root := tx.Bucket(historyBucket)
+	return childBucket(tx, historyBucket, authIndex, create)
+}
+
+func bodiesChild(tx *bolt.Tx, authIndex string, create bool) (*bolt.Bucket, error) {
+	return childBucket(tx, historyBodiesBucket, authIndex, create)
+}
+
+func childBucket(tx *bolt.Tx, name []byte, authIndex string, create bool) (*bolt.Bucket, error) {
+	root := tx.Bucket(name)
+	if root == nil {
+		if !create {
+			return nil, nil
+		}
+		created, err := tx.CreateBucketIfNotExists(name)
+		if err != nil {
+			return nil, err
+		}
+		root = created
+	}
 	if !create {
 		return root.Bucket([]byte(authIndex)), nil
 	}
@@ -137,9 +162,16 @@ func (p *boltPersistence) AppendHistory(record historyRecord) error {
 	record.BeforeHeaders = redactHeaders(record.BeforeHeaders)
 	record.AfterHeaders = redactHeaders(record.AfterHeaders)
 	record.ResponseHeaders = redactHeaders(record.ResponseHeaders)
+	bodies := record.takeBodies()
 	raw, err := json.Marshal(record)
 	if err != nil {
 		return err
+	}
+	var bodiesRaw []byte
+	if !bodies.empty() {
+		if bodiesRaw, err = json.Marshal(bodies); err != nil {
+			return err
+		}
 	}
 	return p.db.Update(func(tx *bolt.Tx) error {
 		b, err := historyChild(tx, record.AuthIndex, true)
@@ -155,12 +187,42 @@ func (p *boltPersistence) AppendHistory(record historyRecord) error {
 		if err := b.Put(key, raw); err != nil {
 			return err
 		}
-		count := b.Stats().KeyN
+		if bodiesRaw != nil {
+			payloads, errBodies := bodiesChild(tx, record.AuthIndex, true)
+			if errBodies != nil {
+				return errBodies
+			}
+			if err := payloads.Put([]byte(record.ID), bodiesRaw); err != nil {
+				return err
+			}
+		}
+		payloads, err := bodiesChild(tx, record.AuthIndex, false)
+		if err != nil {
+			return err
+		}
+		// Not Stats().KeyN: inside a write transaction it does not count the
+		// Put just made, so the loop stopped one short and the bucket settled
+		// at historyLimit+1 forever. A cursor sees pending writes.
+		count := 0
+		countCursor := b.Cursor()
+		for k, _ := countCursor.First(); k != nil; k, _ = countCursor.Next() {
+			count++
+		}
 		for count > historyLimit {
 			c := b.Cursor()
-			k, _ := c.First()
+			k, v := c.First()
 			if k == nil {
 				break
+			}
+			// The body outlives nothing: it goes when the record it explains
+			// goes, or the bucket grows without any bound at all.
+			if payloads != nil {
+				var evicted historyRecord
+				if json.Unmarshal(v, &evicted) == nil && evicted.ID != "" {
+					if err := payloads.Delete([]byte(evicted.ID)); err != nil {
+						return err
+					}
+				}
 			}
 			if err := b.Delete(k); err != nil {
 				return err
@@ -169,6 +231,27 @@ func (p *boltPersistence) AppendHistory(record historyRecord) error {
 		}
 		return nil
 	})
+}
+
+func (p *boltPersistence) HistoryBody(authIndex, id string) (bodyRecord, bool, error) {
+	var out bodyRecord
+	found := false
+	err := p.db.View(func(tx *bolt.Tx) error {
+		payloads, err := bodiesChild(tx, authIndex, false)
+		if err != nil || payloads == nil {
+			return err
+		}
+		raw := payloads.Get([]byte(id))
+		if raw == nil {
+			return nil
+		}
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return fmt.Errorf("decode body: %w", err)
+		}
+		found = true
+		return nil
+	})
+	return out, found, err
 }
 
 func (p *boltPersistence) History(authIndex string, page int) (historyPage, error) {
@@ -199,6 +282,11 @@ func (p *boltPersistence) History(authIndex string, page int) (historyPage, erro
 }
 func (p *boltPersistence) ClearHistory(authIndex string) error {
 	return p.db.Update(func(tx *bolt.Tx) error {
+		if payloads := tx.Bucket(historyBodiesBucket); payloads != nil && payloads.Bucket([]byte(authIndex)) != nil {
+			if err := payloads.DeleteBucket([]byte(authIndex)); err != nil {
+				return err
+			}
+		}
 		root := tx.Bucket(historyBucket)
 		if root.Bucket([]byte(authIndex)) == nil {
 			return nil

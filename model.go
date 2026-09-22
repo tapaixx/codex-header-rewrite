@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -12,6 +13,11 @@ const (
 	pluginName      = "Codex Header Rewrite"
 	defaultDataPath = "plugins/data/codex-header-rewrite.db"
 	historyLimit    = 50
+	// A request body observed on this deployment reached 3.17 MB. Fifty of
+	// those per credential is not a history, it is a transcript archive, so a
+	// body is kept up to this much and the rest is dropped with its original
+	// size recorded.
+	maxStoredBodyBytes = 256 << 10
 	pageSize        = 10
 )
 
@@ -124,6 +130,39 @@ type historyRecord struct {
 	// whole series is a single record, not one per attempt.
 	RetryAttempts      int    `json:"retry_attempts,omitempty"`
 	TurnStateSessionID string `json:"turn_state_session_id,omitempty"`
+	// Bodies travel on the record only between the request path and the store,
+	// which splits them into their own bucket. They are absent from a record
+	// read back by History, because a page of fifty records would otherwise
+	// carry megabytes the list never displays; the detail fetches them by id.
+	RequestBody   string `json:"request_body,omitempty"`
+	ResponseBody  string `json:"response_body,omitempty"`
+	RequestBytes  int    `json:"request_bytes,omitempty"`
+	ResponseBytes int    `json:"response_bytes,omitempty"`
+}
+
+// bodyRecord is what one attempt sent and received. Sizes are of the payload
+// as it was, so a truncated body can still say what it was truncated from.
+type bodyRecord struct {
+	RequestBody   string `json:"request_body,omitempty"`
+	ResponseBody  string `json:"response_body,omitempty"`
+	RequestBytes  int    `json:"request_bytes,omitempty"`
+	ResponseBytes int    `json:"response_bytes,omitempty"`
+}
+
+func (b bodyRecord) empty() bool {
+	return b.RequestBody == "" && b.ResponseBody == "" && b.RequestBytes == 0 && b.ResponseBytes == 0
+}
+
+// takeBodies moves the bodies off a record so the record and its payloads can
+// be stored apart.
+func (r *historyRecord) takeBodies() bodyRecord {
+	out := bodyRecord{
+		RequestBody: r.RequestBody, ResponseBody: r.ResponseBody,
+		RequestBytes: r.RequestBytes, ResponseBytes: r.ResponseBytes,
+	}
+	r.RequestBody, r.ResponseBody = "", ""
+	r.RequestBytes, r.ResponseBytes = 0, 0
+	return out
 }
 
 const (
@@ -152,6 +191,13 @@ type pendingAttempt struct {
 	// not part of historyRecord, so it is never serialised or persisted, and
 	// the copy that reaches the history goes through redactHeaders.
 	clientCookie string
+	// The request payload as it went upstream, and the response as it came
+	// back -- for a stream, the chunks in order. Both are capped at
+	// maxStoredBodyBytes; responseBytes counts what arrived, not what was kept.
+	requestBody   []byte
+	requestBytes  int
+	responseBody  []byte
+	responseBytes int
 	// A streamed response calls the mint path on its header chunk and again
 	// per chunk; the retry series must be started once.
 	retryScheduled bool
@@ -222,4 +268,35 @@ func normalizedRemove(in []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// storedBody returns a payload capped for storage together with the size it
+// had. A body is kept verbatim up to maxStoredBodyBytes and cut on a rune
+// boundary so the text stays decodable; the recorded size is always the whole
+// payload, so a truncated body can still say what it was cut from.
+func storedBody(body []byte) (string, int) {
+	if len(body) == 0 {
+		return "", 0
+	}
+	if len(body) <= maxStoredBodyBytes {
+		return string(body), len(body)
+	}
+	cut := body[:maxStoredBodyBytes]
+	for len(cut) > 0 && !utf8.Valid(cut) {
+		cut = cut[:len(cut)-1]
+	}
+	return string(cut), len(body)
+}
+
+// appendBody accumulates a streamed response under the same cap. total counts
+// everything that arrived, including what was not kept.
+func appendBody(buffer []byte, total int, chunk []byte) ([]byte, int) {
+	total += len(chunk)
+	if room := maxStreamBufferBytes - len(buffer); room > 0 {
+		if len(chunk) > room {
+			chunk = chunk[:room]
+		}
+		buffer = append(buffer, chunk...)
+	}
+	return buffer, total
 }

@@ -1284,14 +1284,6 @@ body[data-workspace="rules"] .shell main{grid-template-columns:minmax(620px,1fr)
 .rule-block-flat .rule-block-copy small{transition:color .18s var(--ease)}
 .rule-block-guard[data-guard="on"] .rule-block-copy small{color:var(--accent)}
 .guard-switch{white-space:nowrap;align-self:center}
-/* The window is this switch's one setting, so it sits under it on its own row
-   rather than becoming a fifth column that would crush the title on a phone. */
-.guard-ttl{
-  grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;
-  border-top:1px solid var(--line);padding-top:8px;margin-top:1px
-}
-.guard-ttl .muted{flex:1 1 220px;min-width:0;font-size:10.5px;line-height:1.5;text-wrap:pretty}
-.field-unit{font-size:11px;font-weight:600;color:var(--text-mute)}
 
 #ruleStrategyPanel{grid-column:1!important;grid-row:2!important}
 #ruleStrategyPanel .panel-head{display:none}
@@ -1719,40 +1711,6 @@ body[data-workspace="history"] #historyPanel{grid-row:3!important}
 /* The shell's sunk background and accent edge marked it out inside the table;
    the drawer is already its own surface. */
 .drawer .history-detail-shell{padding:0;background:none!important;border-left:0!important}
-/* Five views of one record. They are tabs rather than five stacked sections
-   because the bodies alone are longer than the rest put together, and the
-   reader is looking for one of them at a time. The strip scrolls sideways
-   instead of wrapping: a wrapped tab row moves the panel under it every time
-   the labels reflow. */
-.detail-tabs{
-  position:sticky;top:0;z-index:2;display:flex;gap:2px;margin:0 0 12px;padding:0 0 1px;
-  overflow-x:auto;scrollbar-width:none;
-  border-bottom:1px solid var(--line);
-  background:color-mix(in srgb,var(--surface) 96%,transparent);
-  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)
-}
-.detail-tabs::-webkit-scrollbar{display:none}
-.detail-tab{
-  position:relative;flex:none;min-height:38px;padding:0 11px;border:0;border-radius:0;background:transparent;
-  color:var(--text-soft);font-size:12px;font-weight:600;white-space:nowrap
-}
-.detail-tab:hover{background:transparent!important;color:var(--text)}
-.detail-tab[aria-selected="true"]{color:var(--accent)}
-.detail-tab[aria-selected="true"]::after{
-  content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;border-radius:2px;background:var(--accent)
-}
-.detail-tab .count{margin-left:5px;font-size:10.5px;font-weight:600;color:var(--text-mute);font-variant-numeric:tabular-nums}
-.detail-tab[aria-selected="true"] .count{color:var(--accent)}
-.detail-pane[hidden]{display:none}
-/* A body is machine output: monospaced, wrapped rather than clipped, and
-   bounded so one 256 KiB payload cannot own the whole drawer. */
-.body-view{
-  margin:0;max-height:52vh;overflow:auto;padding:10px 11px;border:1px solid var(--line);border-radius:7px;
-  background:var(--sunk);font-family:var(--mono);font-size:11px;line-height:1.55;
-  white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2
-}
-.body-meta{display:flex;flex-wrap:wrap;gap:4px 10px;margin:0 0 7px;font-size:10.5px;color:var(--text-mute)}
-.body-meta .warn-text{color:var(--warn)}
 /* Locking the page with overflow:hidden collapsed the viewport's scroll range
    and snapped it to the top the moment the drawer opened. Fixing the body at
    its current offset keeps the pixels where they were; the offset is put back
@@ -2197,10 +2155,6 @@ html[data-theme="dark"]{
             <span class="rule-block-copy"><b>X-Codex-Turn-State 注入</b><small id="guardNowText"></small></span>
             <span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="State 注入开关的说明">!</button><span class="hint-text"><span class="hint-k">开启</span><span class="hint-v">从 State 池取「该凭证 + 当前模型」的合格 state，写入本次请求的 <code>X-Codex-Turn-State</code>；池里没有就不写。确认来自其他凭证或其他模型的回带值会被摘掉。</span><span class="hint-k">关闭</span><span class="hint-v">完全不碰这个 Header，客户端带什么就原样发什么。</span><span class="hint-p">规则里手工设置或移除了这个 Header 时以手工为准；「启用改写」关着时整条规则都不生效。</span></span></span></span>
             <label class="switch guard-switch"><input type="checkbox" id="ruleStripTurnState"><span>注入 State</span></label>
-            <div class="guard-ttl">
-              <label class="field-inline" for="ruleStateTTL">State 有效期<input id="ruleStateTTL" type="number" inputmode="numeric" min="5" max="7200" step="5" value="200" autocomplete="off"><span class="field-unit">秒</span></label>
-              <span class="muted">按凭证维护。超过这个时长的 state 标记为过期，仍会注入；但过期的 state 注入后还降智，就把它从池里清掉。留空按 200 秒。</span>
-            </div>
           </div>
         </fieldset>
 
@@ -2330,7 +2284,7 @@ html[data-theme="dark"]{
     </section>
 
     <section class="panel" id="turnStatePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>State 池</h2><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只有不降智 state 才入池：Team 套餐 ≤ 332 字符，个人套餐（非 Team）≤ 292 字符；凭证没有套餐声明时不判定，也不入池。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">200 秒</span>只标记过期。</span></span></span></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>State 池</h2><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只有不降智 state 才入池：Team 套餐 ≤ 332 字符，个人套餐（非 Team）≤ 292 字符；凭证没有套餐声明时不判定，也不入池。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">1 小时</span>只标记过期。</span></span></span></div></div>
         <div class="spacer"></div><span class="muted" id="turnStateMeta"></span>
         <button class="quiet icon" id="turnStateRefresh" title="刷新" aria-label="刷新回合状态"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
@@ -2396,13 +2350,82 @@ html[data-theme="dark"]{
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
+/* Preview shim: answers every management call with fixture data so the panel
+   can be explored from a file:// URL. Nothing here ships with the plugin. */
+/* Viewers open this file in a sandboxed frame, where reading window.localStorage
+   throws instead of returning undefined. Shadow it with an in-memory store so
+   the fixtures still load. */
+try { localStorage.setItem("managementKey", JSON.stringify({ managementKey: "preview" })); }
+catch (e) {
+  const mem = new Map();
+  const shim = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)),
+    removeItem: (k) => mem.delete(k), clear: () => mem.clear(), key: () => null, length: 0 };
+  for (const name of ["localStorage", "sessionStorage"]) {
+    try { Object.defineProperty(window, name, { value: name === "localStorage" ? shim : { ...shim }, configurable: true }); } catch (err) {}
+  }
+  try { localStorage.setItem("managementKey", JSON.stringify({ managementKey: "preview" })); } catch (err) {}
+}
+const FIXTURES = {"creds": {"credentials": [{"auth_index": "idx-a7f1", "name": "codex-team-a.json", "label": "team-a · alex", "provider": "codex", "has_rule": true, "history_count": 23, "configurable": true, "plan_type": "team", "status": "active"}, {"auth_index": "idx-b2c9", "name": "codex-team-b.json", "label": "team-b · ops", "provider": "codex", "has_rule": true, "history_count": 11, "configurable": true, "plan_type": "pro", "status": "active"}, {"auth_index": "idx-c410", "name": "codex-personal.json", "label": "personal", "provider": "codex", "has_rule": false, "history_count": 4, "configurable": true, "plan_type": "", "status": "active"}], "plugin_version": "0.10.0", "test_defaults": {"model": "gpt-5.6-luna", "prompt": "Reply with exactly OK", "endpoint": "https://chatgpt.com/backend-api/codex/responses"}}, "rule": {"rule": {"auth_index": "idx-a7f1", "enabled": true, "set": {"Originator": "codex-cli", "X-Team": "alpha"}, "remove": ["Openai-Beta"], "strip_foreign_turn_state": true, "updated_at": "2026-09-19T11:24:05Z"}, "warnings": ["Originator"]}, "rules": {"idx-a7f1": {"rule": {"auth_index": "idx-a7f1", "enabled": true, "set": {"Originator": "codex-cli", "X-Team": "alpha"}, "remove": ["Openai-Beta"], "strip_foreign_turn_state": true, "updated_at": "2026-09-19T11:24:05Z"}, "warnings": ["Originator"]}, "idx-b2c9": {"rule": {"auth_index": "idx-b2c9", "enabled": true, "set": {"X-Team": "ops"}, "remove": [], "strip_foreign_turn_state": false, "updated_at": "2026-09-18T22:10:00Z"}, "warnings": []}, "idx-c410": {"rule": {"auth_index": "idx-c410", "enabled": false, "set": {}, "remove": [], "strip_foreign_turn_state": false, "updated_at": "0001-01-01T00:00:00Z"}, "warnings": []}}, "models": {"models": [{"id": "gpt-5.6-luna"}, {"id": "gpt-5.6-luna-mini"}, {"id": "gpt-5.1-codex"}]}, "history": {"auth_index": "idx-a7f1", "page": 1, "page_size": 10, "total": 23, "total_pages": 3, "items": [{"id": "req-1#1", "request_id": "01JBV1ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T01:41:21Z", "completed_at": "2026-09-19T01:41:31Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 200, "outcome": "succeeded", "origin": "live", "latency_ms": 2140, "upstream_model": "gpt-5.6-luna", "model_mismatch": false, "turn_state_minted": {"digest": "c30ab91e4477fd82", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:52:41Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_session_id": "7f3a-9c21", "turn_state_echo": {"digest": "9f2c41ab77de0155", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:40:02Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_cross_account": true, "turn_state_origin_index": "idx-b2c9", "turn_state_origin_label": "team-b · ops", "turn_state_stripped": true, "turn_state_age_seconds": 220}, {"id": "req-2#1", "request_id": "01JBV2ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T02:41:22Z", "completed_at": "2026-09-19T02:41:32Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 200, "outcome": "succeeded", "origin": "live", "latency_ms": 980, "upstream_model": "gpt-5.6-luna", "model_mismatch": false, "turn_state_minted": {"digest": "c30ab91e4477fd82", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:52:41Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_session_id": "7f3a-9c21", "turn_state_echo": {"digest": "9f2c41ab77de0155", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:40:02Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_cross_account": false, "turn_state_cross_model": true, "turn_state_origin_model": "gpt-5.1-codex", "turn_state_origin_label": "team-a · alex"}, {"id": "req-3#1", "request_id": "01JBV3ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T03:41:23Z", "completed_at": "2026-09-19T03:41:33Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 200, "outcome": "succeeded", "origin": "live", "latency_ms": 3120, "upstream_model": "gpt-5.6-luna-mini", "model_mismatch": true, "turn_state_minted": {"digest": "c30ab91e4477fd82", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:52:41Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_session_id": "7f3a-9c21"}, {"id": "req-4#1", "request_id": "01JBV4ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T04:41:24Z", "completed_at": "2026-09-19T04:41:34Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 200, "outcome": "succeeded", "origin": "live", "latency_ms": 760, "upstream_model": "", "model_mismatch": null, "turn_state_minted": null, "turn_state_session_id": "7f3a-9c21", "turn_state_injected": true}, {"id": "req-5#1", "request_id": "01JBV5ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "plugin_test", "stream": true, "started_at": "2026-09-19T05:41:25Z", "completed_at": "2026-09-19T05:41:35Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 200, "outcome": "succeeded", "origin": "test", "latency_ms": 520, "upstream_model": "gpt-5.6-luna", "model_mismatch": false, "turn_state_minted": {"digest": "c30ab91e4477fd82", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:52:41Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_session_id": "7f3a-9c21", "turn_state_echo": {"digest": "9f2c41ab77de0155", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:40:02Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_expired": true, "turn_state_age_seconds": 5400}, {"id": "req-6#1", "request_id": "01JBV6ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T06:41:26Z", "completed_at": "2026-09-19T06:41:36Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 429, "outcome": "failed", "origin": "live", "latency_ms": 310, "upstream_model": "", "model_mismatch": null, "turn_state_minted": null, "turn_state_session_id": "7f3a-9c21", "error": "rate_limited"}, {"id": "req-7#1", "request_id": "01JBV7ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T07:41:27Z", "completed_at": "2026-09-19T07:41:37Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 0, "outcome": "switched", "origin": "live", "latency_ms": null, "upstream_model": "", "model_mismatch": null, "turn_state_minted": null, "turn_state_session_id": "7f3a-9c21"}], "templates": []}, "histories": {"idx-a7f1": {"auth_index": "idx-a7f1", "page": 1, "page_size": 10, "total": 23, "total_pages": 3, "items": [{"id": "req-1#1", "request_id": "01JBV1ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T01:41:21Z", "completed_at": "2026-09-19T01:41:31Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 200, "outcome": "succeeded", "origin": "live", "latency_ms": 2140, "upstream_model": "gpt-5.6-luna", "model_mismatch": false, "turn_state_minted": {"digest": "c30ab91e4477fd82", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:52:41Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_session_id": "7f3a-9c21", "turn_state_echo": {"digest": "9f2c41ab77de0155", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:40:02Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_cross_account": true, "turn_state_origin_index": "idx-b2c9", "turn_state_origin_label": "team-b · ops", "turn_state_stripped": true, "turn_state_age_seconds": 220}, {"id": "req-2#1", "request_id": "01JBV2ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T02:41:22Z", "completed_at": "2026-09-19T02:41:32Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 200, "outcome": "succeeded", "origin": "live", "latency_ms": 980, "upstream_model": "gpt-5.6-luna", "model_mismatch": false, "turn_state_minted": {"digest": "c30ab91e4477fd82", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:52:41Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_session_id": "7f3a-9c21", "turn_state_echo": {"digest": "9f2c41ab77de0155", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:40:02Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_cross_account": false, "turn_state_cross_model": true, "turn_state_origin_model": "gpt-5.1-codex", "turn_state_origin_label": "team-a · alex"}, {"id": "req-3#1", "request_id": "01JBV3ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T03:41:23Z", "completed_at": "2026-09-19T03:41:33Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 200, "outcome": "succeeded", "origin": "live", "latency_ms": 3120, "upstream_model": "gpt-5.6-luna-mini", "model_mismatch": true, "turn_state_minted": {"digest": "c30ab91e4477fd82", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:52:41Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_session_id": "7f3a-9c21"}, {"id": "req-4#1", "request_id": "01JBV4ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T04:41:24Z", "completed_at": "2026-09-19T04:41:34Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 200, "outcome": "succeeded", "origin": "live", "latency_ms": 760, "upstream_model": "", "model_mismatch": null, "turn_state_minted": null, "turn_state_session_id": "7f3a-9c21", "turn_state_injected": true}, {"id": "req-5#1", "request_id": "01JBV5ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "plugin_test", "stream": true, "started_at": "2026-09-19T05:41:25Z", "completed_at": "2026-09-19T05:41:35Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 200, "outcome": "succeeded", "origin": "test", "latency_ms": 520, "upstream_model": "gpt-5.6-luna", "model_mismatch": false, "turn_state_minted": {"digest": "c30ab91e4477fd82", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:52:41Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_session_id": "7f3a-9c21", "turn_state_echo": {"digest": "9f2c41ab77de0155", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:40:02Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_expired": true, "turn_state_age_seconds": 5400}, {"id": "req-6#1", "request_id": "01JBV6ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T06:41:26Z", "completed_at": "2026-09-19T06:41:36Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 429, "outcome": "failed", "origin": "live", "latency_ms": 310, "upstream_model": "", "model_mismatch": null, "turn_state_minted": null, "turn_state_session_id": "7f3a-9c21", "error": "rate_limited"}, {"id": "req-7#1", "request_id": "01JBV7ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-a7f1", "credential_label": "team-a · alex", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T07:41:27Z", "completed_at": "2026-09-19T07:41:37Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 0, "outcome": "switched", "origin": "live", "latency_ms": null, "upstream_model": "", "model_mismatch": null, "turn_state_minted": null, "turn_state_session_id": "7f3a-9c21"}], "templates": []}, "idx-b2c9": {"auth_index": "idx-b2c9", "page": 1, "page_size": 10, "total": 11, "total_pages": 2, "items": [{"id": "req-1#1b", "request_id": "01JBV1ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-b2c9", "credential_label": "team-b · ops", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T01:41:21Z", "completed_at": "2026-09-19T01:41:31Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 200, "outcome": "succeeded", "origin": "live", "latency_ms": 2140, "upstream_model": "gpt-5.6-luna", "model_mismatch": false, "turn_state_minted": {"digest": "c30ab91e4477fd82", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:52:41Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_session_id": "7f3a-9c21", "turn_state_echo": {"digest": "9f2c41ab77de0155", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:40:02Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_cross_account": true, "turn_state_origin_index": "idx-b2c9", "turn_state_origin_label": "team-b · ops", "turn_state_stripped": true, "turn_state_age_seconds": 220}, {"id": "req-2#1b", "request_id": "01JBV2ZK8QF3M2XY", "attempt": 1, "auth_index": "idx-b2c9", "credential_label": "team-b · ops", "credential_plan": "team", "model": "gpt-5.6-luna", "requested_model": "gpt-5.6-luna", "source_format": "openai_responses", "stream": true, "started_at": "2026-09-19T02:41:22Z", "completed_at": "2026-09-19T02:41:32Z", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["req_2f8a"], "X-Codex-Turn-State": ["gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"], "Set-Cookie": ["[REDACTED]"]}, "status_code": 200, "outcome": "succeeded", "origin": "live", "latency_ms": 980, "upstream_model": "gpt-5.6-luna", "model_mismatch": false, "turn_state_minted": {"digest": "c30ab91e4477fd82", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:52:41Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_session_id": "7f3a-9c21", "turn_state_echo": {"digest": "9f2c41ab77de0155", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:40:02Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "turn_state_cross_account": false, "turn_state_cross_model": true, "turn_state_origin_model": "gpt-5.1-codex", "turn_state_origin_label": "team-a · alex"}], "templates": []}, "idx-c410": {"auth_index": "idx-c410", "page": 1, "page_size": 10, "total": 0, "total_pages": 0, "items": [], "templates": []}}, "turn_states": {"reuse_window_seconds": 3600, "turn_states": [{"digest": "c30ab91e4477fd82", "auth_index": "idx-a7f1", "label": "team-a · alex", "model": "gpt-5.6-luna", "minted_at": "2026-09-19T05:52:41Z", "age_seconds": 420, "expired": false, "state": "gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag", "plan_type": "team", "max_chars": 332, "chars": 312, "non_degraded": true}, {"digest": "71fe0a93bb2c5d18", "auth_index": "idx-a7f1", "label": "team-a · alex", "model": "gpt-5.1-codex", "minted_at": "2026-09-19T05:31:02Z", "age_seconds": 1720, "expired": false, "state": "gAAAAABn7YabXyZ1Q0tMdmhKb0tERHNTVmhBPT05ODc2NTQzMjEwenl4d3Z1dHNycXBvbm1sa2ppaGdmZWRjYmExMjM0NTY3ODkwUVdFUlRZVUlPUEFTREZHSEpLTFpYQ1ZCTk0xMjM0NTY3ODkwcXdlcnR5", "plan_type": "team", "max_chars": 332, "chars": 298, "non_degraded": true}, {"digest": "9f2c41ab77de0155", "auth_index": "idx-b2c9", "label": "team-b · ops", "model": "gpt-5.6-luna", "minted_at": "2026-09-19T04:20:15Z", "age_seconds": 5900, "expired": true, "state": "gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag", "plan_type": "pro", "max_chars": 292, "chars": 288, "non_degraded": true}]}, "test": {"result": {"auth_index": "idx-a7f1", "dry_run": true, "outcome": "dry_run", "rule_applied": true, "codex_backend": true, "credential_attached": true, "method": "POST", "endpoint": "https://chatgpt.com/backend-api/codex/responses", "sent_model": "gpt-5.6-luna", "before_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-tui"], "User-Agent": ["CLIProxyAPI/3.2"], "Openai-Beta": ["responses=v1"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}, "after_headers": {"Authorization": ["Bearer [REDACTED]"], "Content-Type": ["application/json"], "Originator": ["codex-cli"], "User-Agent": ["CLIProxyAPI/3.2"], "X-Team": ["alpha"], "Session-Id": ["7f3a-9c21"], "Chatgpt-Account-Id": ["5417aaaa-bbbb-cccc"]}}}, "decode": {"info": {"digest": "c30ab91e4477fd82", "chars": 312, "bytes": 233, "version": 128, "issued_at": "2026-09-19T05:52:41Z", "fernet_like": true, "decodable": true, "plan_type": "team", "max_chars": 332, "non_degraded": true}, "chars": 312, "origin_label": "team-a · alex", "age_seconds": 754}, "seed_state": "gAAAAABn7Yc2Rk9lQmJ2eXBQTHhKb0tERHNTVmhBPT0xMjM0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3ODkwQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVoxMjM0NTY3ODkwYWJjZGVmZ2hpag"};
+const clone = (value) => JSON.parse(JSON.stringify(value));
+/* Viewers open this file through srcdoc, where the document base is
+   about:srcdoc and `new URL(relative, base)` throws "Invalid URL". Read the
+   query off the string instead -- URLSearchParams needs no base. */
+const paramOf = (target, name) => new URLSearchParams(String(target).split("?")[1] || "").get(name);
+window.fetch = async (url, init = {}) => {
+  const target = String(url);
+  const path = target.split("/codex-header-rewrite")[1] || target;
+  const method = (init.method || "GET").toUpperCase();
+  let data = {};
+  if (target.includes("/auth-files/models")) data = FIXTURES.models;
+  else if (path.startsWith("/credentials")) data = FIXTURES.creds;
+  else if (path.startsWith("/rule")) {
+    const who = paramOf(target, "auth_index") || "idx-a7f1";
+    if (method === "PUT") { const saved = { rule: JSON.parse(init.body), warnings: [] };
+      FIXTURES.rules[saved.rule.auth_index] = saved; data = saved; }
+    else if (method === "DELETE") { delete FIXTURES.rules[who]; data = { deleted: true }; }
+    else data = FIXTURES.rules[who] || { rule: { auth_index: who, enabled: false, set: {}, remove: [] }, warnings: [] };
+  }
+  else if (path.startsWith("/history/clear")) data = { cleared: true };
+  else if (path.startsWith("/history")) {
+    const who = paramOf(target, "auth_index") || "idx-a7f1";
+    data = FIXTURES.histories[who] || FIXTURES.histories["idx-c410"];
+  }
+  else if (path.startsWith("/turn-states")) data = FIXTURES.turn_states;
+  else if (path.startsWith("/turn-state/decode")) data = FIXTURES.decode;
+  else if (path.startsWith("/test")) {
+    const body = init.body ? JSON.parse(init.body) : {};
+    const result = clone(FIXTURES.test.result);
+    if (!body.dry_run) {
+      Object.assign(result, {
+        dry_run: false, outcome: "succeeded", status_code: 200, latency_ms: 1483,
+        upstream_model: "gpt-5.6-luna-mini", model_mismatch: true, recorded: !!body.record,
+        response_headers: { "Content-Type": ["text/event-stream"], "X-Request-Id": ["req_9c31"] },
+      });
+    }
+    result.sent_model = body.model || result.sent_model;
+    result.rule_applied = body.apply_rule !== false;
+    data = { result };
+  }
+  else if (path.startsWith("/orphans/cleanup")) data = { deleted: [] };
+  return { ok: true, status: 200, json: async () => clone(data) };
+};
+
+/* Seed the surfaces that only fill in after an interaction, so every workspace
+   shows something the moment it is opened. */
+addEventListener("load", () => setTimeout(() => {
+  const decodeInput = document.getElementById("decodeInput");
+  if (decodeInput && !decodeInput.value) {
+    decodeInput.value = FIXTURES.seed_state;
+    document.getElementById("decodeBtn")?.click();
+  }
+  document.getElementById("previewBtn")?.click();
+}, 900));
+</script>
+<script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const PLUGIN_SEGMENT = "/codex-header-rewrite";
-// Mirrors defaultStateTTLSeconds in the plugin: what a rule that has never set
-// the field is served with, and what a blank input means.
-const defaultStateTTL = 200;
 const SESSION_KEY = "chr.key";
 
 const CUSTOM_MODEL = "__custom__";
@@ -2845,7 +2868,6 @@ async function selectCredential(authIndex) {
   if ($("rejectDegraded")) $("rejectDegraded").checked = false;
   if ($("retryDegraded")) $("retryDegraded").checked = false;
   if ($("retryAttempts")) $("retryAttempts").value = "2";
-  if ($("ruleStateTTL")) $("ruleStateTTL").value = String(defaultStateTTL);
   setChips("retryProxies", []);
   $("ruleFields").disabled = true;
   setChips("rejectDegradedModels", []);
@@ -2938,7 +2960,6 @@ async function loadRule() {
   if ($("rejectDegraded")) $("rejectDegraded").checked = !!store.rule.reject_degraded_response;
   if ($("retryDegraded")) $("retryDegraded").checked = !!store.rule.retry_on_degraded;
   if ($("retryAttempts")) $("retryAttempts").value = String(store.rule.retry_attempts || 2);
-  if ($("ruleStateTTL")) $("ruleStateTTL").value = String(store.rule.state_ttl_seconds || defaultStateTTL);
   setChips("rejectDegradedModels", store.rule.reject_degraded_models);
   renderRetryProxies();
   syncDegradedControls();
@@ -2958,7 +2979,7 @@ function renderWarnings(warnings) {
     $("ruleWarnText").innerHTML = `${warnings.map((name) => `<code class="mono" translate="no">${esc(name)}</code>`).join("、")} 属于 Codex executor 的特殊字段，改写可能在 interceptor 之后被覆盖。`;
   }
 }
-const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), inject_turn_state: $("ruleStripTurnState").checked, state_ttl_seconds: ruleStateTTL(), reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts(), retry_proxies: degradedProxies() });
+const collectRule = () => ({ auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), inject_turn_state: $("ruleStripTurnState").checked, reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts(), retry_proxies: degradedProxies() });
 
 /* ---------- the header diff -------------------------------------------
    One row per header. The name is written once and the value change is shown
@@ -3074,7 +3095,10 @@ function turnStateTags(record) {
 }
 function turnStateAge(info) {
   if (!info?.issued_at || info.issued_at.startsWith("0001")) return "";
-  return formatAge((Date.now() - new Date(info.issued_at).getTime()) / 1000);
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(info.issued_at).getTime()) / 1000));
+  if (seconds < 90) return `${seconds} 秒前`;
+  if (seconds < 5400) return `${Math.round(seconds / 60)} 分钟前`;
+  return `${Math.round(seconds / 3600)} 小时前`;
 }
 function turnStateRows(label, info, extra = "", blob = "", model = "") {
   if (!info) {
@@ -3378,7 +3402,7 @@ async function showPoolState(item) {
         <dt>不降智阈值</dt><dd class="num">${item.max_chars ? `≤ ${item.max_chars} 个字符` : "-"}</dd>
         <dt>质量判定</dt><dd>${verdict}</dd>
         <dt>入池时间</dt><dd>${esc(minted.toLocaleString())}<span class="muted"> · ${age} 分钟前</span></dd>
-        <dt>复用窗口</dt><dd>${$("turnStateWindow")?.textContent || formatWindow(0)}</dd>
+        <dt>复用窗口</dt><dd>${$("turnStateWindow")?.textContent || "1 小时"}</dd>
       </dl>
     </div>
     <div class="history-detail-section">
@@ -3413,13 +3437,6 @@ function showRecord(record) {
     row.setAttribute("aria-selected", String(row.dataset.id === record.id));
   }
   const requestDiff = diffHTML(record.before_headers, record.after_headers, "没有记录 Request Header");
-  const tabs = [
-    ["state", "X-Codex-Turn-State", ""],
-    ["reqh", "Request Header", requestDiff.count ? String(requestDiff.count) : ""],
-    ["reqb", "Request Body", ""],
-    ["resh", "Response Header", ""],
-    ["resb", "Response Body", ""],
-  ];
   openDrawer("请求详情", `<div class="history-detail-shell">
     <div class="history-detail-head">
       <div>${modelChain(record)}</div>
@@ -3434,134 +3451,19 @@ function showRecord(record) {
       <div class="history-detail-label"><span>上游错误</span><span>${record.status_code ? `HTTP ${esc(String(record.status_code))}` : ""}</span></div>
       <pre class="history-error-full">${esc(prettyError(record.error))}</pre>
     </div>` : ""}
-    <div class="detail-tabs" role="tablist" aria-label="请求详情分页">
-      ${tabs.map(([key, label, count], index) => `<button class="detail-tab" role="tab" id="detailTab-${key}"
-        aria-controls="detailPane-${key}" aria-selected="${index === 0}" data-pane="${key}"
-        tabindex="${index === 0 ? 0 : -1}">${esc(label)}${count ? `<span class="count">${esc(count)}</span>` : ""}</button>`).join("")}
+    <div class="history-detail-section">
+      <div class="history-detail-label"><span>Request Header 差异</span><span class="${requestDiff.count ? "num" : ""}">${requestDiff.count ? `${requestDiff.count} 处改动` : (requestDiff.hasRows ? "无改动" : "无数据")}</span></div>
+      ${requestDiff.html}
     </div>
-    <div class="detail-pane" role="tabpanel" id="detailPane-state" aria-labelledby="detailTab-state" tabindex="0">
-      ${turnStateDetail(record) || '<div class="history-detail-section"><div class="empty">这次请求没有回带，上游也没有返回 X-Codex-Turn-State</div></div>'}
-    </div>
-    <div class="detail-pane" role="tabpanel" id="detailPane-reqh" aria-labelledby="detailTab-reqh" tabindex="0" hidden>
-      <div class="history-detail-section">
-        <div class="history-detail-label"><span>Request Header 差异</span><span class="${requestDiff.count ? "num" : ""}">${requestDiff.count ? `${requestDiff.count} 处改动` : (requestDiff.hasRows ? "无改动" : "无数据")}</span></div>
-        ${requestDiff.html}
-      </div>
-    </div>
-    <div class="detail-pane" role="tabpanel" id="detailPane-reqb" aria-labelledby="detailTab-reqb" tabindex="0" hidden>
-      <div class="history-detail-section" id="detailRequestBody"><div class="muted">读取中…</div></div>
-    </div>
-    <div class="detail-pane" role="tabpanel" id="detailPane-resh" aria-labelledby="detailTab-resh" tabindex="0" hidden>
-      <div class="history-detail-section">
-        <div class="history-detail-label"><span>上游 Response Header</span></div>
-        ${responseHeadersHTML(record.response_headers)}
-      </div>
-    </div>
-    <div class="detail-pane" role="tabpanel" id="detailPane-resb" aria-labelledby="detailTab-resb" tabindex="0" hidden>
-      <div class="history-detail-section" id="detailResponseBody"><div class="muted">读取中…</div></div>
+    ${turnStateDetail(record)}
+    <div class="history-detail-section">
+      <div class="history-detail-label"><span>上游 Response Header</span></div>
+      ${responseHeadersHTML(record.response_headers)}
     </div>
   </div>`);
-  wireDetailTabs($("drawerBody"));
   decodePendingCards($("drawerBody"));
-  loadRecordBodies(record);
 }
 
-
-// The tab strip is plain buttons and hidden panes: five sections of one record,
-// not five documents. Arrow keys move along the strip the way a tablist is
-// expected to, since the panes are reachable by keyboard too.
-function wireDetailTabs(root) {
-  const tabs = [...root.querySelectorAll(".detail-tab")];
-  if (!tabs.length) return;
-  const select = (target, focus = true) => {
-    for (const tab of tabs) {
-      const chosen = tab === target;
-      tab.setAttribute("aria-selected", String(chosen));
-      tab.tabIndex = chosen ? 0 : -1;
-      const pane = root.querySelector(`#detailPane-${tab.dataset.pane}`);
-      if (pane) pane.hidden = !chosen;
-    }
-    if (focus) target.focus({ preventScroll: true });
-    root.scrollTop = 0;
-  };
-  tabs.forEach((tab, index) => {
-    tab.addEventListener("click", () => select(tab, false));
-    tab.addEventListener("keydown", (event) => {
-      const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-      if (step) {
-        event.preventDefault();
-        select(tabs[(index + step + tabs.length) % tabs.length]);
-        return;
-      }
-      if (event.key === "Home" || event.key === "End") {
-        event.preventDefault();
-        select(event.key === "Home" ? tabs[0] : tabs[tabs.length - 1]);
-      }
-    });
-  });
-}
-
-const BYTE_UNITS = ["B", "KB", "MB", "GB"];
-function formatBytes(bytes) {
-  let value = Number(bytes) || 0;
-  let unit = 0;
-  while (value >= 1024 && unit < BYTE_UNITS.length - 1) { value /= 1024; unit += 1; }
-  return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${BYTE_UNITS[unit]}`;
-}
-
-// A body is JSON, an SSE stream of JSON, or something else. The first two are
-// formatted; the third is shown as it came rather than guessed at.
-function formatBodyText(text) {
-  const trimmed = String(text || "").trim();
-  if (!trimmed) return "";
-  if (trimmed[0] === "{" || trimmed[0] === "[") {
-    try { return JSON.stringify(JSON.parse(trimmed), null, 2); } catch { /* fall through */ }
-  }
-  if (!/(^|\n)\s*(event:|data:)/.test(trimmed)) return trimmed;
-  return trimmed.split(/\n/).map((line) => {
-    const match = /^\s*data:\s*(.*)$/.exec(line);
-    if (!match || !match[1] || match[1] === "[DONE]") return line;
-    try { return "data: " + JSON.stringify(JSON.parse(match[1]), null, 2); } catch { return line; }
-  }).join("\n");
-}
-
-function bodyPaneHTML(label, text, bytes, maskedField, maxStored) {
-  if (!text) {
-    return `<div class="history-detail-label"><span>${esc(label)}</span></div>
-      <div class="empty">没有记录到${esc(label)}</div>`;
-  }
-  const formatted = formatBodyText(text);
-  const stored = new TextEncoder().encode(text).length;
-  const truncated = bytes > 0 && maxStored > 0 && bytes > maxStored;
-  return `<div class="history-detail-label"><span>${esc(label)}</span><span class="num">${esc(formatBytes(bytes || stored))}</span></div>
-    <div class="body-meta">
-      ${maskedField ? `<span><code>${esc(maskedField)}</code> 已遮蔽</span>` : ""}
-      ${truncated ? `<span class="warn-text">已截断，只保留前 ${esc(formatBytes(maxStored))}</span>` : ""}
-    </div>
-    <pre class="body-view">${esc(formatted)}</pre>`;
-}
-
-// Bodies are fetched per record rather than carried in the list: a page of
-// fifty would otherwise mean megabytes for a table that shows none of them.
-async function loadRecordBodies(record) {
-  const id = record.id;
-  const request = $("detailRequestBody");
-  const response = $("detailResponseBody");
-  if (!request || !response) return;
-  try {
-    const payload = await api(`/history/body?auth_index=${encodeURIComponent(record.auth_index || store.selected)}&id=${encodeURIComponent(id)}`);
-    // The reader may have closed this record or opened another meanwhile.
-    if (store.selectedRecord !== id) return;
-    const max = payload.max_stored_bytes || 0;
-    request.innerHTML = bodyPaneHTML("Request Body", payload.request_body, payload.request_bytes, payload.masked_request_field, max);
-    response.innerHTML = bodyPaneHTML("Response Body", payload.response_body, payload.response_bytes, payload.masked_response_field, max);
-  } catch (error) {
-    if (store.selectedRecord !== id) return;
-    const message = `<div class="empty">读取失败：${esc(error.message || String(error))}</div>`;
-    request.innerHTML = message;
-    response.innerHTML = message;
-  }
-}
 
 /* State pool: one non-degraded state per credential and model, newest first. */
 async function loadTurnStates() {
@@ -3576,7 +3478,8 @@ async function loadTurnStates() {
     store.turnStates = items;
     const current = store.creds.find((item) => item.auth_index === authIndex);
     const identity = current ? credentialDisplayName(current) : authIndex;
-    $("turnStateWindow").textContent = formatWindow(payload.reuse_window_seconds);
+    const window = payload.reuse_window_seconds || 3600;
+    $("turnStateWindow").textContent = `${Math.round(window / 60)} 分钟`;
     $("turnStateMeta").textContent = identity + " · " + items.length + " 条";
     body.replaceChildren();
     if (!items.length) {
@@ -3592,7 +3495,7 @@ async function loadTurnStates() {
     const tbody = body.querySelector("tbody");
     items.forEach((item, index) => {
       const minted = new Date(item.minted_at);
-      const age = formatAge(item.age_seconds);
+      const age = Math.max(0, Math.round((item.age_seconds || 0) / 60));
       const row = document.createElement("tr");
       row.className = "pool-row";
       row.dataset.index = String(index);
@@ -3603,7 +3506,7 @@ async function loadTurnStates() {
       row.innerHTML = `<td class="mono pool-model-cell" translate="no">${esc(item.model || "未记录")}</td>
         <td><span class="tag flat">${esc(item.plan_type || "未知套餐")}</span></td>
         <td class="num">${item.chars || "-"} / ≤ ${item.max_chars || "-"} 字符</td>
-        <td class="num">${esc(minted.toLocaleString())} · ${age}</td>
+        <td class="num">${esc(minted.toLocaleString())} · ${age} 分钟前</td>
         <td>${item.expired ? '<span class="tag warn">已过期</span>' : '<span class="tag ok">不降智</span>'}</td>`;
       row.addEventListener("click", () => showPoolState(item));
       row.addEventListener("keydown", (event) => {
@@ -3873,25 +3776,6 @@ $("keyConnect").addEventListener("click", () => {
 $("keyInput").addEventListener("keydown", (event) => { if (event.key === "Enter") $("keyConnect").click(); });
 $("keyOverlay").addEventListener("click", (event) => { if (event.target === $("keyOverlay")) closeKeyDialog(); });
 const degradedRetryAttempts = () => Math.min(5, Math.max(1, Number($("retryAttempts")?.value) || 2));
-// Blank means "use the default", which the plugin spells as zero. Anything
-// typed is clamped to the range the plugin would otherwise refuse.
-function ruleStateTTL() {
-  const raw = $("ruleStateTTL")?.value?.trim();
-  if (!raw) return 0;
-  return Math.min(7200, Math.max(5, Math.round(Number(raw)) || defaultStateTTL));
-}
-function formatWindow(seconds) {
-  if (!(seconds > 0)) return `${defaultStateTTL} 秒`;
-  if (seconds < 600) return `${seconds} 秒`;
-  if (seconds < 5400) return `${Math.round(seconds / 60)} 分钟`;
-  return `${Math.round(seconds / 3600)} 小时`;
-}
-function formatAge(seconds) {
-  const value = Math.max(0, Math.round(seconds || 0));
-  if (value < 600) return `${value} 秒前`;
-  if (value < 5400) return `${Math.round(value / 60)} 分钟前`;
-  return `${Math.round(value / 3600)} 小时前`;
-}
 // Each list is held here while it is edited; every change saves immediately,
 // so this is only ever a moment ahead of the stored rule.
 const chipValues = { rejectDegradedModels: [], retryProxies: [] };
@@ -4139,10 +4023,6 @@ async function saveDegradedSettings(revert) {
 }
 $("rejectDegraded").addEventListener("change", () => saveDegradedSettings(() => { $("rejectDegraded").checked = !$("rejectDegraded").checked; }));
 $("retryDegraded").addEventListener("change", () => saveDegradedSettings(() => { $("retryDegraded").checked = !$("retryDegraded").checked; }));
-$("ruleStateTTL")?.addEventListener("change", () => {
-  const seconds = ruleStateTTL();
-  $("ruleStateTTL").value = seconds ? String(seconds) : "";
-});
 $("retryAttempts").addEventListener("change", () => {
   $("retryAttempts").value = String(degradedRetryAttempts());
   saveDegradedSettings(() => {});
@@ -4264,5 +4144,16 @@ renderDiff(null, null, "");
 if (currentKey()) loadCredentials().catch(fail);
 else openKeyDialog();
 </script>
+
+<style>@media (max-width:820px){#previewBanner{bottom:80px!important}}</style>
+<div id="previewBanner" style="position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:999;
+  max-width:calc(100vw - 24px);box-sizing:border-box;
+  display:flex;align-items:center;gap:10px;padding:7px 14px;border-radius:999px;
+  background:rgba(23,32,48,.92);color:#fff;font:500 12px/1.4 system-ui,sans-serif;
+  box-shadow:0 8px 28px rgba(15,31,61,.28)">
+  <span>预览模式 · 数据为示例，不连接 CLIProxyAPI</span>
+  <button onclick="document.getElementById('previewBanner').remove()"
+    style="all:unset;cursor:pointer;opacity:.7;padding:0 2px">✕</button>
+</div>
 </body>
 </html>

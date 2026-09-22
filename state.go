@@ -295,6 +295,9 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 	}
 	pr.current.TurnStateSessionID = clientSessionID(req.Headers)
 	pr.current.clientCookie = joinCookieHeader(req.Headers)
+	// The payload as it goes upstream. This plugin rewrites headers and never
+	// the body, so what arrives here is what is sent.
+	pr.current.requestBody, pr.current.requestBytes = maskRequestBody(req.Body), len(req.Body)
 	state.mu.Unlock()
 	return requestInterceptResponse{Headers: updates, ClearHeaders: clears}, nil
 }
@@ -338,6 +341,7 @@ func observeResponse(req responseInterceptRequest) responseInterceptResponse {
 	// The body is read here only to learn which model the upstream served. The
 	// model name is kept; the body itself is not stored anywhere.
 	pr.current.models.observeBody(req.Body)
+	pr.current.responseBody, pr.current.responseBytes = appendBody(pr.current.responseBody, pr.current.responseBytes, req.Body)
 	rejecting, done, info := pr.current.rejecting, pr.current.retryDone, pr.current.TurnStateMinted
 	// Released before waiting: a withheld response must not hold every other
 	// request that is still in flight.
@@ -447,9 +451,11 @@ func observeStreamHeaders(req streamChunkInterceptRequest) streamChunkInterceptR
 	}
 	if pr.current.rejecting {
 		// Withholding a response from the client is no reason to stop reading
-		// which model served it: the chunk still arrives here, and the history
-		// row for an intercepted request is exactly where that matters.
+		// it: the chunk still arrives here, and the history row for an
+		// intercepted request is exactly where the upstream's own answer is
+		// worth having.
 		pr.current.models.observeCallback(req.Body)
+		pr.current.responseBody, pr.current.responseBytes = appendBody(pr.current.responseBody, pr.current.responseBytes, req.Body)
 		// The first payload chunk becomes the terminal error; nothing of the
 		// upstream body reaches the client after that.
 		pr.current.rejectedChunks++
@@ -465,6 +471,7 @@ func observeStreamHeaders(req streamChunkInterceptRequest) streamChunkInterceptR
 		return streamChunkInterceptResponse{DropChunk: true}
 	}
 	pr.current.models.observeCallback(req.Body)
+	pr.current.responseBody, pr.current.responseBytes = appendBody(pr.current.responseBody, pr.current.responseBytes, req.Body)
 	state.mu.Unlock()
 	return streamChunkInterceptResponse{}
 }
@@ -501,6 +508,12 @@ func finalizeLocked(attempt *pendingAttempt) {
 	attempt.UpstreamModel = attempt.models.model()
 	attempt.ModelMismatch = modelMismatch(sentModel(attempt.Model, attempt.RequestedModel), attempt.UpstreamModel)
 	attempt.ModelConflict = attempt.models.conflicted()
+	// Masked once the whole stream is in hand: a frame split across two chunks
+	// would slip through a per-chunk mask.
+	attempt.RequestBody, _ = storedBody(attempt.requestBody)
+	attempt.RequestBytes = attempt.requestBytes
+	attempt.ResponseBody, _ = storedBody(maskResponseBody(attempt.responseBody))
+	attempt.ResponseBytes = attempt.responseBytes
 	rec := attempt.historyRecord
 	rec.BeforeHeaders = redactHeaders(rec.BeforeHeaders)
 	rec.AfterHeaders = redactHeaders(rec.AfterHeaders)

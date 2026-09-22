@@ -57,6 +57,9 @@ type persistence interface {
 	ListRules() ([]headerRule, error)
 	AppendHistory(record historyRecord) error
 	History(authIndex string, page int) (historyPage, error)
+	// HistoryBody fetches one record's payloads, which are stored apart from
+	// the record so a page of the list never carries them.
+	HistoryBody(authIndex, id string) (bodyRecord, bool, error)
 	ClearHistory(authIndex string) error
 	HistoryCount(authIndex string) (int, error)
 	DeleteCredentialData(authIndex string) error

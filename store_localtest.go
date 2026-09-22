@@ -13,6 +13,7 @@ import (
 type localDiskState struct {
 	Rules      map[string]headerRule         `json:"rules"`
 	History    map[string][]historyRecord    `json:"history"`
+	Bodies     map[string]bodyRecord         `json:"bodies"`
 	TurnStates map[string]persistedTurnState `json:"turn_states"`
 }
 type localPersistence struct {
@@ -22,7 +23,7 @@ type localPersistence struct {
 }
 
 func openPersistence(path string) (persistence, error) {
-	p := &localPersistence{path: path, state: localDiskState{Rules: map[string]headerRule{}, History: map[string][]historyRecord{}, TurnStates: map[string]persistedTurnState{}}}
+	p := &localPersistence{path: path, state: localDiskState{Rules: map[string]headerRule{}, History: map[string][]historyRecord{}, Bodies: map[string]bodyRecord{}, TurnStates: map[string]persistedTurnState{}}}
 	raw, err := os.ReadFile(path)
 	if err == nil {
 		_ = json.Unmarshal(raw, &p.state)
@@ -34,6 +35,9 @@ func openPersistence(path string) (persistence, error) {
 	}
 	if p.state.History == nil {
 		p.state.History = map[string][]historyRecord{}
+	}
+	if p.state.Bodies == nil {
+		p.state.Bodies = map[string]bodyRecord{}
 	}
 	if p.state.TurnStates == nil {
 		p.state.TurnStates = map[string]persistedTurnState{}
@@ -107,9 +111,13 @@ func (p *localPersistence) AppendHistory(r historyRecord) error {
 	r.BeforeHeaders = redactHeaders(r.BeforeHeaders)
 	r.AfterHeaders = redactHeaders(r.AfterHeaders)
 	r.ResponseHeaders = redactHeaders(r.ResponseHeaders)
+	if bodies := r.takeBodies(); !bodies.empty() {
+		p.state.Bodies[bodyKey(r.AuthIndex, r.ID)] = bodies
+	}
 	items := append(p.state.History[r.AuthIndex], r)
-	if len(items) > historyLimit {
-		items = items[len(items)-historyLimit:]
+	for len(items) > historyLimit {
+		delete(p.state.Bodies, bodyKey(r.AuthIndex, items[0].ID))
+		items = items[1:]
 	}
 	p.state.History[r.AuthIndex] = items
 	return p.save()
@@ -121,9 +129,25 @@ func (p *localPersistence) History(a string, page int) (historyPage, error) {
 	sortHistoryNewestFirst(records)
 	return historyPageOf(a, page, records), nil
 }
+func (p *localPersistence) HistoryBody(a, id string) (bodyRecord, bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	body, ok := p.state.Bodies[bodyKey(a, id)]
+	return body, ok, nil
+}
+
+func bodyKey(authIndex, id string) string { return authIndex + "\x00" + id }
+
+func (p *localPersistence) dropBodiesLocked(authIndex string) {
+	for _, record := range p.state.History[authIndex] {
+		delete(p.state.Bodies, bodyKey(authIndex, record.ID))
+	}
+}
+
 func (p *localPersistence) ClearHistory(a string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.dropBodiesLocked(a)
 	delete(p.state.History, a)
 	return p.save()
 }
@@ -136,6 +160,7 @@ func (p *localPersistence) DeleteCredentialData(a string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	delete(p.state.Rules, a)
+	p.dropBodiesLocked(a)
 	delete(p.state.History, a)
 	for k, r := range p.state.TurnStates {
 		if r.AuthIndex == a {

@@ -21,6 +21,7 @@ const (
 	apiRulePath            = "/codex-header-rewrite/rule"
 	apiHistoryPath         = "/codex-header-rewrite/history"
 	apiHistoryClearPath    = "/codex-header-rewrite/history/clear"
+	apiHistoryBodyPath     = "/codex-header-rewrite/history/body"
 	apiOrphansCleanupPath  = "/codex-header-rewrite/orphans/cleanup"
 	apiTestPath            = "/codex-header-rewrite/test"
 	apiTurnStateDecodePath = "/codex-header-rewrite/turn-state/decode"
@@ -46,6 +47,7 @@ func registerManagement() managementRegistration {
 		{Method: http.MethodDelete, Path: apiRulePath, Description: "Delete credential header rule"},
 		{Method: http.MethodGet, Path: apiHistoryPath, Description: "List credential header history"},
 		{Method: http.MethodPost, Path: apiHistoryClearPath, Description: "Clear credential history"},
+		{Method: http.MethodGet, Path: apiHistoryBodyPath, Description: "Read one record's request and response bodies"},
 		{Method: http.MethodPost, Path: apiOrphansCleanupPath, Description: "Remove orphaned credential data"},
 		{Method: http.MethodPost, Path: apiTestPath, Description: "Run a header rewrite test request"},
 		{Method: http.MethodPost, Path: apiTurnStateDecodePath, Description: "Decode an X-Codex-Turn-State envelope"},
@@ -127,6 +129,30 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"deleted": authIndex}), nil
+	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiHistoryBodyPath):
+		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
+		id := strings.TrimSpace(req.Query.Get("id"))
+		if authIndex == "" || id == "" {
+			return jsonError(http.StatusBadRequest, "auth_index and id are required"), nil
+		}
+		state.mu.Lock()
+		store := state.store
+		state.mu.Unlock()
+		if store == nil {
+			return jsonError(http.StatusServiceUnavailable, "persistence is not initialized"), nil
+		}
+		body, found, err := store.HistoryBody(authIndex, id)
+		if err != nil {
+			return jsonError(http.StatusInternalServerError, err.Error()), nil
+		}
+		// A record older than this feature, or one that carried no payload, is
+		// not an error: the panel says so rather than showing a failure.
+		return jsonResponse(http.StatusOK, map[string]any{
+			"id": id, "found": found, "masked_request_field": requestContentField,
+			"masked_response_field": responseContentField, "max_stored_bytes": maxStoredBodyBytes,
+			"request_body": body.RequestBody, "request_bytes": body.RequestBytes,
+			"response_body": body.ResponseBody, "response_bytes": body.ResponseBytes,
+		}), nil
 	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiHistoryPath):
 		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
 		if authIndex == "" {

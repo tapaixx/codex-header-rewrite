@@ -12,7 +12,9 @@ import (
 
 // A degraded response can be answered by asking the same credential for a
 // fresh turn state: the state arrives in a response header, so a minimal
-// request is enough and the body is never read.
+// request is enough. The body is read only in memory, to learn which model
+// answered and to keep a capped copy for the detail view -- the same terms
+// every other response body is read on.
 //
 // The credential is the one that served the rejected response, not whichever
 // one a new request would land on. That matters because the pool is keyed by
@@ -47,6 +49,15 @@ type retryOutcome struct {
 	// the same way it shows a proxied request. Redacted before it is stored.
 	sentHeaders     http.Header
 	responseHeaders http.Header
+	// The model the retry's own response declared, read the same way a proxied
+	// response is read.
+	upstreamModel string
+	modelConflict bool
+	// The payloads, for the detail. Both are capped at maxStoredBodyBytes.
+	requestBody   string
+	requestBytes  int
+	responseBody  string
+	responseBytes int
 }
 
 func retryAttemptCount(rule headerRule) int {
@@ -178,8 +189,9 @@ func runDegradedRetry(series retrySeries, attempts int, stop <-chan struct{}) {
 	recordRetrySeries(series)
 }
 
-// retryOnce sends one minimal Codex request and reports only what the
-// response header said. The body is discarded unread.
+// retryOnce sends one minimal Codex request. The state it is after comes from
+// the response header; the body is read only for the model it declares and
+// for the capped copy the detail shows.
 func retryOnce(ctx context.Context, authIndex, authID, model, cookie string) retryOutcome {
 	if !retryIdentityMatches(authIndex, authID) {
 		return retryOutcome{err: "credential identity changed or unavailable", stop: true}
@@ -210,23 +222,42 @@ func retryOnce(ctx context.Context, authIndex, authID, model, cookie string) ret
 		Headers: headers,
 		Body:    body,
 	}, retryProxyFor(authIndex))
-	sent := redactHeaders(headers)
-	got := redactHeaders(response.Headers)
+
+	// Everything the attempt learned, filled in as far as it got. A failure
+	// still reports the headers and payloads it managed to exchange, which is
+	// what makes a failed retry row worth opening.
+	outcome := retryOutcome{statusCode: response.StatusCode}
+	outcome.sentHeaders = redactHeaders(headers)
+	outcome.responseHeaders = redactHeaders(response.Headers)
+	outcome.requestBody, outcome.requestBytes = storedBody(maskRequestBody(body))
+	outcome.requestBytes = len(body)
+	outcome.responseBody, _ = storedBody(maskResponseBody(response.Body))
+	outcome.responseBytes = len(response.Body)
+	// The body is read in memory for the model it declares, on the same terms
+	// as any proxied response: the name is kept, the payload is capped.
+	var observer modelObserver
+	observer.observeBody(response.Body)
+	outcome.upstreamModel, outcome.modelConflict = observer.model(), observer.conflicted()
+
 	if callErr != nil {
-		return retryOutcome{statusCode: response.StatusCode, err: callErr.Error(), sentHeaders: sent, responseHeaders: got}
+		outcome.err = callErr.Error()
+		return outcome
 	}
 	if !retryIdentityMatches(authIndex, authID) {
 		return retryOutcome{err: "credential identity changed during retry", stop: true}
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return retryOutcome{statusCode: response.StatusCode, err: fmt.Sprintf("retry returned HTTP %d", response.StatusCode), sentHeaders: sent, responseHeaders: got}
+		outcome.err = fmt.Sprintf("retry returned HTTP %d", response.StatusCode)
+		return outcome
 	}
 	blob := headerTurnState(response.Headers)
 	if blob == "" {
-		return retryOutcome{statusCode: response.StatusCode, err: fmt.Sprintf("no %s in the response (HTTP %d)", turnStateHeader, response.StatusCode), sentHeaders: sent, responseHeaders: got}
+		outcome.err = fmt.Sprintf("no %s in the response (HTTP %d)", turnStateHeader, response.StatusCode)
+		return outcome
 	}
 	nonDegraded, _, knownPlan := nonDegradedTurnState(blob, plan)
-	return retryOutcome{statusCode: response.StatusCode, blob: blob, nonDegraded: knownPlan && nonDegraded, plan: plan, sentHeaders: sent, responseHeaders: got}
+	outcome.blob, outcome.nonDegraded, outcome.plan = blob, knownPlan && nonDegraded, plan
+	return outcome
 }
 
 func retryIdentityMatches(authIndex, authID string) bool {
@@ -320,7 +351,14 @@ func recordRetrySeries(s retrySeries) {
 		BeforeHeaders:   s.last.sentHeaders,
 		AfterHeaders:    s.last.sentHeaders,
 		ResponseHeaders: s.last.responseHeaders,
+		UpstreamModel:   s.last.upstreamModel,
+		ModelConflict:   s.last.modelConflict,
+		RequestBody:     s.last.requestBody,
+		RequestBytes:    s.last.requestBytes,
+		ResponseBody:    s.last.responseBody,
+		ResponseBytes:   s.last.responseBytes,
 	}
+	record.ModelMismatch = modelMismatch(s.model, s.last.upstreamModel)
 	if s.info.Digest != "" {
 		info := s.info
 		record.TurnStateMinted = &info

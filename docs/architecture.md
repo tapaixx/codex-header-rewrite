@@ -39,7 +39,22 @@ CPA 替换版本化 `.so` 时先对旧实例调用 `plugin.quiesce`，再注册�
 - 一帧里的多个 `data:` 行按 SSE 规范用 `\n` 拼接后解析；拼接结果不是合法 JSON 时，再退化为把每一行当作独立载荷（宿主把多个事件塞进一帧的情形）。
 - 上游一次都没声明模型时，判定结果是「未知」（`model_mismatch` 缺省），不是「一致」。
 
-被拦截的降智响应同样会读模型：chunk 仍然到达插件，只是不下发给客户端。后台重试不读 body，所以重试行的上游模型恒为「未获取到」。
+被拦截的降智响应同样会读模型：chunk 仍然到达插件，只是不下发给客户端。后台重试也读自己的响应体，取模型名并留一份遮蔽副本。
+
+载荷最外层是 JSON 数组时逐元素读取；事件包在 `data` 键下时再往里看一层。
+
+## Body 记录与遮蔽
+
+```text
+request.intercept_after   -> pendingAttempt.requestBody = maskRequestBody(req.Body)      // 遮蔽 input
+response / stream chunk   -> pendingAttempt.responseBody += chunk                        // 原样累积，上限 4×maxStoredBodyBytes
+request.complete          -> ResponseBody = storedBody(maskResponseBody(累积))           // 遮蔽 output，再截到 256 KB
+AppendHistory             -> record.takeBodies() -> history_bodies/<auth>/<record id>
+```
+
+遮蔽走 `maskBodyField`：JSON 文档递归替换同名字段，SSE 按 `data:` 行逐帧替换并保留 `event:` 行、`[DONE]` 与帧结构，解析不了的原样返回。流式必须累积完再遮蔽——按 chunk 遮蔽会放过跨 chunk 拆开的帧。
+
+body 与记录分桶存放：`History` 一页要解码整个桶来排序，载荷放在一起就得为一个不显示它们的列表读几十 MB。`GET /history/body?auth_index=&id=` 按需单取；淘汰、`ClearHistory` 与 `DeleteCredentialData` 都会连带删除。
 
 载荷只在内存里解析，取出模型名后即丢弃；请求体和响应体都不进入持久化。
 
