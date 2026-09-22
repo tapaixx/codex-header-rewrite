@@ -300,7 +300,6 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 	pr.current.TurnStateInjected = injected
 	if injected {
 		pr.current.injectedDigest = injectedFrom.digest
-		pr.current.injectedExpired = time.Since(injectedFrom.mintedAt) > turnStateReuseWindowLocked(authIndex)
 	}
 	pr.current.TurnStateSessionID = clientSessionID(req.Headers)
 	pr.current.clientCookie = joinCookieHeader(req.Headers)
@@ -423,12 +422,11 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 		info.Pooled = noteTurnStateMintLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel), attempt.CredentialPlan, session)
 	}
 	attempt.TurnStateMinted = &info
-	// A pooled state that was already past the reuse window went out on this
-	// request and the upstream still minted a degraded state: the old state has
-	// stopped carrying the chain, and left in the pool it would go out again on
-	// the next request. A state within the window that produced the same result
-	// is left alone -- one degraded turn is not proof against a fresh state.
-	if attempt.injectedDigest != "" && attempt.injectedExpired && info.NonDegraded != nil && !*info.NonDegraded {
+	// The pooled state went out on this request and the upstream still minted
+	// a degraded one: that state has stopped carrying the chain, and left in
+	// the pool it would go out again on the next request. Age does not enter
+	// into it -- the reuse window only says when a state is due for renewal.
+	if attempt.injectedDigest != "" && info.NonDegraded != nil && !*info.NonDegraded {
 		attempt.TurnStateInvalidated = invalidateTurnStateLocked(attempt.AuthIndex, sentModel(attempt.Model, attempt.RequestedModel), attempt.injectedDigest)
 	}
 	// Response rejection has its own switch and model scope, independent of

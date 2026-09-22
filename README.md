@@ -73,7 +73,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.24.1.so` | `codex-header-rewrite` | `0.24.1` |
+| `codex-header-rewrite-v0.24.2.so` | `codex-header-rewrite` | `0.24.2` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -86,7 +86,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.24.1.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.24.2.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -155,16 +155,18 @@ curl -s -H "Authorization: Bearer <management-key>" \
 **任务**（每凭证一个，到期才跑，1 秒全局扫描）
 
 ```
-开关关 / 不在生效时段 / now − 最近一次真实请求 > 活跃判定时间  → 跳过
+开关关                                → 什么都不排（面板上没有倒计时）
+不在生效时段                            → 下次 = 时段开始的那一刻
+now − 最近一次真实请求 > 活跃判定时间   → 下次 = now + 间隔
 集合 = 探针模型中「池里没有 state」或「state 超过 state_ttl_seconds」的
       按紧急度排序：从没入过池的最前，其余按入池时间升序
-集合为空 → 结束
+集合为空（全都新鲜）                     → 下次 = 最早那条 state 过期的时刻
 依序逐个模型发请求（header / payload 同重试），不降智则 state 连同会话与代理一起入池
                                               每个模型请求写一行探针历史
 结束时把下次到期时间设为 now + 间隔
 ```
 
-「下次 = **结束**时间 + 间隔」而不是固定节拍，所以相邻两次上游调用的间距恒等于你配的间隔。到期时间同时表达「正在跑」和「还没到期」，一个值不可能和自己不一致，所以不需要额外的重入锁。
+排的永远是「接下来真会发生的事」：探针关着就没有倒计时，时段外倒数到开门，池里全新鲜就倒数到第一条过期，只有真跑过一轮才按间隔。「下次 = **结束**时间 + 间隔」而不是固定节拍，所以相邻两次上游调用的间距恒等于你配的间隔。到期时间同时表达「正在跑」和「还没到期」，一个值不可能和自己不一致，所以不需要额外的重入锁。
 
 **活跃判定与 cookie 新鲜度是两个时钟。** 前者只由**真实客户端流量**更新，探针自己的请求**不更新它** —— 否则探针会自己给自己续命，账号闲置几天还在烧额度。
 
@@ -373,7 +375,7 @@ node scripts/make-preview.mjs
 
 **State 有效期（v0.20.0）**：`state_ttl_seconds` 是 `headerRule` 的字段，按凭证保存，取值 5–7200 秒，留空（存为 `0`）按默认 200 秒。之前这是编译进去的 1 小时常量，但这个窗口上游从没公开过，而且各账号表现不同，所以改成面板里可填的数字。两个凭证可以各填各的，同一条 blob 的年龄按当时服务这次请求的那条规则判定。超出范围的值保存时直接报错，不会被悄悄改写成别的数——否则面板上显示的就不是你填的那个窗口了。
 
-窗口决定的不是「是否注入」：**过期的 state 照样会注入**，因为窗口是经验值。它决定的是什么时候把「注入后仍降智」当成这条 state 已经失效的证据（见下文）。把它调短，失效的 state 就更快被清出池子；调长则更保守。
+窗口决定的不是「是否注入」：**过期的 state 照样会注入**，因为窗口是经验值。它只决定什么时候把一条 state 标成「该换了」——自动探针据此去补新的。剔除不看年龄：**任何 state 注入出去、上游仍返回降智，这条 state 立刻出池**（v0.24.2 起；此前只有过期的才剔）。
 
 **两个开关**，都在「请求历史 › State 池」卡片的标题栏上，改了即存：
 

@@ -76,7 +76,8 @@ try {
   await page.fill('#probeWindowStart','09:00');
   await page.fill('#probeWindowEnd','18:00');
   await page.dispatchEvent('#probeWindowEnd','change');
-  await new Promise(r=>setTimeout(r,300));
+  // The window saves once the picker rests, not on every tick.
+  await new Promise(r=>setTimeout(r,900));
   const expected = (hhmm) => page.evaluate((v)=>localTimeToUTCMinute(v), hhmm);
   assert.equal(saved.probe_window_start_minute, await expected('09:00'), 'start stored in UTC minutes');
   assert.equal(saved.probe_window_end_minute, await expected('18:00'));

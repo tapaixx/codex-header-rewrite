@@ -68,7 +68,7 @@ func TestProbePendingModelsAndOrder(t *testing.T) {
 	noteTurnStateMintLocked(fernetToken(0x80, time.Now().Add(-9000*time.Second), 1), "idx-a", "A", "stale", "team", "")
 	state.mu.Unlock()
 
-	got := probePendingModels("idx-a", rule)
+	got, _ := probePendingModels("idx-a", rule)
 	// never pooled first, then the oldest; fresh is not probed at all, blanks
 	// and duplicates are dropped.
 	if len(got) != 2 || got[0] != "never" || got[1] != "stale" {
@@ -368,5 +368,36 @@ func TestProbeActiveFollowsThePoolSwitch(t *testing.T) {
 		if got := probeActive(tc.rule); got != tc.want {
 			t.Errorf("%s: got %v want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// Outside the window the next look is the window's opening, not an interval
+// that would tick towards nothing; a wrapped window opening later today and
+// one that opened already both resolve to a moment after now.
+func TestNextProbeWindowOpen(t *testing.T) {
+	now := time.Date(2026, 9, 22, 10, 0, 0, 0, time.UTC)
+	later := nextProbeWindowOpen(headerRule{ProbeWindowStartMinute: 22 * 60, ProbeWindowEndMinute: 2 * 60}, now)
+	if !later.Equal(time.Date(2026, 9, 22, 22, 0, 0, 0, time.UTC)) {
+		t.Fatalf("22:00 today, got %v", later)
+	}
+	earlier := nextProbeWindowOpen(headerRule{ProbeWindowStartMinute: 8 * 60, ProbeWindowEndMinute: 9 * 60}, now)
+	if !earlier.Equal(time.Date(2026, 9, 23, 8, 0, 0, 0, time.UTC)) {
+		t.Fatalf("08:00 tomorrow, got %v", earlier)
+	}
+}
+
+// A switched-off probe schedules nothing at all.
+func TestSwitchedOffProbeSchedulesNothing(t *testing.T) {
+	resetState(t)
+	state.mu.Lock()
+	state.rules["idx-off"] = headerRule{AuthIndex: "idx-off", ProbeEnabled: false, ProbeModels: []string{"m"}}
+	state.mu.Unlock()
+	setProbeDue("idx-off", time.Now().Add(time.Hour))
+	runProbeTask("idx-off", make(chan struct{}))
+	probeSchedule.Lock()
+	_, scheduled := probeSchedule.nextDue["idx-off"]
+	probeSchedule.Unlock()
+	if scheduled {
+		t.Fatal("an off probe must leave no next-due time behind")
 	}
 }

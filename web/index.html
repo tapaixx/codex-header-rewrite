@@ -1132,7 +1132,7 @@ body[data-workspace="rules"] #ruleSummaryPanel{display:block;grid-column:2;grid-
 .credential-menu-footer #revealIdentity{margin-left:auto}
 .credential-menu-footer #revealIdentity.is-on{color:var(--accent);background:var(--accent-weak)}
 
-.shell{padding:12px 18px 16px!important;max-width:1720px!important;margin:0 auto!important}
+.shell{padding:12px 18px 40px!important;max-width:1720px!important;margin:0 auto!important}
 body[data-workspace="rules"] .shell main{grid-template-columns:minmax(620px,1fr) minmax(560px,1fr)!important;gap:12px!important}
 /* A panel is the one elevated surface on the page: ring and lift from the
    shadow token, and no border underneath it. */
@@ -1965,7 +1965,10 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
    longer reserves a strip of height for it. */
 .mobile-nav{display:none!important}
 @media (max-width:820px){
-  .shell{padding-bottom:20px!important}
+  /* Room under the last card: with one record the page barely exceeds the
+     viewport, and the pager sat under the browser's bottom bar with no way
+     to pull it up. */
+  .shell{padding-bottom:calc(72px + env(safe-area-inset-bottom))!important}
   .toast{bottom:calc(22px + env(safe-area-inset-bottom))!important}
   .workspace-nav-inner{padding:0!important}
 }
@@ -1996,6 +1999,9 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
 .panel,.panel-body{min-width:0!important}
 .pool-scroll{min-width:0;max-width:100%}
 .table-scroll{overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;min-width:0;max-width:100%}
+/* The history list keeps a few rows' worth of height even with one record, so
+   the card reads as a list and not as a strip. */
+#historyPanel .table-scroll{min-height:168px}
 #historyPanel .page-size{gap:6px;font-weight:500;color:var(--text-mute)}
 #historyPanel .page-size select{width:auto;min-height:28px;padding:0 24px 0 8px;font-size:var(--fs-xs)}
 /* The model column comes from syncModelColumn; the table's minimum follows it
@@ -2400,7 +2406,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
       <div class="panel-body">
         <div class="pool-ttl">
           <label class="field-inline" for="ruleStateTTL">State 有效期<input id="ruleStateTTL" type="number" inputmode="numeric" min="5" max="7200" step="5" value="200" autocomplete="off" disabled><span class="field-unit">秒</span></label>
-          <span class="muted">按凭证维护，改完离开输入框即保存。超过这个时长的 state 标记为过期，仍会注入；但过期的 state 注入后还降智，就把它从池里清掉。留空按 200 秒。</span>
+          <span class="muted">按凭证维护，改完离开输入框即保存。超过这个时长的 state 标记为过期，仍会注入，探针也会去换新的。任何 state 注入后上游还是降智，就立刻把它从池里清掉。留空按 200 秒。</span>
         </div>
         <div id="turnStateBody" class="state-pool"></div>
       </div>
@@ -4591,7 +4597,7 @@ addEventListener("resize", syncStickyOffsets);
 
 function syncDegradedControls() {
   renderStatusLights();
-  const ready = !!store.rule && store.rule.auth_index === store.selected && !degradedSaving;
+  const ready = !!store.rule && store.rule.auth_index === store.selected;
   $("rejectDegraded").disabled = !ready;
   const disabled = !ready || !$("rejectDegraded").checked;
   const frozen = poolFrozen();
@@ -4713,7 +4719,7 @@ let poolSaving = false;
 function syncPoolControls() {
   if (!$("poolMaintain") || !$("poolInject")) return;
   renderStatusLights();
-  const ready = !!store.rule && store.rule.auth_index === store.selected && !poolSaving;
+  const ready = !!store.rule && store.rule.auth_index === store.selected;
   $("poolMaintain").disabled = !ready;
   // A frozen pool cannot inject, so the injection switch waits for it.
   const frozen = !$("poolMaintain").checked;
@@ -4868,7 +4874,9 @@ function probeQuotaText() {
 function syncProbeControls() {
   if (!$("probeEnabled")) return;
   renderStatusLights();
-  const ready = !!store.rule && store.rule.auth_index === store.selected && !probeSaving;
+  // Saving does not disable anything: doing so blurred the very control being
+  // edited, and on a phone that closed the time picker mid-scroll.
+  const ready = !!store.rule && store.rule.auth_index === store.selected;
   const frozen = poolFrozen();
   const on = ready && !frozen && $("probeEnabled").checked;
   $("probeEnabled").disabled = !ready || frozen;
@@ -5019,8 +5027,16 @@ $("probeEnabled")?.addEventListener("change", () => {
   syncProbeControls();
   saveProbeSettings(() => { $("probeEnabled").checked = !$("probeEnabled").checked; });
 });
-for (const id of ["probeInterval", "probeCookieTTL", "probeWindowStart", "probeWindowEnd", "probeResolveIP", "probeProxyOn"]) {
+for (const id of ["probeInterval", "probeCookieTTL", "probeResolveIP", "probeProxyOn"]) {
   $(id)?.addEventListener("change", () => { syncProbeControls(); saveProbeSettings(() => {}); });
+}
+// A phone's time picker fires change on every tick of the wheel; saving each
+// one is noise, so the window saves once the picker rests or the field is left.
+let probeWindowTimer = 0;
+const saveProbeWindow = () => { clearTimeout(probeWindowTimer); probeWindowTimer = 0; saveProbeSettings(() => {}); };
+for (const id of ["probeWindowStart", "probeWindowEnd"]) {
+  $(id)?.addEventListener("change", () => { syncProbeControls(); clearTimeout(probeWindowTimer); probeWindowTimer = setTimeout(saveProbeWindow, 500); });
+  $(id)?.addEventListener("blur", () => { if (probeWindowTimer) saveProbeWindow(); });
 }
 $("probeWindowClear")?.addEventListener("click", () => {
   $("probeWindowStart").value = "";

@@ -60,13 +60,31 @@ func probeDueLocked(authIndex string, now time.Time) bool {
 	return !ok || !due.After(now)
 }
 
+// setProbeDue records when the credential is next looked at; a zero time
+// means nothing is scheduled, which is what a switched-off probe shows.
 func setProbeDue(authIndex string, at time.Time) {
 	probeSchedule.Lock()
 	defer probeSchedule.Unlock()
 	if probeSchedule.nextDue == nil {
 		probeSchedule.nextDue = map[string]time.Time{}
 	}
+	if at.IsZero() {
+		delete(probeSchedule.nextDue, authIndex)
+		return
+	}
 	probeSchedule.nextDue[authIndex] = at
+}
+
+// nextProbeWindowOpen is the next UTC instant the window starts, for a task
+// that found itself outside it: the countdown then says when the probe can
+// run again rather than ticking towards a check that will do nothing.
+func nextProbeWindowOpen(rule headerRule, now time.Time) time.Time {
+	now = now.UTC()
+	open := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).Add(time.Duration(rule.ProbeWindowStartMinute) * time.Minute)
+	if !open.After(now) {
+		open = open.Add(24 * time.Hour)
+	}
+	return open
 }
 
 // startProbeScheduler runs until quiesce. It reads the rules the plugin
@@ -128,21 +146,29 @@ func probeActive(rule headerRule) bool { return rule.ProbeEnabled && rule.poolMa
 func runProbeTask(authIndex string, stop <-chan struct{}) {
 	rule, ok := probeRule(authIndex)
 	interval := probeInterval(rule)
-	defer func() { setProbeDue(authIndex, time.Now().Add(interval)) }()
+	// What is scheduled is what will actually happen next: nothing while the
+	// probe is off, the window's opening while outside it, the first expiry
+	// while every state is fresh, and the interval only after real work.
+	next := time.Time{}
+	defer func() { setProbeDue(authIndex, next) }()
 	if !ok || !probeActive(rule) {
 		return
 	}
-	if !withinProbeWindow(rule, time.Now().UTC()) {
+	if now := time.Now().UTC(); !withinProbeWindow(rule, now) {
+		next = nextProbeWindowOpen(rule, now)
 		return
 	}
 	session, live := probeCredentialLiveness(authIndex, rule)
 	if !live {
+		next = time.Now().Add(interval)
 		return
 	}
-	pending := probePendingModels(authIndex, rule)
+	pending, soonest := probePendingModels(authIndex, rule)
 	if len(pending) == 0 {
+		next = soonest
 		return
 	}
+	next = time.Now().Add(interval)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
@@ -222,11 +248,16 @@ func probeCredentialLiveness(authIndex string, rule headerRule) (credentialSessi
 // missing or past the credential's freshness window, ordered by how badly each
 // needs one: never pooled first, then oldest. Sequential probing means the
 // models at the back wait, so the back is where the least urgent belong.
-func probePendingModels(authIndex string, rule headerRule) []string {
+// probePendingModels lists the probe models whose pooled state is missing or
+// past the window, most urgent first, and alongside it the moment the first
+// still-fresh state will expire -- when there is nothing to do now, that is
+// when there next will be.
+func probePendingModels(authIndex string, rule headerRule) ([]string, time.Time) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	window := turnStateReuseWindowLocked(authIndex)
 	now := time.Now()
+	var soonest time.Time
 	type candidate struct {
 		model  string
 		minted time.Time
@@ -244,6 +275,9 @@ func probePendingModels(authIndex string, rule headerRule) []string {
 		seen[model] = struct{}{}
 		origin, pooled := state.turnStateLatest[turnStateLatestKey(authIndex, model)]
 		if pooled && now.Sub(origin.mintedAt) <= window {
+			if expiry := origin.mintedAt.Add(window); soonest.IsZero() || expiry.Before(soonest) {
+				soonest = expiry
+			}
 			continue
 		}
 		minted := time.Time{}
@@ -257,7 +291,7 @@ func probePendingModels(authIndex string, rule headerRule) []string {
 	for _, item := range pending {
 		out = append(out, item.model)
 	}
-	return out
+	return out, soonest
 }
 
 // probeEgress picks the exit for one request. Selection is per request, so a

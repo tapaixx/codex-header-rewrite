@@ -714,21 +714,21 @@ func TestExpiredInjectedStateIsInvalidatedWhenTheResponseIsDegraded(t *testing.T
 	}
 }
 
-// Inside the window the same outcome proves nothing about the pooled state:
-// one degraded turn can have other causes, and the fresh state stays.
-func TestFreshInjectedStateSurvivesADegradedResponse(t *testing.T) {
+// Age is not part of it: a state inside the window that went out and came
+// back degraded is just as dead as an expired one, and leaves the pool.
+func TestFreshInjectedStateIsEvictedByADegradedResponse(t *testing.T) {
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
-	fresh := pooledAt(t, time.Now().Add(-defaultStateTTLSeconds*time.Second/2))
+	pooledAt(t, time.Now().Add(-defaultStateTTLSeconds*time.Second/2))
 	injectTestRequest(t, "fresh", nil)
 	observeResponse(responseInterceptRequest{RequestID: "fresh", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {fernetToken(0x80, time.Now(), 40)}}})
 	completeRequest(requestCompletion{RequestID: "fresh", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
-	if origin, ok := pooledFor(t); !ok || origin.blob != fresh {
-		t.Fatal("a state inside the window must not be invalidated by one degraded turn")
+	if _, ok := pooledFor(t); ok {
+		t.Fatal("a state that produced a degraded turn must leave the pool, however fresh")
 	}
-	if got := lastAttempt(t); got.TurnStateInvalidated {
-		t.Fatalf("attempt wrongly flagged: %#v", got)
+	if got := lastAttempt(t); !got.TurnStateInvalidated {
+		t.Fatalf("attempt should record the eviction: %#v", got)
 	}
 }
 

@@ -258,7 +258,6 @@ type pendingAttempt struct {
 	// Which pooled state went out on this request, and whether it was already
 	// past the reuse window when it did. Read again when the response arrives.
 	injectedDigest  string
-	injectedExpired bool
 	// rejecting is set when the response headers classified as degraded and
 	// the rule asks for such responses to be withheld; rejectedChunks counts
 	// stream chunks seen since, so the first carries the error and the rest
