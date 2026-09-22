@@ -269,21 +269,51 @@ func turnStateLatestKey(authIndex, model string) string {
 	return authIndex + "\x00" + strings.TrimSpace(model)
 }
 
-// headerValueFold reads a header without trusting the map's key casing.
-// http.Header.Get canonicalizes the key it looks up but not the keys already in
-// the map, and canonicalization is not identity for every name: X-OpenAI-... is
-// stored canonically as X-Openai-..., so a map built with the literal spelling
-// is invisible to Get. Any header map that did not come from Set is suspect.
-func headerValueFold(h http.Header, name string) string {
+// headerValuesFold returns every value stored under a header name, matching the
+// name case-insensitively.
+//
+// Not trusting the map's key casing is the whole point. http.Header.Get and
+// Values canonicalize the key they look up but not the keys already in the
+// map, and the ABI builds header maps straight from JSON -- whatever spelling
+// the host serialised is what sits in the map, which over HTTP/2 is lowercase.
+// Canonicalization is not identity either: X-OpenAI-... is stored canonically
+// as X-Openai-..., so a map built with the literal spelling is invisible to
+// Get.
+//
+// Because those keys are never normalised, one map can hold the same header
+// under two spellings. Returning the first key that matched would silently
+// drop the other, and map iteration is unordered, so it would not even drop
+// the same one twice. Every match is collected, in sorted key order so the
+// result does not depend on iteration.
+func headerValuesFold(h http.Header, name string) []string {
 	if h == nil {
-		return ""
+		return nil
 	}
-	if value := strings.TrimSpace(h.Get(name)); value != "" {
-		return value
+	var matched []string
+	for key := range h {
+		if strings.EqualFold(key, name) {
+			matched = append(matched, key)
+		}
 	}
-	for key, values := range h {
-		if strings.EqualFold(key, name) && len(values) > 0 {
-			return strings.TrimSpace(values[0])
+	switch len(matched) {
+	case 0:
+		return nil
+	case 1:
+		return h[matched[0]]
+	}
+	sort.Strings(matched)
+	out := make([]string, 0, len(matched)+1)
+	for _, key := range matched {
+		out = append(out, h[key]...)
+	}
+	return out
+}
+
+// headerValueFold reads the first non-empty value of a header.
+func headerValueFold(h http.Header, name string) string {
+	for _, value := range headerValuesFold(h, name) {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
 		}
 	}
 	return ""
@@ -291,23 +321,6 @@ func headerValueFold(h http.Header, name string) string {
 
 func headerTurnState(h http.Header) string {
 	return headerValueFold(h, turnStateHeader)
-}
-
-// headerValuesFold returns every value under a header name, matching the name
-// case-insensitively the way the rest of this file reads headers.
-func headerValuesFold(h http.Header, name string) []string {
-	if h == nil {
-		return nil
-	}
-	if values := h.Values(name); len(values) > 0 {
-		return values
-	}
-	for key, values := range h {
-		if strings.EqualFold(key, name) {
-			return values
-		}
-	}
-	return nil
 }
 
 // joinCookieHeader returns the request's cookies as a single header value.

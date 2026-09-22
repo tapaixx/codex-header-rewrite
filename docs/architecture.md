@@ -114,6 +114,10 @@ response（header-init / intercept_after）判定拦截且要重试
  -> scheduleDegradedRetry
 ```
 
+**Header key 一律大小写不敏感读取**：ABI 的 header map 直接由 JSON 反序列化而来（`out.Headers = http.Header(slices)`），键保留宿主序列化时的拼写，HTTP/2 下是小写；而 `http.Header.Get` / `Values` 只规范化它查的键，不规范化 map 里已有的键，且规范化对某些名字不是恒等（`X-OpenAI-...` 的规范形式是 `X-Openai-...`）。所以所有入站 header 读取都走 `headerValuesFold` / `headerValueFold`，按 `EqualFold` 匹配。由于这些键从不被归一化，同一个 header 可能同时以两种拼写存在，`headerValuesFold` 会把**每一个**匹配键的值都收集起来，并按键排序后拼接，结果不依赖 map 迭代顺序。
+
+注意方向相反的一条：**header 名大小写不敏感，cookie 名大小写敏感**（RFC 6265）。`session` 和 `Session` 是两个 cookie，`applySetCookies` 不会让其中一个覆盖另一个。
+
 `clientCookie` 只存在于在途 `pendingAttempt` 上，不是 `historyRecord` 的字段。`Cookie` 与 `Set-Cookie` 自 v0.20.1 起不在 `exactSensitiveHeaders` 中，因此 `redactHeaders` 按明文记录它们——这是为了能比对重试与线上请求的会话；代价是 bbolt 文件里含可用会话。
 
 ## 测试请求

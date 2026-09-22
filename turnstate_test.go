@@ -479,3 +479,63 @@ func resetRules(t *testing.T) {
 		state.mu.Unlock()
 	})
 }
+
+// Header maps come across the ABI straight from JSON, so their keys keep
+// whatever spelling the host serialised -- lowercase over HTTP/2 -- and one map
+// can hold the same header under two spellings. Reading one of them is not
+// enough, and picking whichever the map iterated first is not even stable.
+func TestHeaderReadsDoNotTrustKeyCasing(t *testing.T) {
+	t.Run("any single spelling is found", func(t *testing.T) {
+		for _, key := range []string{"Cookie", "cookie", "COOKIE", "CooKie"} {
+			if got := joinCookieHeader(http.Header{key: {"a=1"}}); got != "a=1" {
+				t.Fatalf("%s: got %q", key, got)
+			}
+		}
+		// Canonicalization is not identity for this one: Get would look up
+		// X-Openai-Internal-Codex-Responses-Lite and miss the literal spelling.
+		literal := "X-OpenAI-Internal-Codex-Responses-Lite"
+		if got := headerValueFold(http.Header{literal: {"true"}}, literal); got != "true" {
+			t.Fatalf("literal spelling not found: %q", got)
+		}
+	})
+
+	t.Run("every spelling contributes", func(t *testing.T) {
+		got := joinCookieHeader(http.Header{"Cookie": {"a=1"}, "cookie": {"b=2"}})
+		if got != "a=1; b=2" {
+			t.Fatalf("both spellings should be sent: %q", got)
+		}
+		merged := applySetCookies("a=1", http.Header{"Set-Cookie": {"a=9"}, "set-cookie": {"b=8"}})
+		if merged != "a=9; b=8" {
+			t.Fatalf("both assignments should apply: %q", merged)
+		}
+	})
+
+	t.Run("the order does not depend on map iteration", func(t *testing.T) {
+		// Same map contents, built repeatedly: a first-match-wins read would
+		// return different answers across runs.
+		for i := 0; i < 64; i++ {
+			h := http.Header{"cookie": {"a=1"}, "COOKIE": {"b=2"}, "Cookie": {"c=3"}}
+			if got := joinCookieHeader(h); got != "b=2; c=3; a=1" {
+				t.Fatalf("run %d returned %q", i, got)
+			}
+		}
+	})
+
+	t.Run("a turn state under any spelling is read", func(t *testing.T) {
+		blob := fernetToken(0x80, time.Now(), 1)
+		for _, key := range []string{turnStateHeader, "x-codex-turn-state", "X-CODEX-TURN-STATE"} {
+			if got := headerTurnState(http.Header{key: {blob}}); got != blob {
+				t.Fatalf("%s: got %q", key, got)
+			}
+		}
+	})
+
+	// Header names fold; cookie names do not. RFC 6265 makes cookie names
+	// case-sensitive, so these are two cookies and neither replaces the other.
+	t.Run("cookie names stay case sensitive", func(t *testing.T) {
+		got := applySetCookies("session=old", http.Header{"Set-Cookie": {"Session=new"}})
+		if got != "session=old; Session=new" {
+			t.Fatalf("got %q", got)
+		}
+	})
+}
