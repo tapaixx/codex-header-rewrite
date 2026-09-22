@@ -4873,28 +4873,32 @@ function syncProbeControls() {
   const on = ready && !frozen && $("probeEnabled").checked;
   $("probeEnabled").disabled = !ready || frozen;
   $("probeEnabled").parentElement.title = frozen ? "State 池已暂停维护，探针不可用" : "";
+  // The switch gates running, not configuring: the model list is required
+  // before the probe may be switched on, so it has to be editable while off.
+  // Everything below is editable whenever a rule is loaded.
+  const editable = ready && !frozen;
   for (const id of ["probeInterval", "probeCookieTTL", "probeWindowStart", "probeWindowEnd", "probeWindowClear", "probeResolveIP"]) {
-    if ($(id)) $(id).disabled = !on;
+    if ($(id)) $(id).disabled = !editable;
   }
-  $("probeProxyOn").disabled = !on;
-  const viaProxy = on && $("probeProxyOn").checked;
+  $("probeProxyOn").disabled = !editable;
+  const viaProxy = editable && $("probeProxyOn").checked;
   for (const id of ["probeModels", "probeProxies"]) {
-    const usable = id === "probeProxies" ? viaProxy : on;
+    const usable = id === "probeProxies" ? viaProxy : editable;
     $(id).dataset.disabled = usable ? "" : "1";
     renderChips(id);
-    $(id).title = !on ? "开启自动探针后可配置" : (usable ? "" : "打开「走代理」后可配置，关着时直连");
+    $(id).title = !editable ? "" : (usable ? "" : "打开「走代理」后可配置，关着时直连");
   }
   for (const id of ["copyRetryToProbe", "copyProbeToRetry"]) {
-    if ($(id)) $(id).disabled = !on;
+    if ($(id)) $(id).disabled = !editable;
   }
   // With no proxy the egress is the host's own, so there is one coherent jar
   // and nothing to ask. With proxies there is no safe default.
   const proxied = viaProxy && probeProxyList().length > 0;
   $("probeCookieField").hidden = !proxied;
-  for (const radio of document.querySelectorAll('input[name="probeCookieMode"]')) radio.disabled = !on;
+  for (const radio of document.querySelectorAll('input[name="probeCookieMode"]')) radio.disabled = !editable;
   const rotating = probeCookieMode() === "rotating_proxy";
   if ($("probeResolveIP")) {
-    $("probeResolveIP").disabled = !on || rotating;
+    $("probeResolveIP").disabled = !editable || rotating;
     $("probeResolveIP").parentElement.title = rotating ? "动态代理池下取不到真实出口，留空" : "";
   }
   const window = probeWindowMinutes();
@@ -5000,6 +5004,14 @@ $("ruleStateTTL")?.addEventListener("change", () => {
 });
 
 $("probeEnabled")?.addEventListener("change", () => {
+  // The plugin refuses a probe with no models; say so here instead of letting
+  // the switch snap back with only a toast to explain.
+  if ($("probeEnabled").checked && !probeModelList().length) {
+    $("probeEnabled").checked = false;
+    toast("先在「探针模型」里添加至少一个模型，再开启自动探针", true);
+    $("probeModels")?.querySelector(".chip-add")?.focus();
+    return;
+  }
   if ($("probeEnabled").checked && $("retryDegraded")?.checked) {
     $("retryDegraded").checked = false;
     syncDegradedControls();

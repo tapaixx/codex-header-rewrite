@@ -33,13 +33,21 @@ try {
   await page.evaluate(()=>setWorkspace('history',false));
   await page.waitForSelector('#probePanel .probe-grid');
 
-  // Off, everything it configures is inert: a half-filled probe must not be
-  // reachable by tabbing into it.
+  // Off, everything is still editable: the models are required before the
+  // probe may be switched on, so they cannot wait for the switch. Switching
+  // on without a model is refused on the spot rather than by a failed save.
   assert.equal(await page.locator('#probeEnabled').isChecked(), false);
   for (const id of ['probeInterval','probeCookieTTL','probeWindowStart','probeWindowEnd']) {
-    assert.equal(await page.locator(`#${id}`).isDisabled(), true, `${id} inert while off`);
+    assert.equal(await page.locator(`#${id}`).isDisabled(), false, `${id} editable while off`);
   }
-  assert.equal(await page.locator('#probeModels').getAttribute('data-disabled'), '1');
+  assert.equal(await page.locator('#probeModels').getAttribute('data-disabled'), '');
+  saved = null;
+  await page.evaluate(()=>document.querySelector('#probeEnabled').click());
+  await new Promise(r=>setTimeout(r,300));
+  assert.equal(await page.locator('#probeEnabled').isChecked(), false, 'no models, no probe');
+  assert.equal(saved, null, 'and nothing was sent');
+  assert.match(await page.locator('.toast').textContent(), /探针模型/);
+  await page.evaluate(()=>{ setChips('probeModels',['m1']); });
 
   // Turning it on turns the retry off: both fill the same pool on their own
   // schedule, and two writers for one pool is the thing to prevent.
