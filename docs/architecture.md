@@ -86,12 +86,14 @@ blob 本身是 Fernet token：`1 字节版本 + 8 字节大端时间戳 + 16 字
 
 ```text
 request.intercept_after
- -> 规则开关关闭、无规则，或 inject_turn_state 关闭 -> 不注入（按客户端原样透传）
- -> 规则开关开启
-    -> 规则里手工写过 X-Codex-Turn-State（设置或移除） -> 不注入（operator 优先）
+ -> 无规则、maintain_state_pool 关闭（池冻结）或 inject_turn_state 关闭 -> 不注入（按客户端原样透传）
+ -> 两个开关都开（与规则的 enabled 无关）
+    -> 规则启用且手工写过 X-Codex-Turn-State（设置或移除） -> 不注入（operator 优先；规则关着时手工项不生效，也不拦注入）
     -> 否则查池 (auth_index + model)
        -> 套餐已知且 state 合格 -> 写入 updates，并从 ClearHeaders 撤回同名移除
        -> 否则不注入
+
+池冻结（maintain_state_pool = false）时，响应里的 state 仍会分类并写入历史，但不铸造入池；拦截后重试与自动探针都不运行。
 ```
 
 ```text

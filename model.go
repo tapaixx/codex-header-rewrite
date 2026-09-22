@@ -18,10 +18,28 @@ const (
 	// body is kept up to this much and the rest is dropped with its original
 	// size recorded.
 	maxStoredBodyBytes = 256 << 10
-	pageSize        = 10
+	pageSize        = 20
 )
 
 type pluginConfig struct{ DataPath string }
+
+// poolMaintained reports whether this credential's state pool is live. The
+// field is unset on every rule saved before it existed, and unset means on.
+// The proxy pools a request may actually use: nil while the list's switch is off.
+func (r headerRule) retryProxyPool() []string {
+	if !r.RetryProxyEnabled {
+		return nil
+	}
+	return r.RetryProxies
+}
+func (r headerRule) probeProxyPool() []string {
+	if !r.ProbeProxyEnabled {
+		return nil
+	}
+	return r.ProbeProxies
+}
+
+func (r headerRule) poolMaintained() bool { return r.MaintainStatePool == nil || *r.MaintainStatePool }
 
 type headerRule struct {
 	AuthIndex string            `json:"auth_index"`
@@ -36,6 +54,12 @@ type headerRule struct {
 	// control. It is read so rules saved earlier keep working, and never
 	// written; validateRule folds it into InjectTurnState.
 	LegacyGuard bool `json:"strip_foreign_turn_state,omitempty"`
+	// MaintainStatePool is the pool's master switch for this credential and the
+	// one thing that outranks InjectTurnState. Off, the pool is frozen: no state
+	// is minted from any response, nothing is injected, and the probe and the
+	// degraded retry -- which exist to fill it -- stand down. A pointer, so a
+	// rule saved before the field existed reads as on, which is the default.
+	MaintainStatePool *bool `json:"maintain_state_pool,omitempty"`
 	// RejectDegradedResponse withholds a response whose minted
 	// X-Codex-Turn-State classifies as degraded: the body is replaced with an
 	// error and, on a stream, every later chunk is dropped. The status code
@@ -51,6 +75,9 @@ type headerRule struct {
 	RetryAttempts   int  `json:"retry_attempts,omitempty"`
 	// Empty means direct; each background retry randomly selects one SOCKS URL.
 	RetryProxies []string `json:"retry_proxies,omitempty"`
+	// RetryProxyEnabled is the list's switch: off, retries go direct and the
+	// list is only kept. Off by default.
+	RetryProxyEnabled bool `json:"retry_proxy_enabled,omitempty"`
 	// StateTTLSeconds is how long a pooled state counts as fresh for this
 	// credential. Zero means defaultStateTTLSeconds, which is what every rule
 	// saved before the field existed carries.
@@ -72,6 +99,8 @@ type headerRule struct {
 	// Empty means direct; each probe request selects one at random, the same
 	// way a retry does.
 	ProbeProxies []string `json:"probe_proxies,omitempty"`
+	// ProbeProxyEnabled is the probe list's switch, same contract as the retry's.
+	ProbeProxyEnabled bool `json:"probe_proxy_enabled,omitempty"`
 	// ProbeCookieMode decides which cookie jar a probe request presents, which
 	// only has one right answer once the egress is known -- see probe.go. With
 	// no proxies configured this is forced to probeCookieCredential; with

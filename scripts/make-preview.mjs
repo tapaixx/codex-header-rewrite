@@ -225,7 +225,9 @@ const stub = `
     if (path.endsWith("/probes")) {
       const rows = authIndex === "acct-a" ? F.probes : [];
       return json({ auth_index: authIndex, page: 1, page_size: 10, total: rows.length, total_pages: 1,
-        items: rows, limit: 500, enabled: true, within_window: true,
+        // The schedule follows the rule the preview has saved, as the plugin's does.
+        items: rows, limit: 500, enabled: !!F.rules[authIndex]?.probe_enabled, within_window: true,
+        pool_paused: F.rules[authIndex]?.maintain_state_pool === false,
         last_live_at: new Date(Date.now() - 42000).toISOString(), live_age_seconds: 42,
         next_due_at: new Date(Date.now() + 18000).toISOString() });
     }

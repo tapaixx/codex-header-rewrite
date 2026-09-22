@@ -160,6 +160,7 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusBadRequest, "auth_index is required"), nil
 		}
 		page, _ := strconv.Atoi(req.Query.Get("page"))
+		size := historyPageSize(req.Query.Get("page_size"))
 		state.mu.Lock()
 		store := state.store
 		rule := state.rules[authIndex]
@@ -167,7 +168,7 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 		if store == nil {
 			return jsonError(http.StatusServiceUnavailable, "persistence is not initialized"), nil
 		}
-		result, err := store.ProbeHistory(authIndex, page)
+		result, err := store.ProbeHistory(authIndex, page, size)
 		if err != nil {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
@@ -183,6 +184,7 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			"total": result.Total, "total_pages": result.TotalPages, "items": result.Items,
 			"limit": probeHistoryLimit, "enabled": rule.ProbeEnabled,
 			"within_window": withinProbeWindow(rule, time.Now().UTC()),
+			"pool_paused":   !rule.poolMaintained(),
 		}
 		if !session.LastLiveAt.IsZero() {
 			payload["last_live_at"] = session.LastLiveAt
@@ -224,6 +226,7 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusBadRequest, "auth_index is required"), nil
 		}
 		page, _ := strconv.Atoi(req.Query.Get("page"))
+		size := historyPageSize(req.Query.Get("page_size"))
 		if page < 1 {
 			page = 1
 		}
@@ -233,7 +236,7 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 		if store == nil {
 			return jsonError(http.StatusServiceUnavailable, "persistence is not initialized"), nil
 		}
-		result, err := store.History(authIndex, page)
+		result, err := store.History(authIndex, page, size)
 		if err != nil {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}

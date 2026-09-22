@@ -385,7 +385,8 @@ func min(a, b int) int {
 // for retries; zero means the feature is off for it.
 func retryEnabledForLocked(authIndex string) int {
 	rule, ok := state.rules[authIndex]
-	if !ok || !rule.RejectDegradedResponse || !rule.RetryOnDegraded {
+	// The retry exists to fill the pool, so a frozen pool stands it down too.
+	if !ok || !rule.RejectDegradedResponse || !rule.RetryOnDegraded || !rule.poolMaintained() {
 		return 0
 	}
 	if strings.TrimSpace(authIndex) == "" {

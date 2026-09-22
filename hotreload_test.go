@@ -67,7 +67,7 @@ func TestPluginQuiesceFlushesHistoryAndReleasesTheStoreLock(t *testing.T) {
 		if opened.err != nil {
 			t.Fatal(opened.err)
 		}
-		page, err := opened.store.History("idx-a", 1)
+		page, err := opened.store.History("idx-a", 1, pageSize)
 		if err != nil {
 			t.Fatal(err)
 		}

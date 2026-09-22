@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strconv"
+	"strings"
 	"sort"
 	"time"
 )
@@ -27,24 +29,41 @@ func sortHistoryNewestFirst(records []historyRecord) {
 }
 
 // historyPageOf slices one page out of records already ordered newest first.
-func historyPageOf(authIndex string, page int, records []historyRecord) historyPage {
+// historyPageSizes are the page lengths the panel offers; anything else asked
+// for falls back to the default so a stray query cannot request the bucket.
+var historyPageSizes = []int{10, 20, 50}
+
+func historyPageSize(raw string) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(raw))
+	for _, size := range historyPageSizes {
+		if n == size {
+			return size
+		}
+	}
+	return pageSize
+}
+
+func historyPageOf(authIndex string, page, size int, records []historyRecord) historyPage {
 	if page < 1 {
 		page = 1
+	}
+	if size < 1 {
+		size = pageSize
 	}
 	total := len(records)
 	result := historyPage{
 		AuthIndex:  authIndex,
 		Page:       page,
-		PageSize:   pageSize,
+		PageSize:   size,
 		Total:      total,
-		TotalPages: (total + pageSize - 1) / pageSize,
+		TotalPages: (total + size - 1) / size,
 		Items:      []historyRecord{},
 	}
-	start := (page - 1) * pageSize
+	start := (page - 1) * size
 	if start >= total {
 		return result
 	}
-	end := min(start+pageSize, total)
+	end := min(start+size, total)
 	result.Items = append(result.Items, records[start:end]...)
 	return result
 }
@@ -56,7 +75,7 @@ type persistence interface {
 	GetRule(authIndex string) (headerRule, bool, error)
 	ListRules() ([]headerRule, error)
 	AppendHistory(record historyRecord) error
-	History(authIndex string, page int) (historyPage, error)
+	History(authIndex string, page, size int) (historyPage, error)
 	// HistoryBody fetches one record's payloads, which are stored apart from
 	// the record so a page of the list never carries them.
 	HistoryBody(authIndex, id string) (bodyRecord, bool, error)
@@ -65,7 +84,7 @@ type persistence interface {
 	// real traffic within the hour, which is the only record of what the proxy
 	// actually did.
 	AppendProbeHistory(record historyRecord) error
-	ProbeHistory(authIndex string, page int) (historyPage, error)
+	ProbeHistory(authIndex string, page, size int) (historyPage, error)
 	ClearProbeHistory(authIndex string) error
 	// SaveSession writes one egress's cookie jar; Session reads it back. Absent
 	// is not an error: a jar that has never been filled is the normal state

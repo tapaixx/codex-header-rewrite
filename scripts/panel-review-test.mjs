@@ -93,6 +93,44 @@ try {
     });
     if (width <= 900) assert.ok(scrolls > 0, `${width}px: the table should scroll sideways, not clip`);
   }
+  // The two response-side cards share a row once there is room, and a row of
+  // two cards only reads as a row if they are squared off. The probe's own
+  // pairs have to line up as well: the side column sits level with the proxy
+  // box it describes, not with that box's caption.
+  await page.setViewportSize({width:1440,height:1100});
+  await page.evaluate(()=>setWorkspace('history',false));
+  await page.waitForTimeout(150);
+  const paired = await page.evaluate(()=>{
+    const box = sel => {const r=document.querySelector(sel).getBoundingClientRect(); return {t:Math.round(r.top),h:Math.round(r.height)};};
+    const deg=box('#degradedPanel'), probe=box('#probePanel');
+    return {sameRow:deg.t===probe.t, equalHeight:deg.h===probe.h, probeWider:box('#probePanel').h>0 &&
+      document.querySelector('#probePanel').getBoundingClientRect().width > document.querySelector('#degradedPanel').getBoundingClientRect().width,
+      heads:['#degradedPanel','#probePanel'].map(s=>Math.round(document.querySelector(s+' .panel-head').getBoundingClientRect().height))};
+  });
+  assert.equal(paired.sameRow, true, 'the two cards share a row at 1440px');
+  assert.equal(paired.equalHeight, true, 'and are squared off');
+  assert.equal(paired.probeWider, true, 'the probe gets the wider column, it has more to say');
+  // Two cards side by side only read as one row if their title bars match; the
+  // bodies are ordered by what each card is for, not to mirror each other.
+  assert.equal(paired.heads[0], paired.heads[1], `title bars differ: ${paired.heads}`);
+  // These cards sit above the table that is actually being read, so nothing in
+  // them may be set larger than the table's own body text.
+  const shouting = await page.evaluate(() => {
+    const body = parseFloat(getComputedStyle(document.querySelector('.history-table td')).fontSize);
+    return [...document.querySelectorAll('#degradedPanel *,#probePanel *')]
+      .filter(el => el.closest('.panel-head') === null && el.closest('.hint-text') === null)
+      .filter(el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()))
+      .filter(el => parseFloat(getComputedStyle(el).fontSize) > body)
+      .map(el => `${el.tagName}.${el.className}:${getComputedStyle(el).fontSize}`);
+  });
+  assert.deepEqual(shouting, [], `settings text larger than the table body: ${JSON.stringify(shouting)}`);
+  // Below the breakpoint they go back to stacking rather than squeezing.
+  await page.setViewportSize({width:1100,height:1100});
+  await page.waitForTimeout(150);
+  const stacked = await page.evaluate(()=>document.querySelector('#degradedPanel').getBoundingClientRect().top
+    !== document.querySelector('#probePanel').getBoundingClientRect().top);
+  assert.equal(stacked, true, 'narrow viewports stack the two cards');
+
   assert.deepEqual(failures,[]);
   console.log('panel review regressions: passed');
 } finally { await browser.close(); }

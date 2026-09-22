@@ -157,6 +157,7 @@ func TestProbeCookieModeFallsBackOnlyWithoutProxies(t *testing.T) {
 		t.Fatalf("no proxies should mean the credential jar, got %q", got)
 	}
 	rule.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
+	rule.ProbeProxyEnabled = true
 	rule.ProbeCookieMode = probeCookieRotatingProxy
 	if got := probeCookieModeFor(rule); got != probeCookieRotatingProxy {
 		t.Fatalf("got %q", got)
@@ -177,7 +178,7 @@ func probeRows(t *testing.T) []historyRecord {
 			t.Fatal(err)
 		}
 	}
-	page, err := store.ProbeHistory("idx-a", 1)
+	page, err := store.ProbeHistory("idx-a", 1, pageSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,6 +271,7 @@ func TestRotatingProxyPrimesThenUses(t *testing.T) {
 
 	rule := probeRuleFixture()
 	rule.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
+	rule.ProbeProxyEnabled = true
 	rule.ProbeCookieMode = probeCookieRotatingProxy
 	probeModel(context.Background(), "idx-a", "gpt-6-astra", rule, credentialSession{Cookie: "not-this-one=1"})
 
@@ -345,4 +347,26 @@ func TestCloudflareRegion(t *testing.T) {
 		t.Fatalf("header names fold: %q", got)
 	}
 	_ = strings.TrimSpace("")
+}
+
+// The probe fills the pool, so its gate is its own switch and the pool's
+// master switch together; an unset master switch is on.
+func TestProbeActiveFollowsThePoolSwitch(t *testing.T) {
+	on, off := true, false
+	cases := []struct {
+		name string
+		rule headerRule
+		want bool
+	}{
+		{"off by default", headerRule{}, false},
+		{"switch on, pool unset", headerRule{ProbeEnabled: true}, true},
+		{"switch on, pool on", headerRule{ProbeEnabled: true, MaintainStatePool: &on}, true},
+		{"switch on, pool frozen", headerRule{ProbeEnabled: true, MaintainStatePool: &off}, false},
+		{"switch off, pool on", headerRule{MaintainStatePool: &on}, false},
+	}
+	for _, tc := range cases {
+		if got := probeActive(tc.rule); got != tc.want {
+			t.Errorf("%s: got %v want %v", tc.name, got, tc.want)
+		}
+	}
 }

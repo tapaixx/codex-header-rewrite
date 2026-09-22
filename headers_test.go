@@ -116,9 +116,14 @@ func TestProbeRuleValidation(t *testing.T) {
 		{"an unknown cookie mode is refused", func(r *headerRule) { r.ProbeCookieMode = "whatever" }, "probe_cookie_mode must be one of"},
 		{"proxies force an explicit mode", func(r *headerRule) {
 			r.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
+			r.ProbeProxyEnabled = true
 		}, "probe_cookie_mode must be chosen"},
+		{"a listed but switched-off pool asks nothing", func(r *headerRule) {
+			r.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
+		}, ""},
 		{"an explicit mode satisfies it", func(r *headerRule) {
 			r.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
+			r.ProbeProxyEnabled = true
 			r.ProbeCookieMode = probeCookieRotatingProxy
 		}, ""},
 		{"a bad proxy is refused", func(r *headerRule) { r.ProbeProxies = []string{"http://x"} }, "probe_proxies[1]"},
@@ -161,5 +166,21 @@ func TestProbeCookieModeIsForcedWithoutProxies(t *testing.T) {
 	}
 	if out.ProbeCookieMode != probeCookieCredential {
 		t.Fatalf("mode=%q", out.ProbeCookieMode)
+	}
+}
+
+// Freezing the pool switches the retry and the probe off in the stored rule,
+// so what the panel shows disabled is also what the plugin runs.
+func TestFrozenPoolSwitchesRetryAndProbeOff(t *testing.T) {
+	paused := false
+	out, err := validateRule(headerRule{
+		AuthIndex: "i", MaintainStatePool: &paused, RejectDegradedResponse: true, RetryOnDegraded: true,
+		ProbeEnabled: true, ProbeModels: []string{"m"}, ProbeCookieTTLSeconds: 60, ProbeIntervalSeconds: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.RetryOnDegraded || out.ProbeEnabled {
+		t.Fatalf("retry=%v probe=%v, both should be off while the pool is frozen", out.RetryOnDegraded, out.ProbeEnabled)
 	}
 }

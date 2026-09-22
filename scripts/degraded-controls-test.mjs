@@ -30,7 +30,9 @@ try {
   assert.equal(await page.locator('#addSet').isDisabled(),true);
   assert.equal(await page.locator('#setRows .hv').isDisabled(),true);
   assert.equal(await page.locator('#addRemove').isDisabled(),true);
-  assert.equal(await page.locator('#ruleStripTurnState').isDisabled(),true);
+  // The injection switch is the pool's, not the rule's: a rule that is off
+  // leaves it live.
+  assert.equal(await page.locator('#poolInject').isDisabled(),false);
   await page.evaluate(()=>{ document.querySelector('#ruleEnabled').click(); });
   assert.equal(await page.locator('#setRows .hv').isEnabled(),true);
   await page.evaluate(()=>{ document.querySelector('#ruleEnabled').click(); });
@@ -52,6 +54,11 @@ try {
   await page.locator('#rejectDegradedModels .chip-add').press('Enter');
   await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
   assert.deepEqual(rule.reject_degraded_models,['gpt-5.6-luna','gpt-6-astra']);
+  // The proxy list is only editable once its own switch is on; off, retries go direct.
+  assert.equal(await page.locator('#retryProxies').getAttribute('data-disabled'),'1');
+  await page.evaluate(()=>document.querySelector('#retryProxyOn').click());
+  await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);
+  assert.equal(rule.retry_proxy_enabled,true);
   await page.locator('#retryProxies .chip-add').fill('socks5://localhost:1080 socks5h://user:pass@localhost:1081 socks5://localhost:1080');
   await page.locator('#retryProxies .chip-add').press('Enter');
   await page.waitForFunction(()=>!document.querySelector('#rejectDegraded').disabled);

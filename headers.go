@@ -130,6 +130,12 @@ func validateRule(rule headerRule) (headerRule, error) {
 		return rule, fmt.Errorf("probe_cookie_mode must be one of %s, %s, %s",
 			probeCookieCredential, probeCookieStaticProxy, probeCookieRotatingProxy)
 	}
+	// A frozen pool has nothing for the retry or the probe to fill: both are
+	// switched off with it, so the stored rule says what actually runs.
+	if !rule.poolMaintained() {
+		rule.RetryOnDegraded = false
+		rule.ProbeEnabled = false
+	}
 	if rule.ProbeEnabled {
 		// Both fetch states for the same credential on their own schedule.
 		// Running them together would have two writers competing for one pool.
@@ -150,10 +156,10 @@ func validateRule(rule headerRule) (headerRule, error) {
 		// about. With proxies there is no safe default: each mode is correct
 		// for a different kind of egress and the wrong one sends a cookie
 		// bound to one address out through another.
-		if len(rule.ProbeProxies) == 0 {
+		if len(rule.probeProxyPool()) == 0 {
 			rule.ProbeCookieMode = probeCookieCredential
 		} else if rule.ProbeCookieMode == "" {
-			return rule, fmt.Errorf("probe_cookie_mode must be chosen once probe_proxies is not empty")
+			return rule, fmt.Errorf("probe_cookie_mode must be chosen once the probe proxy list is switched on")
 		}
 	}
 	return rule, nil

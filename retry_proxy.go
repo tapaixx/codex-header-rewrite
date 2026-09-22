@@ -40,7 +40,7 @@ func parseRetryProxy(raw string) (*url.URL, error) {
 func retryProxyFor(authIndex string) string {
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	proxies := state.rules[authIndex].RetryProxies
+	proxies := state.rules[authIndex].retryProxyPool()
 	if len(proxies) == 0 {
 		return ""
 	}

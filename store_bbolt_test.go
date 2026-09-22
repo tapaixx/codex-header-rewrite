@@ -24,7 +24,10 @@ func TestBoltHistoryOrdersByStartTimeAcrossPages(t *testing.T) {
 	at := func(second int) time.Time { return time.Unix(int64(second), 0).UTC() }
 	// Insertion runs against start time, so every page boundary lands wrong
 	// unless the bucket is ordered before it is cut into pages.
-	const total = 25
+	// Enough for three pages whatever the page size is: two full ones plus the
+	// retry, so a boundary falls inside the run rather than at its edge.
+	total := pageSize*2 + 4
+	wantPages := 3
 	for i := 0; i < total; i++ {
 		rec := historyRecord{
 			ID: fmt.Sprintf("r-%02d", i), RequestID: fmt.Sprintf("r-%02d", i),
@@ -44,12 +47,12 @@ func TestBoltHistoryOrdersByStartTimeAcrossPages(t *testing.T) {
 	}
 
 	var seen []historyRecord
-	for page := 1; page <= 3; page++ {
-		got, err := p.History("a", page)
+	for page := 1; page <= wantPages; page++ {
+		got, err := p.History("a", page, pageSize)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.Total != total+1 || got.TotalPages != 3 {
+		if got.Total != total+1 || got.TotalPages != wantPages {
 			t.Fatalf("page %d: total=%d pages=%d", page, got.Total, got.TotalPages)
 		}
 		seen = append(seen, got.Items...)
@@ -93,7 +96,7 @@ func TestBodiesAreStoredApartAndPrunedWithTheirRecord(t *testing.T) {
 	first := write(1)
 
 	// The list is the cheap view: it must not carry payloads at all.
-	page, err := p.History("a", 1)
+	page, err := p.History("a", 1, pageSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +181,7 @@ func TestTheHistoryBucketHonoursItsLimitExactly(t *testing.T) {
 	if err != nil || count != historyLimit {
 		t.Fatalf("count=%d want %d (err %v)", count, historyLimit, err)
 	}
-	page, err := p.History("a", 1)
+	page, err := p.History("a", 1, pageSize)
 	if err != nil || page.Total != historyLimit {
 		t.Fatalf("total=%d want %d (err %v)", page.Total, historyLimit, err)
 	}

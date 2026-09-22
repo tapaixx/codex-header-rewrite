@@ -240,8 +240,12 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 		clears = append([]string(nil), rule.Remove...)
 	}
 	echo, echoed := evaluateTurnStateEchoLocked(req.Headers, authIndex, sentModel(req.Model, req.RequestedModel))
+	// The pool has its own two switches, on the State 池 card: the pool's master
+	// switch and the injection switch. Neither is part of header rewriting, so
+	// a credential whose rule is off still injects when both are on.
+	injecting := hasRule && rule.InjectTurnState && rule.poolMaintained()
 	stripped := false
-	if echoed && echo.unusable() && hasRule && rule.Enabled && rule.InjectTurnState {
+	if echoed && echo.unusable() && injecting {
 		// The blob came from another credential or model, so
 		// no upstream turn chain can accept it here. It is dropped from this
 		// request and the recorded "after" view shows it gone.
@@ -249,20 +253,24 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 		deleteHeaderFold(after, turnStateHeader)
 		stripped = true
 	}
-	// Injection is part of rewriting, so it follows the same switch: a credential
-	// whose rule is off is left exactly as the client sent it. And within an
-	// enabled rule, anything the operator said about this header by hand
-	// outranks the pool -- a pinned value stays pinned, and a removal stays
-	// removed rather than being quietly refilled.
+	// Within an enabled rule, anything the operator said about this header by
+	// hand outranks the pool -- a pinned value stays pinned, and a removal stays
+	// removed rather than being quietly refilled. A disabled rule pins nothing,
+	// so its Set and Remove do not hold the pool back.
+	pinned := hasRule && rule.Enabled && ruleMentionsHeader(rule, turnStateHeader)
 	injected := false
 	var injectedFrom turnStateOrigin
-	if hasRule && rule.Enabled && rule.InjectTurnState && !ruleMentionsHeader(rule, turnStateHeader) {
+	if injecting && !pinned {
 		if pooled, ok := turnStateForInjectionLocked(authIndex, sentModel(req.Model, req.RequestedModel), cred.PlanType); ok {
 			injectedFrom = pooled
 			if updates == nil {
 				updates = make(http.Header)
 			}
 			updates.Set(turnStateHeader, pooled.blob)
+			// With the rule off, nothing above has built the "after" view yet.
+			if after == nil {
+				after = make(http.Header)
+			}
 			deleteHeaderFold(after, turnStateHeader)
 			after.Set(turnStateHeader, pooled.blob)
 			// The guard may have queued this header for removal a moment ago.
@@ -409,7 +417,11 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 	// state under the new one, not the old one.
 	session := applySetCookies(attempt.clientCookie, responseHeaders)
 	rememberLiveSessionLocked(attempt, session)
-	info.Pooled = noteTurnStateMintLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel), attempt.CredentialPlan, session)
+	// A frozen pool takes nothing in. The state is still classified so the
+	// history row says what the upstream sent; it just does not enter the pool.
+	if rule, ok := state.rules[attempt.AuthIndex]; !ok || rule.poolMaintained() {
+		info.Pooled = noteTurnStateMintLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel), attempt.CredentialPlan, session)
+	}
 	attempt.TurnStateMinted = &info
 	// A pooled state that was already past the reuse window went out on this
 	// request and the upstream still minted a degraded state: the old state has

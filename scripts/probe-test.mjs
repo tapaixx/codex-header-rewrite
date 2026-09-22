@@ -29,7 +29,7 @@ await page.route('http://panel.test/**', async route => {
 try {
   await page.addInitScript(()=>localStorage.setItem('managementKey','fixture'));
   await page.goto('http://panel.test/v0/resource/plugins/codex-header-rewrite/index');
-  await page.waitForFunction(()=>!document.querySelector('#ruleStripTurnState').disabled);
+  await page.waitForFunction(()=>!document.querySelector('#ruleEnabled').disabled);
   await page.evaluate(()=>setWorkspace('history',false));
   await page.waitForSelector('#probePanel .probe-grid');
 
@@ -60,7 +60,9 @@ try {
   // The cookie question only exists once an exit does.
   assert.equal(await page.locator('#probeCookieField').isVisible(), false, 'no proxies, no question');
   await page.evaluate(()=>{ setChips('probeProxies',['socks5://127.0.0.1:1080']); syncProbeControls(); });
-  assert.equal(await page.locator('#probeCookieField').isVisible(), true, 'proxies raise it');
+  assert.equal(await page.locator('#probeCookieField').isVisible(), false, 'a list with its switch off is not an exit');
+  await page.evaluate(()=>{ document.getElementById('probeProxyOn').checked = true; syncProbeControls(); });
+  assert.equal(await page.locator('#probeCookieField').isVisible(), true, 'switched on, the proxies raise it');
 
   // A window is written in browser time and stored in UTC minutes.
   await page.fill('#probeWindowStart','09:00');
@@ -93,6 +95,19 @@ try {
   assert.ok(doubled.includes('480') && doubled.includes('预热'), `rotating doubles it: ${doubled}`);
   assert.equal(await page.locator('#probeResolveIP').isDisabled(), true, 'rotating cannot resolve an exit');
 
+  // Each mode's reasoning moved behind a marker that sits inside the mode's own
+  // label, so reading about a mode must not be the same gesture as choosing it.
+  await page.locator('.probe-mode:nth-child(1) .hint').click();
+  await new Promise(r=>setTimeout(r,250));
+  assert.equal(await page.locator('input[name=probeCookieMode][value=rotating_proxy]').isChecked(), true,
+    'reading a mode did not select it');
+  assert.ok((await page.locator('.hint-layer').textContent()).includes('真实请求'), 'and the hint opened');
+  await page.keyboard.press('Escape');
+  await page.locator('.probe-mode:nth-child(1) > span:first-of-type').click();
+  await new Promise(r=>setTimeout(r,300));
+  assert.equal(await page.locator('input[name=probeCookieMode][value=credential]').isChecked(), true,
+    'clicking the card itself still chooses');
+
   // Copying replaces, because a pool is a set of exits.
   await page.locator('#copyRetryToProbe').click();
   await new Promise(r=>setTimeout(r,300));
@@ -102,7 +117,15 @@ try {
   const tabs = await page.locator('#historyPanel .detail-tabs [data-history]').allTextContents();
   assert.deepEqual(tabs.map(t=>t.replace(/\d+$/,'').trim()), ['请求历史','探针历史']);
   await page.locator('[data-history="probe"]').click();
-  await page.waitForFunction(()=>document.querySelector('#historyHeading').textContent==='探针历史');
+  await page.waitForFunction(()=>document.querySelector('[data-history="probe"]').getAttribute('aria-selected')==='true');
+  assert.equal(await page.locator('#historyHeading').textContent(), '历史', 'the head keeps one name; the tabs do the switching');
+  assert.equal(await page.locator('#historyPanel .panel-head #probeStatus').count(), 1, 'the schedule sits in the head');
+  // The heading flips on the click; the status waits on the fetch behind it, so
+  // reading it off the heading alone raced the response about half the time.
+  await page.waitForFunction(()=>{
+    const el = document.querySelector('#probeStatus');
+    return el && !el.hidden && el.textContent.trim() !== '';
+  });
   assert.ok((await page.locator('#probeStatus').textContent()).includes('探针已启用'));
   assert.ok((await page.locator('#probeStatus').textContent()).includes('没有真实请求记录'),
     'an account with no traffic is told the probe will not run');

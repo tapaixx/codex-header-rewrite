@@ -149,12 +149,12 @@ func (p *localPersistence) AppendProbeHistory(r historyRecord) error {
 	return p.save()
 }
 
-func (p *localPersistence) ProbeHistory(a string, page int) (historyPage, error) {
+func (p *localPersistence) ProbeHistory(a string, page, size int) (historyPage, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	records := append([]historyRecord(nil), p.state.Probes[a]...)
 	sortHistoryNewestFirst(records)
-	return historyPageOf(a, page, records), nil
+	return historyPageOf(a, page, size, records), nil
 }
 
 func (p *localPersistence) ClearProbeHistory(a string) error {
@@ -181,12 +181,12 @@ func (p *localPersistence) Session(a, egress string) (credentialSession, bool, e
 	return session, ok, nil
 }
 
-func (p *localPersistence) History(a string, page int) (historyPage, error) {
+func (p *localPersistence) History(a string, page, size int) (historyPage, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	records := append([]historyRecord(nil), p.state.History[a]...)
 	sortHistoryNewestFirst(records)
-	return historyPageOf(a, page, records), nil
+	return historyPageOf(a, page, size, records), nil
 }
 func (p *localPersistence) HistoryBody(a, id string) (bodyRecord, bool, error) {
 	p.mu.Lock()

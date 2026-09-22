@@ -28,7 +28,7 @@ await page.route('http://panel.test/**', async route => {
 try {
   await page.addInitScript(()=>localStorage.setItem('managementKey','fixture'));
   await page.goto('http://panel.test/v0/resource/plugins/codex-header-rewrite/index');
-  await page.waitForFunction(()=>!document.querySelector('#ruleStripTurnState').disabled);
+  await page.waitForFunction(()=>!document.querySelector('#ruleEnabled').disabled);
 
   // The control lives on the pool panel now, which renders in the history
   // workspace, so that is where it is exercised.
@@ -77,6 +77,29 @@ try {
   poolWindow = 1800;
   await page.evaluate(()=>loadTurnStates());
   await page.waitForFunction(()=>document.querySelector('#turnStateWindow').textContent==='30 分钟');
+
+  // The pool's two switches ride its title bar. The master switch defaults on,
+  // the injection switch to whatever the rule says, and neither has anything
+  // to do with 启用改写 or with 保存规则: each saves itself on change.
+  assert.equal(await page.locator('#poolMaintain').isChecked(), true, 'maintenance defaults on');
+  assert.equal(await page.locator('#poolInject').isChecked(), true, 'injection reads the rule');
+  assert.equal(await page.locator('#turnStatePanel .panel-head #poolInject').count(), 1, 'the switch lives on the pool card');
+  assert.equal(await page.locator('#rulePanel #ruleStripTurnState').count(), 0, 'and no longer in the rule editor');
+  await page.evaluate(()=>document.querySelector('#ruleEnabled').click());
+  assert.equal(await page.locator('#poolInject').isDisabled(), false, 'independent of 启用改写');
+  await page.evaluate(()=>document.querySelector('#ruleEnabled').click());
+  await page.evaluate(()=>document.querySelector('#poolInject').click());
+  await new Promise(r=>setTimeout(r,300));
+  assert.equal(saved.inject_turn_state, false, 'turning injection off saved at once');
+  assert.equal(saved.maintain_state_pool, true, 'and carried the master switch as on');
+  // Freezing the pool takes the injection switch with it.
+  await page.evaluate(()=>document.querySelector('#poolMaintain').click());
+  await new Promise(r=>setTimeout(r,300));
+  assert.equal(saved.maintain_state_pool, false, 'freezing saved');
+  assert.equal(await page.locator('#poolInject').isDisabled(), true, 'a frozen pool cannot inject');
+  await page.evaluate(()=>document.querySelector('#poolMaintain').click());
+  await new Promise(r=>setTimeout(r,300));
+  assert.equal(await page.locator('#poolInject').isDisabled(), false, 'thawed, it is back');
 
   assert.deepEqual(errors, []);
   console.log('state ttl panel: ok');

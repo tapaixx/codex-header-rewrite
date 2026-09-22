@@ -45,7 +45,9 @@ try {
     if (init) await page.addInitScript(init);
     await page.setViewportSize({width:1340,height:980});
     await page.goto(previewURL);
-    await page.waitForFunction(() => document.body.innerText.includes('alex@example.com'), null, {timeout:8000});
+    // The picker shows the email masked; the full address appears nowhere.
+    await page.waitForFunction(() => document.body.innerText.includes('a***@example.com'), null, {timeout:8000});
+    assert.equal(await page.evaluate(() => document.body.innerText.includes('alex@example.com')), false, 'no unmasked email anywhere');
 
     const banner = await page.evaluate(() => document.getElementById('previewError')?.textContent || null);
     assert.equal(banner, null, `${label}: the preview reported an error: ${banner}`);

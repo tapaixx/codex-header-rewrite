@@ -115,7 +115,7 @@ func TestRealTestRequestReportsUpstreamModelMismatchAndRecordsIt(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	page, _ := p.History("idx-a", 1)
+	page, _ := p.History("idx-a", 1, pageSize)
 	if len(page.Items) != 1 {
 		t.Fatalf("history=%#v", page.Items)
 	}
@@ -164,7 +164,7 @@ func TestUpstreamFailureKeepsAnErrorPreviewOutOfHistory(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	page, _ := p.History("idx-a", 1)
+	page, _ := p.History("idx-a", 1, pageSize)
 	if len(page.Items) != 1 {
 		t.Fatalf("history=%#v", page.Items)
 	}

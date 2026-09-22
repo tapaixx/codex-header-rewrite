@@ -152,8 +152,8 @@ func TestRetryAttemptsBelongToEachCredential(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	pa, _ := p.History("idx-a", 1)
-	pb, _ := p.History("idx-b", 1)
+	pa, _ := p.History("idx-a", 1, pageSize)
+	pb, _ := p.History("idx-b", 1, pageSize)
 	if len(pa.Items) != 1 || pa.Items[0].Outcome != "switched" || pa.Items[0].StatusCode != 0 {
 		t.Fatalf("A=%#v", pa.Items)
 	}
@@ -192,7 +192,7 @@ func TestLiveStreamRecordsTheModelTheUpstreamServed(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	page, _ := p.History("idx-a", 1)
+	page, _ := p.History("idx-a", 1, pageSize)
 	if len(page.Items) != 1 {
 		t.Fatalf("history=%#v", page.Items)
 	}
@@ -225,7 +225,7 @@ func TestLiveCallbackModelReachesHistory(t *testing.T) {
 	observeStreamHeaders(streamChunkInterceptRequest{RequestID: "callback-model", ChunkIndex: 1, Body: []byte(`data: {"type":"response.completed","response":{"model":"actual"}}`)})
 	completeRequest(requestCompletion{RequestID: "callback-model", Outcome: "succeeded", StatusCode: 200})
 	shutdownPlugin()
-	page, err := p.History("idx-callback", 1)
+	page, err := p.History("idx-callback", 1, pageSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestNonStreamingResponseBodyIsReadForTheModelOnly(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	page, _ := p.History("idx-a", 1)
+	page, _ := p.History("idx-a", 1, pageSize)
 	if len(page.Items) != 1 {
 		t.Fatalf("history=%#v", page.Items)
 	}
@@ -313,7 +313,7 @@ func TestForeignTurnStateEchoIsFlaggedAndOptionallyStripped(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		minted, _ := p.History("idx-a", 1)
+		minted, _ := p.History("idx-a", 1, pageSize)
 		if len(minted.Items) != 1 || minted.Items[0].TurnStateMinted == nil {
 			t.Fatalf("mint not recorded: %#v", minted.Items)
 		}
@@ -325,7 +325,7 @@ func TestForeignTurnStateEchoIsFlaggedAndOptionallyStripped(t *testing.T) {
 			t.Fatalf("non-degraded state was not minted into the pool: %#v", quality)
 		}
 
-		echoed, _ := p.History("idx-b", 1)
+		echoed, _ := p.History("idx-b", 1, pageSize)
 		if len(echoed.Items) != 1 {
 			t.Fatalf("echo not recorded: %#v", echoed.Items)
 		}
@@ -381,7 +381,7 @@ func TestOwnTurnStateEchoIsNotFlagged(t *testing.T) {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	page, _ := p.History("idx-a", 1)
+	page, _ := p.History("idx-a", 1, pageSize)
 	if len(page.Items) != 2 {
 		t.Fatalf("history=%#v", page.Items)
 	}
@@ -500,19 +500,64 @@ func injectTestRequest(t *testing.T, id string, headers http.Header) requestInte
 	return response
 }
 
-// Injection is part of rewriting, so a credential whose rule switch is off is
-// passed through untouched even when the pool has a qualified state for it.
-func TestPoolDoesNotInjectWhileTheRuleIsOff(t *testing.T) {
+// Injection is the pool's own feature, not part of header rewriting: the rule
+// switch being off leaves Set and Remove unapplied and nothing else.
+func TestPoolInjectsEvenWhileTheRuleIsOff(t *testing.T) {
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
-	poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: false})
-	if got := injectTestRequest(t, "rule-off", nil).Headers.Get(turnStateHeader); got != "" {
-		t.Fatalf("a disabled rule must not inject: %q", got)
+	blob := poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: false, InjectTurnState: true, Set: map[string]string{"X-Team": "A"}})
+	response := injectTestRequest(t, "rule-off", nil)
+	if got := response.Headers.Get(turnStateHeader); got != blob {
+		t.Fatalf("a disabled rule must not hold injection back: %q", got)
+	}
+	if response.Headers.Get("X-Team") != "" {
+		t.Fatal("the disabled rule's own headers must stay unapplied")
 	}
 	state.mu.Lock()
 	attempt := state.pending["rule-off"].current
 	state.mu.Unlock()
+	if !attempt.TurnStateInjected {
+		t.Fatal("history must show the injection")
+	}
+}
+
+// A pinned value only pins while the rule that pins it is on; a disabled rule
+// is inert all the way down, so it does not hold the pool back either.
+func TestDisabledRulePinsNothing(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	blob := poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: false, InjectTurnState: true, Set: map[string]string{"x-codex-turn-state": "operator-pinned"}})
+	if got := injectTestRequest(t, "inert-pin", nil).Headers.Get(turnStateHeader); got != blob {
+		t.Fatalf("a pin in a disabled rule is inert; want the pooled state, got %q", got)
+	}
+}
+
+// The pool's master switch outranks the injection switch: frozen, the pool
+// neither hands anything out nor takes anything in, though history still
+// records what the upstream sent.
+func TestFrozenPoolNeitherInjectsNorMints(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	paused := false
+	poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true, MaintainStatePool: &paused})
+	if got := injectTestRequest(t, "frozen", nil).Headers.Get(turnStateHeader); got != "" {
+		t.Fatalf("a frozen pool must not inject: %q", got)
+	}
+	fresh := fernetToken(0x80, time.Now(), 5)
+	observeResponse(responseInterceptRequest{RequestID: "frozen", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {fresh}}})
+	state.mu.Lock()
+	attempt := state.pending["frozen"].current
+	_, pooled := lookupTurnStateOriginLocked(fresh)
+	state.mu.Unlock()
+	if attempt.TurnStateMinted == nil || attempt.TurnStateMinted.NonDegraded == nil || !*attempt.TurnStateMinted.NonDegraded {
+		t.Fatalf("the response state must still be classified for history: %+v", attempt.TurnStateMinted)
+	}
+	if attempt.TurnStateMinted.Pooled || pooled {
+		t.Fatal("a frozen pool must not take the state in")
+	}
 	if attempt.TurnStateInjected {
 		t.Fatal("history claimed an injection that did not happen")
 	}
@@ -631,7 +676,7 @@ func lastAttempt(t *testing.T) historyRecord {
 			t.Fatal(err)
 		}
 	}
-	page, err := state.store.History("idx-a", 1)
+	page, err := state.store.History("idx-a", 1, pageSize)
 	if err != nil || len(page.Items) == 0 {
 		t.Fatalf("history: %v items=%d", err, len(page.Items))
 	}

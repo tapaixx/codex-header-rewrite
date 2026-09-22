@@ -289,16 +289,19 @@ func (p *boltPersistence) HistoryBody(authIndex, id string) (bodyRecord, bool, e
 	return out, found, err
 }
 
-func (p *boltPersistence) History(authIndex string, page int) (historyPage, error) {
-	return p.readHistory(authIndex, page, historyChild)
+func (p *boltPersistence) History(authIndex string, page, size int) (historyPage, error) {
+	return p.readHistory(authIndex, page, size, historyChild)
 }
 
-func (p *boltPersistence) ProbeHistory(authIndex string, page int) (historyPage, error) {
-	return p.readHistory(authIndex, page, probeHistoryChild)
+func (p *boltPersistence) ProbeHistory(authIndex string, page, size int) (historyPage, error) {
+	return p.readHistory(authIndex, page, size, probeHistoryChild)
 }
 
-func (p *boltPersistence) readHistory(authIndex string, page int, child childFunc) (historyPage, error) {
-	result := historyPage{AuthIndex: authIndex, Page: max(page, 1), PageSize: pageSize, Items: []historyRecord{}}
+func (p *boltPersistence) readHistory(authIndex string, page, size int, child childFunc) (historyPage, error) {
+	if size < 1 {
+		size = pageSize
+	}
+	result := historyPage{AuthIndex: authIndex, Page: max(page, 1), PageSize: size, Items: []historyRecord{}}
 	err := p.db.View(func(tx *bolt.Tx) error {
 		b, _ := child(tx, authIndex, false)
 		if b == nil {
@@ -318,7 +321,7 @@ func (p *boltPersistence) readHistory(authIndex string, page int, child childFun
 			return err
 		}
 		sortHistoryNewestFirst(records)
-		result = historyPageOf(authIndex, page, records)
+		result = historyPageOf(authIndex, page, size, records)
 		return nil
 	})
 	return result, err

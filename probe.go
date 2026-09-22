@@ -99,7 +99,7 @@ func scanProbes(stop <-chan struct{}) {
 	due := make([]string, 0, 4)
 	probeSchedule.Lock()
 	for authIndex, rule := range state.rules {
-		if !rule.ProbeEnabled || !probeDueLocked(authIndex, now) {
+		if !probeActive(rule) || !probeDueLocked(authIndex, now) {
 			continue
 		}
 		probeSchedule.nextDue[authIndex] = now.Add(probeRunning)
@@ -121,11 +121,15 @@ func scanProbes(stop <-chan struct{}) {
 // again one interval from now -- measured from the end, so the gap between
 // upstream calls is the configured interval rather than something between zero
 // and it.
+// probeActive is the probe's whole gate: its own switch, and the pool it fills
+// not being frozen. Both the scan and the task ask it, so they cannot drift.
+func probeActive(rule headerRule) bool { return rule.ProbeEnabled && rule.poolMaintained() }
+
 func runProbeTask(authIndex string, stop <-chan struct{}) {
 	rule, ok := probeRule(authIndex)
 	interval := probeInterval(rule)
 	defer func() { setProbeDue(authIndex, time.Now().Add(interval)) }()
-	if !ok || !rule.ProbeEnabled {
+	if !ok || !probeActive(rule) {
 		return
 	}
 	if !withinProbeWindow(rule, time.Now().UTC()) {
@@ -260,14 +264,15 @@ func probePendingModels(authIndex string, rule headerRule) []string {
 // rotating pool spreads across its addresses rather than pinning to whichever
 // one the task happened to start with.
 func probeEgress(rule headerRule) string {
-	if len(rule.ProbeProxies) == 0 {
+	pool := rule.probeProxyPool()
+	if len(pool) == 0 {
 		return ""
 	}
-	return rule.ProbeProxies[rand.IntN(len(rule.ProbeProxies))]
+	return pool[rand.IntN(len(pool))]
 }
 
 func probeCookieModeFor(rule headerRule) string {
-	if len(rule.ProbeProxies) == 0 {
+	if len(rule.probeProxyPool()) == 0 {
 		return probeCookieCredential
 	}
 	if validProbeCookieMode(rule.ProbeCookieMode) {

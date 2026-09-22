@@ -19,8 +19,13 @@ func TestPersistenceHistoryLimitPaginationRestart(t *testing.T) {
 		rec := historyRecord{ID: fmt.Sprintf("r-%02d", i), RequestID: fmt.Sprintf("req-%02d", i), AuthIndex: "a", Attempt: 1, StartedAt: time.Unix(int64(i), 0).UTC(), CompletedAt: time.Unix(int64(i+1), 0).UTC(), Outcome: "succeeded"}
 		if err := p.AppendHistory(rec); err != nil { t.Fatal(err) }
 	}
-	page, err := p.History("a", 1); if err != nil { t.Fatal(err) }
-	if page.Total != 50 || page.TotalPages != 5 || len(page.Items) != 10 || page.Items[0].ID != "r-55" || page.Items[9].ID != "r-46" { t.Fatalf("page=%+v", page) }
+	page, err := p.History("a", 1, pageSize); if err != nil { t.Fatal(err) }
+	wantPages := (historyLimit + pageSize - 1) / pageSize
+	wantLast := fmt.Sprintf("r-%02d", 55-pageSize+1)
+	if page.Total != historyLimit || page.TotalPages != wantPages || len(page.Items) != pageSize ||
+		page.Items[0].ID != "r-55" || page.Items[len(page.Items)-1].ID != wantLast {
+		t.Fatalf("page 1 is %s (total=%d pages=%d)", historyIDs(page), page.Total, page.TotalPages)
+	}
 	if err := p.Close(); err != nil { t.Fatal(err) }
 	p2, err := openPersistence(path); if err != nil { t.Fatal(err) }
 	defer p2.Close()
@@ -49,7 +54,7 @@ func TestHistoryOrdersByStartTimeNotByInsertion(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	page, err := p.History("a", 1)
+	page, err := p.History("a", 1, pageSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +73,10 @@ func TestHistoryOrdersAcrossPageBoundaries(t *testing.T) {
 	defer p.Close()
 	// Start times run backwards against insertion order, so every page boundary
 	// is wrong unless the whole bucket is ordered first.
-	const total = 25
+	// Enough to span three pages whatever the page size is, with the last one
+	// short so the tail is exercised too.
+	total := pageSize*2 + 5
+	wantPages := 3
 	for i := 0; i < total; i++ {
 		rec := historyRecord{
 			ID: fmt.Sprintf("r-%02d", i), AuthIndex: "a", Attempt: 1, Origin: originLive,
@@ -79,12 +87,12 @@ func TestHistoryOrdersAcrossPageBoundaries(t *testing.T) {
 		}
 	}
 	var seen []historyRecord
-	for page := 1; page <= 3; page++ {
-		got, err := p.History("a", page)
+	for page := 1; page <= wantPages; page++ {
+		got, err := p.History("a", page, pageSize)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.Total != total || got.TotalPages != 3 {
+		if got.Total != total || got.TotalPages != wantPages {
 			t.Fatalf("page %d: total=%d pages=%d", page, got.Total, got.TotalPages)
 		}
 		seen = append(seen, got.Items...)
@@ -108,4 +116,14 @@ func historyIDs(page historyPage) string {
 		out = append(out, item.ID)
 	}
 	return strings.Join(out, ",")
+}
+
+// The panel offers three page lengths; anything else falls back to the
+// default rather than letting a query size the page however it likes.
+func TestHistoryPageSizeIsOneOfTheOffered(t *testing.T) {
+	for raw, want := range map[string]int{"10": 10, "20": 20, "50": 50, "": pageSize, "7": pageSize, "500": pageSize, "x": pageSize} {
+		if got := historyPageSize(raw); got != want {
+			t.Errorf("%q: got %d want %d", raw, got, want)
+		}
+	}
 }

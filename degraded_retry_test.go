@@ -216,7 +216,7 @@ func TestRetryAttemptCountHonoursTheRuleAndTheCap(t *testing.T) {
 func TestRetrySelectsProxyPerCallAndKeepsCredentialsIsolated(t *testing.T) {
 	resetState(t)
 	retryStub(t, "team", nil)
-	rule, err := saveRule(headerRule{AuthIndex: "idx-a", RetryProxies: []string{"socks5://one:1080", "socks5h://two:1080"}})
+	rule, err := saveRule(headerRule{AuthIndex: "idx-a", RetryProxyEnabled: true, RetryProxies: []string{"socks5://one:1080", "socks5h://two:1080"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,5 +471,19 @@ func TestRetrySendsTheCookieTheResponseRotated(t *testing.T) {
 	}
 	if got := lastAttempt(t).BeforeHeaders.Get("Cookie"); got != want {
 		t.Fatalf("the history row shows %q, want %q", got, want)
+	}
+}
+
+// The retry fills the pool, so a frozen pool stands it down whatever the
+// retry's own switches say.
+func TestRetryStandsDownWhileThePoolIsFrozen(t *testing.T) {
+	resetState(t)
+	paused := false
+	state.mu.Lock()
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", RejectDegradedResponse: true, RetryOnDegraded: true, RetryAttempts: 2, MaintainStatePool: &paused}
+	got := retryEnabledForLocked("idx-a")
+	state.mu.Unlock()
+	if got != 0 {
+		t.Fatalf("a frozen pool must not schedule retries, got %d attempts", got)
 	}
 }

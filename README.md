@@ -15,13 +15,14 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - 使用 `request.intercept_after`，在 credential 选定后按 `selected_auth_index` 应用规则。
 - 规则保存后下一请求立即生效，无需重启 CPA。
 - bbolt 持久化规则。
-- 每个 credential 保留最近 50 条 attempt，10 条/页；点击记录从右侧抽屉打开详情，列表不动、所选行保持高亮。详情里 X-Codex-Turn-State 常驻显示，其下按 Request Header / Request Body / Response Header / Response Body 四个标签页分开。
+- 每个 credential 保留最近 50 条 attempt，每页 10 / 20 / 50 条可选（默认 20）；点击记录从右侧抽屉打开详情，列表不动、所选行保持高亮。详情里 X-Codex-Turn-State 常驻显示，其下按 Request Header / Request Body / Response Header / Response Body 四个标签页分开。
 - retry A → B 分别记录；被替换 attempt 标记 `switched`，不猜测 401/429。
 - 记录重写前/后的 Request Header 与 upstream Response Header。
 - Authorization、API key、token/secret/password 等在写盘前永久脱敏；`Cookie` / `Set-Cookie` 自 v0.20.1 起按明文记录（见「重试会带上会话 Cookie」）。
 - 保存 request / response body（v0.21.0），但**会话内容被遮蔽**：请求体的 `input` / `messages` / `system`、响应体的 `output` / `content` / `tools` / `usage` 一律替换为 `[MASKED N bytes]`，Codex Responses 与 Claude Messages 两种格式都覆盖；只留下模型、instructions、reasoning、turn metadata、错误结构这些解释请求本身的字段。单个 body 最多保留 256 KB，超出截断并记录原始大小。
 - 自定义测试请求：从凭证可用模型中选择模型、发送默认 `hi` 或自定义 JSON、预览改写结果，或向自定义端点发一次真实请求。
 - 模型一致性核对：记录上游实际声明的模型，与发出的模型比对，不一致时标红。
+- State 池开关与面板整理（v0.24.0）：「State 池维护」（总开关，默认开，关掉即冻结池子并停下探针与重试）和「注入 State」（默认关）移到 State 池卡片标题栏，与「启用改写」解耦；重试 / 探针代理列表各带「走代理」开关（默认关）；导航栏常驻六盏开关状态灯；邮箱默认脱敏、可用眼睛按钮查看；统一设计 token、圆角与字号刻度，浅色主题全部文字对比度 ≥ 4.5:1。
 - 自动 State 探针（v0.23.0）：按凭证定时补池，与「拦截后重试」互斥；可配生效时段、模型、独立代理池、cookie 来源与间隔；探针历史单独保留 500 条。
 - 回合状态（X-Codex-Turn-State）溯源：按套餐判定是否降智，合格值按「凭证 + 模型」持久化入池，发现跨账号回带并可按规则摘除；内置 Fernet 信封解码。
 - 中文内嵌 UI，单文档零外部依赖；敏感数据接口走 CPA Management API。
@@ -72,7 +73,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.23.0.so` | `codex-header-rewrite` | `0.23.0` |
+| `codex-header-rewrite-v0.24.0.so` | `codex-header-rewrite` | `0.24.0` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -85,7 +86,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.23.0.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.24.0.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -374,9 +375,14 @@ node scripts/make-preview.mjs
 
 窗口决定的不是「是否注入」：**过期的 state 照样会注入**，因为窗口是经验值。它决定的是什么时候把「注入后仍降智」当成这条 state 已经失效的证据（见下文）。把它调短，失效的 state 就更快被清出池子；调长则更保守。
 
-**一个开关**：`inject_turn_state` 是 `headerRule` 的字段。开启时插件从 State 池取「该凭证 + 当前模型」的合格 state 写入请求（池里没有就不写），并摘除确认来自其他凭证或其他模型的回带值；关闭时完全不碰这个 Header。规则里手工设置或移除该 Header 时以手工为准，「启用改写」关闭时整条规则都不生效。早先以 `strip_foreign_turn_state` 保存的规则在读取时会折算成这个开关。
+**两个开关**，都在「请求历史 › State 池」卡片的标题栏上，改了即存：
 
-关闭「启用改写」后，设置/覆盖、移除和 State 注入编辑区置灰且不可编辑，已有值保留；重新打开后可编辑，点击「保存规则」生效。响应侧拦截及后台重试仍由各自开关控制。
+- `maintain_state_pool`（**State 池维护**，默认开启）是池子的总开关。关掉即冻结：响应里的 state 只分类记录、不入池，不注入，自动探针和拦截后重试也停下；已有记录原样保留。早于该字段保存的规则读作开启。
+- `inject_turn_state`（**注入 State**，默认关闭，只在维护开着时生效）。开启时插件从 State 池取「该凭证 + 当前模型」的合格 state 写入请求（池里没有就不写），并摘除确认来自其他凭证或其他模型的回带值；关闭时完全不碰这个 Header。早先以 `strip_foreign_turn_state` 保存的规则在读取时会折算成这个开关。
+
+注入与「启用改写」无关：规则关着照样注入。规则**启用**且手工设置或移除了该 Header 时以手工为准；规则关着时它的 Set / Remove 一律不生效，也不拦注入。
+
+关闭「启用改写」后，设置/覆盖和移除编辑区置灰且不可编辑，已有值保留；重新打开后可编辑，点击「保存规则」生效。响应侧拦截、后台重试和探针仍由各自开关控制。
 
 **摘除的边界**：规则里的「不可复用时移除 X-Codex-Turn-State」只摘**跨号**和**跨模型**这两种确定不可复用的情况；**过期只提示、不摘除** —— 那个窗口是经验值不是文档约定，猜错会把本来还能用的回合链打断。来源未知时也不动它。
 
@@ -386,7 +392,7 @@ node scripts/make-preview.mjs
 
 开启拦截后才能配置「拦截后重试取 state」「最大重试次数」和模型列表。后台重试使用同凭证、同模型发送最小 `hi` 请求，最多 1–5 次（默认 2），获得合格 state 后提前结束，并将整轮重试记录为一行历史。重试范围与拦截范围一致；关闭拦截会保留配置值，但不再触发新的重试。后台重试不会重新执行原始用户请求。
 
-**重试 SOCKS 代理（v0.14.0）**：开启拦截与重试后可配置 `retry_proxies`，每行一个 `socks5://host:port` 或 `socks5h://user:password@host:port`，用户名/密码中的特殊字符需 URL 编码。列表按凭证持久化，去空白与重复项；每次重试独立随机选择，允许连续选中相同代理。列表为空时**直接连接**，不继承 CPA、凭证或环境变量代理。面板把每条代理显示为可编辑标签，未聚焦时密码以 `***` 掩去，点进标签才显示原值；保存时若某行仍带掩码则保留已存值，不会把掩码写回。代理失败不回退直连，下一次重试重新随机选取。
+**重试 SOCKS 代理（v0.14.0）**：开启拦截与重试后可配置 `retry_proxies`，每行一个 `socks5://host:port` 或 `socks5h://user:password@host:port`，用户名/密码中的特殊字符需 URL 编码。列表按凭证持久化，去空白与重复项；每次重试独立随机选择，允许连续选中相同代理。列表旁有「走代理」开关（`retry_proxy_enabled`，默认关）：关着或列表为空时**直接连接**，不继承 CPA、凭证或环境变量代理；列表在关着时仍会保存。探针的列表同理（`probe_proxy_enabled`）。面板把每条代理显示为可编辑标签，未聚焦时密码以 `***` 掩去，点进标签才显示原值；保存时若某行仍带掩码则保留已存值，不会把掩码写回。代理失败不回退直连，下一次重试重新随机选取。
 
 当前 CPA 的 `host.http.do` 不支持逐请求覆盖代理，因此**仅后台取 state 的补发改由插件自身的 HTTP/1.1 传输发送**，不使用 CPA 的指纹处理；正常业务请求与手动测试路径不变。补发不跟随重定向，只读响应头并关闭响应体，单次超时 30 秒，插件卸载/重载会取消在途补发。只有 2xx 响应中的合格 state 才能入池；代理密码不会写入请求历史或连接错误，但代理配置本身含明文认证信息，应保护管理端访问及数据文件。
 
