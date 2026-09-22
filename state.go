@@ -403,7 +403,11 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 	if label == "" {
 		label = attempt.CredentialName
 	}
-	info.Pooled = noteTurnStateMintLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel), attempt.CredentialPlan)
+	// The session this state belongs to: what the request presented, updated by
+	// what this very response set. A response that rotates the session mints a
+	// state under the new one, not the old one.
+	session := applySetCookies(attempt.clientCookie, responseHeaders)
+	info.Pooled = noteTurnStateMintLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel), attempt.CredentialPlan, session)
 	attempt.TurnStateMinted = &info
 	// A pooled state that was already past the reuse window went out on this
 	// request and the upstream still minted a degraded state: the old state has

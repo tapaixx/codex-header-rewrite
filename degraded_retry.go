@@ -54,6 +54,10 @@ type retryOutcome struct {
 	upstreamModel  string
 	modelConflict  bool
 	upstreamEffort string
+	// The session the retry presented, updated by what its response set. The
+	// state it fetched was minted under that session, so they are pooled
+	// together.
+	session string
 	// The payloads, for the detail. Both are capped at maxStoredBodyBytes.
 	requestBody   string
 	requestBytes  int
@@ -178,7 +182,7 @@ func runDegradedRetry(series retrySeries, attempts int, stop <-chan struct{}) {
 			return
 		}
 		classified := classifyTurnState(decodeTurnState(last.blob), last.blob, last.plan)
-		classified.Pooled = noteTurnStateMintLocked(last.blob, series.authIndex, series.label, series.model, last.plan)
+		classified.Pooled = noteTurnStateMintLocked(last.blob, series.authIndex, series.label, series.model, last.plan, last.session)
 		state.mu.Unlock()
 		info = classified
 		if last.nonDegraded {
@@ -240,6 +244,7 @@ func retryOnce(ctx context.Context, authIndex, authID, model, cookie string) ret
 	observer.observeBody(response.Body)
 	outcome.upstreamModel, outcome.modelConflict = observer.model(), observer.conflicted()
 	outcome.upstreamEffort = observer.effort()
+	outcome.session = applySetCookies(cookie, response.Headers)
 
 	if callErr != nil {
 		outcome.err = callErr.Error()

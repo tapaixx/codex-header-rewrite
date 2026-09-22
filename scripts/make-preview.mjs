@@ -133,8 +133,11 @@ const bodies = {
 };
 
 const turnStates = [
-  { state: teamState, digest: 'a13f9c21b4e0', auth_index: 'acct-a', label: 'alex@example.com', model: 'gpt-6-astra', plan_type: 'team', chars: 332, max_chars: 332, minted_at: at(45), age_seconds: 45, expired: false, reuse_window_seconds: 200 },
-  { state: teamState, digest: 'b7710f3e55aa', auth_index: 'acct-a', label: 'alex@example.com', model: 'gpt-5.6-luna', plan_type: 'team', chars: 332, max_chars: 332, minted_at: at(900), age_seconds: 900, expired: true, reuse_window_seconds: 200 },
+  { state: teamState, digest: 'a13f9c21b4e0', auth_index: 'acct-a', label: 'alex@example.com', model: 'gpt-6-astra', plan_type: 'team', chars: 332, max_chars: 332, minted_at: at(45), age_seconds: 45, expired: false, reuse_window_seconds: 200,
+    cookie: '__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device' },
+  // Pooled before the session was recorded, which reads as "no session" rather
+  // than as an error.
+  { state: teamState, digest: 'b7710f3e55aa', auth_index: 'acct-a', label: 'alex@example.com', model: 'gpt-5.6-luna', plan_type: 'team', chars: 332, max_chars: 332, minted_at: at(900), age_seconds: 900, expired: true, reuse_window_seconds: 200, cookie: '' },
 ];
 
 const fixtures = { credentials, rules, items, bodies, turnStates, teamState };

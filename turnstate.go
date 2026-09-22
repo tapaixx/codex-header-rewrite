@@ -210,6 +210,12 @@ type turnStateOrigin struct {
 	maxChars  int
 	mintedAt  time.Time
 	seen      time.Time
+	// The session this state was minted under: the cookie the request carried,
+	// updated by whatever the minting response set. A turn state belongs to a
+	// session, so the two are of limited use apart -- presenting a state under
+	// a session the upstream has moved past is the same contradiction as
+	// presenting another credential's state.
+	cookie string
 }
 
 // persistedTurnState is the durable form of the newest qualified state for a
@@ -226,6 +232,9 @@ type persistedTurnState struct {
 	MaxChars  int       `json:"max_chars"`
 	MintedAt  time.Time `json:"minted_at"`
 	SeenAt    time.Time `json:"seen_at"`
+	// Absent on every record written before the pool carried one, which reads
+	// back as "no session recorded" rather than as an error.
+	Cookie string `json:"cookie,omitempty"`
 }
 
 func (origin turnStateOrigin) persisted() persistedTurnState {
@@ -233,7 +242,7 @@ func (origin turnStateOrigin) persisted() persistedTurnState {
 		State: origin.blob, Digest: origin.digest, AuthIndex: origin.authIndex,
 		Label: origin.label, Model: origin.model, PlanType: origin.planType,
 		Chars: origin.chars, MaxChars: origin.maxChars,
-		MintedAt: origin.mintedAt, SeenAt: origin.seen,
+		MintedAt: origin.mintedAt, SeenAt: origin.seen, Cookie: origin.cookie,
 	}
 }
 
@@ -258,7 +267,7 @@ func restoreTurnState(record persistedTurnState) (turnStateOrigin, bool) {
 		blob: blob, digest: turnStateDigest(blob), authIndex: record.AuthIndex,
 		label: record.Label, model: strings.TrimSpace(record.Model),
 		planType: normalizePlanType(record.PlanType), chars: len(blob),
-		maxChars: maxChars, mintedAt: minted, seen: seen,
+		maxChars: maxChars, mintedAt: minted, seen: seen, cookie: record.Cookie,
 	}, true
 }
 
@@ -480,9 +489,9 @@ func decodeBase64Flexible(value string) ([]byte, error) {
 	return base64.URLEncoding.DecodeString(value)
 }
 
-// noteTurnStateMintLocked mints a qualified observed blob into the state pool.
-// Callers hold state.mu.
-func noteTurnStateMintLocked(blob, authIndex, label, model, plan string) bool {
+// noteTurnStateMintLocked mints a qualified observed blob into the state pool,
+// together with the session it was minted under. Callers hold state.mu.
+func noteTurnStateMintLocked(blob, authIndex, label, model, plan, cookie string) bool {
 	digest := turnStateDigest(blob)
 	if blob == "" || digest == "" || authIndex == "" {
 		return false
@@ -497,7 +506,7 @@ func noteTurnStateMintLocked(blob, authIndex, label, model, plan string) bool {
 	if minted.IsZero() {
 		minted = now
 	}
-	origin := turnStateOrigin{blob: blob, digest: digest, authIndex: authIndex, label: label, model: strings.TrimSpace(model), planType: normalizePlanType(plan), chars: len(blob), maxChars: maxChars, mintedAt: minted, seen: now}
+	origin := turnStateOrigin{blob: blob, digest: digest, authIndex: authIndex, label: label, model: strings.TrimSpace(model), planType: normalizePlanType(plan), chars: len(blob), maxChars: maxChars, mintedAt: minted, seen: now, cookie: strings.TrimSpace(cookie)}
 	state.turnStates[digest] = origin
 	if state.turnStateLatest == nil {
 		state.turnStateLatest = map[string]turnStateOrigin{}

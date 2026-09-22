@@ -32,7 +32,7 @@ func TestPluginQuiesceFlushesHistoryAndReleasesTheStoreLock(t *testing.T) {
 	})
 	blob := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
-	if !noteTurnStateMintLocked(blob, "idx-a", "Team A", "gpt-5.6-luna", "team") {
+	if !noteTurnStateMintLocked(blob, "idx-a", "Team A", "gpt-5.6-luna", "team", "") {
 		state.mu.Unlock()
 		t.Fatal("qualified state did not enter the pool")
 	}

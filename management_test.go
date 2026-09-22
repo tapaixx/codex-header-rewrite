@@ -113,7 +113,7 @@ func TestTurnStatePoolAPIExposesCredentialAndValue(t *testing.T) {
 	resetTurnStates(t)
 	blob := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
-	pooled := noteTurnStateMintLocked(blob, "idx-team-a", "Team A", "gpt-5.6-luna", "team")
+	pooled := noteTurnStateMintLocked(blob, "idx-team-a", "Team A", "gpt-5.6-luna", "team", "")
 	state.mu.Unlock()
 	if !pooled {
 		t.Fatal("fixture state did not enter the pool")
@@ -143,8 +143,8 @@ func TestTurnStatePoolAPIFiltersByCredential(t *testing.T) {
 	resetState(t)
 	resetTurnStates(t)
 	state.mu.Lock()
-	noteTurnStateMintLocked(fernetToken(0x80, time.Now(), 1), "idx-a", "A", "gpt-5.6-luna", "team")
-	noteTurnStateMintLocked(fernetToken(0x80, time.Now().Add(time.Second), 1), "idx-b", "B", "gpt-5.6-luna", "team")
+	noteTurnStateMintLocked(fernetToken(0x80, time.Now(), 1), "idx-a", "A", "gpt-5.6-luna", "team", "")
+	noteTurnStateMintLocked(fernetToken(0x80, time.Now().Add(time.Second), 1), "idx-b", "B", "gpt-5.6-luna", "team", "")
 	state.mu.Unlock()
 
 	resp, _ := handleManagementAPI(managementRequest{Method: "GET", Path: "/v0/management" + apiTurnStatesPath, Query: url.Values{"auth_index": {"idx-a"}}})
@@ -218,7 +218,7 @@ func TestOrphanCleanupEvictsDurableAndInMemoryTurnState(t *testing.T) {
 	resetTurnStates(t)
 	blob := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
-	if !noteTurnStateMintLocked(blob, "idx-gone", "Gone", "gpt-5.6-luna", "team") {
+	if !noteTurnStateMintLocked(blob, "idx-gone", "Gone", "gpt-5.6-luna", "team", "") {
 		state.mu.Unlock()
 		t.Fatal("fixture state did not enter the pool")
 	}

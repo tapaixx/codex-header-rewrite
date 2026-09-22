@@ -55,7 +55,7 @@ func TestTurnStatePoolSurvivesPluginReconfigure(t *testing.T) {
 	}
 	blob := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
-	pooled := noteTurnStateMintLocked(blob, "idx-pro-a", "Pro A", "gpt-5.6-luna", "pro")
+	pooled := noteTurnStateMintLocked(blob, "idx-pro-a", "Pro A", "gpt-5.6-luna", "pro", "")
 	state.mu.Unlock()
 	if !pooled {
 		t.Fatal("fixture state did not enter the pool")
@@ -406,7 +406,7 @@ func TestStatePoolInjectsOnlyForMatchingCredentialAndModel(t *testing.T) {
 	state.mu.Unlock()
 	blob := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
-	if !noteTurnStateMintLocked(blob, "idx-a", "A", "gpt-5.6-luna", "team") {
+	if !noteTurnStateMintLocked(blob, "idx-a", "A", "gpt-5.6-luna", "team", "") {
 		state.mu.Unlock()
 		t.Fatal("fixture state did not enter the pool")
 	}
@@ -437,7 +437,7 @@ func TestStatePoolInjectionReplacesAConflictingClientState(t *testing.T) {
 	pooled := fernetToken(0x80, time.Now(), 1)
 	client := fernetToken(0x80, time.Now().Add(-time.Minute), 1)
 	state.mu.Lock()
-	noteTurnStateMintLocked(pooled, "idx-a", "A", "gpt-5.6-luna", "team")
+	noteTurnStateMintLocked(pooled, "idx-a", "A", "gpt-5.6-luna", "team", "")
 	state.mu.Unlock()
 
 	response, err := interceptAfter(requestInterceptRequest{
@@ -482,7 +482,7 @@ func poolFixture(t *testing.T, rule headerRule) string {
 	if rule.AuthIndex != "" {
 		state.rules["idx-a"] = rule
 	}
-	ok := noteTurnStateMintLocked(blob, "idx-a", "A", "gpt-5.6-luna", "team")
+	ok := noteTurnStateMintLocked(blob, "idx-a", "A", "gpt-5.6-luna", "team", "")
 	state.mu.Unlock()
 	if !ok {
 		t.Fatal("fixture state did not enter the pool")
@@ -602,7 +602,7 @@ func pooledAt(t *testing.T, issued time.Time) string {
 	state.mu.Lock()
 	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
 	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true}
-	ok := noteTurnStateMintLocked(blob, "idx-a", "A", "gpt-5.6-luna", "team")
+	ok := noteTurnStateMintLocked(blob, "idx-a", "A", "gpt-5.6-luna", "team", "")
 	state.mu.Unlock()
 	if !ok {
 		t.Fatal("fixture state did not enter the pool")
@@ -842,7 +842,7 @@ func TestNothingIsInjectedWhenTheSwitchIsOff(t *testing.T) {
 	foreign := fernetToken(0x80, time.Now(), 3)
 	state.mu.Lock()
 	state.credentials["idx-b"] = credentialSnapshot{AuthIndex: "idx-b", AuthID: "auth-b", Provider: "codex", Name: "b.json"}
-	noteTurnStateMintLocked(foreign, "idx-b", "B", "gpt-5.6-luna", "team")
+	noteTurnStateMintLocked(foreign, "idx-b", "B", "gpt-5.6-luna", "team", "")
 	state.mu.Unlock()
 	poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: false})
 
@@ -865,7 +865,7 @@ func TestGuardStripAndInjectionDoNotContradictEachOther(t *testing.T) {
 	foreign := fernetToken(0x80, time.Now(), 2)
 	state.mu.Lock()
 	state.credentials["idx-b"] = credentialSnapshot{AuthIndex: "idx-b", AuthID: "auth-b", Provider: "codex", Name: "b.json"}
-	noteTurnStateMintLocked(foreign, "idx-b", "B", "gpt-5.6-luna", "team")
+	noteTurnStateMintLocked(foreign, "idx-b", "B", "gpt-5.6-luna", "team", "")
 	state.mu.Unlock()
 	pooled := poolFixture(t, headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true})
 
@@ -889,5 +889,34 @@ func TestLegacyGuardKeyBecomesTheInjectionSwitch(t *testing.T) {
 	}
 	if !migrated.InjectTurnState || migrated.LegacyGuard {
 		t.Fatalf("the old key should fold into the new switch: %#v", migrated)
+	}
+}
+
+// End to end: the session pooled with a state is the request's cookie updated
+// by the minting response's Set-Cookie, so a response that rotates the session
+// pools the state under the new one.
+func TestPooledSessionFollowsTheRotatingResponse(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	blob := fernetToken(0x80, time.Now(), 1)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.mu.Unlock()
+
+	injectTestRequest(t, "r", http.Header{"Cookie": {"session=old; oai-did=device"}})
+	observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200, ResponseHeaders: http.Header{
+		turnStateHeader: {blob},
+		"Set-Cookie":    {"session=rotated; Path=/; HttpOnly", "issued=fresh; Secure"},
+	}})
+	completeRequest(requestCompletion{RequestID: "r", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+
+	origin, ok := pooledFor(t)
+	if !ok {
+		t.Fatal("the state should have been pooled")
+	}
+	const want = "session=rotated; oai-did=device; issued=fresh"
+	if origin.cookie != want {
+		t.Fatalf("pooled session=%q want %q", origin.cookie, want)
 	}
 }

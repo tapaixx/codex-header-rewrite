@@ -101,9 +101,9 @@ func TestOnlyNonDegradedStatesEnterThePool(t *testing.T) {
 	teamGood := strings.Repeat("a", teamStateMaxChars)
 	teamDegraded := strings.Repeat("b", teamStateMaxChars+1)
 	state.mu.Lock()
-	goodPooled := noteTurnStateMintLocked(teamGood, "idx-a", "team-a", "m", "team")
-	degradedPooled := noteTurnStateMintLocked(teamDegraded, "idx-a", "team-a", "m", "team")
-	unknownPooled := noteTurnStateMintLocked("x", "idx-b", "unknown", "m", "")
+	goodPooled := noteTurnStateMintLocked(teamGood, "idx-a", "team-a", "m", "team", "")
+	degradedPooled := noteTurnStateMintLocked(teamDegraded, "idx-a", "team-a", "m", "team", "")
+	unknownPooled := noteTurnStateMintLocked("x", "idx-b", "unknown", "m", "", "")
 	recent := recentTurnStatesLocked()
 	state.mu.Unlock()
 
@@ -222,7 +222,7 @@ func TestEchoUnderAnotherCredentialIsFlaggedAndOwnCredentialIsNot(t *testing.T) 
 	resetTurnStates(t)
 	blob := fernetToken(0x80, time.Now(), 2)
 	state.mu.Lock()
-	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna", "team")
+	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna", "team", "")
 	sameEcho, echoed := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a", "gpt-5.6-luna")
 	crossEcho, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-b", "gpt-5.6-luna")
 	state.mu.Unlock()
@@ -255,7 +255,7 @@ func TestExpiredProvenanceIsForgotten(t *testing.T) {
 	resetTurnStates(t)
 	blob := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
-	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna", "team")
+	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna", "team", "")
 	origin := state.turnStates[turnStateDigest(blob)]
 	origin.seen = time.Now().UTC().Add(-turnStateTTL - time.Minute)
 	state.turnStates[turnStateDigest(blob)] = origin
@@ -270,7 +270,7 @@ func TestProvenanceTableStaysBounded(t *testing.T) {
 	resetTurnStates(t)
 	state.mu.Lock()
 	for i := 0; i < turnStateMaxEntries*2; i++ {
-		noteTurnStateMintLocked(fernetToken(0x80, time.Now().Add(time.Duration(i)*time.Second), 1), "idx-a", "team-a", "gpt-5.6-luna", "team")
+		noteTurnStateMintLocked(fernetToken(0x80, time.Now().Add(time.Duration(i)*time.Second), 1), "idx-a", "team-a", "gpt-5.6-luna", "team", "")
 	}
 	size := len(state.turnStates)
 	state.mu.Unlock()
@@ -297,7 +297,7 @@ func TestSameCredentialDifferentModelCannotReuse(t *testing.T) {
 	resetTurnStates(t)
 	blob := fernetToken(0x80, time.Now(), 2)
 	state.mu.Lock()
-	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna", "team")
+	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna", "team", "")
 	same, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a", "gpt-5.6-luna")
 	other, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a", "gpt-5.1-codex")
 	unknownModel, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-a", "")
@@ -323,7 +323,7 @@ func TestCrossAccountOutranksModelComparison(t *testing.T) {
 	resetTurnStates(t)
 	blob := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
-	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna", "team")
+	noteTurnStateMintLocked(blob, "idx-a", "team-a", "gpt-5.6-luna", "team", "")
 	echo, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {blob}}, "idx-b", "gpt-5.1-codex")
 	state.mu.Unlock()
 	if !echo.crossAccount || echo.crossModel {
@@ -342,8 +342,8 @@ func TestStaleBlobIsReportedExpiredButStaysUsableForStripping(t *testing.T) {
 	fresh := fernetToken(0x80, time.Now().Add(-window/2), 1)
 	stale := fernetToken(0x80, time.Now().Add(-2*window), 1)
 	state.mu.Lock()
-	noteTurnStateMintLocked(fresh, "idx-a", "team-a", "m", "team")
-	noteTurnStateMintLocked(stale, "idx-a", "team-a", "m", "team")
+	noteTurnStateMintLocked(fresh, "idx-a", "team-a", "m", "team", "")
+	noteTurnStateMintLocked(stale, "idx-a", "team-a", "m", "team", "")
 	freshEcho, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {fresh}}, "idx-a", "m")
 	staleEcho, _ := evaluateTurnStateEchoLocked(http.Header{turnStateHeader: {stale}}, "idx-a", "m")
 	state.mu.Unlock()
@@ -383,10 +383,10 @@ func TestNewerMintReplacesTheRecentEntryPerCredentialAndModel(t *testing.T) {
 	older := fernetToken(0x80, time.Now().Add(-20*time.Minute), 1)
 	newer := fernetToken(0x80, time.Now().Add(-1*time.Minute), 1)
 	state.mu.Lock()
-	noteTurnStateMintLocked(older, "idx-a", "team-a", "gpt-5.6-luna", "team")
-	noteTurnStateMintLocked(newer, "idx-a", "team-a", "gpt-5.6-luna", "team")
-	noteTurnStateMintLocked(older, "idx-a", "team-a", "gpt-5.1-codex", "team")
-	noteTurnStateMintLocked(newer, "idx-b", "team-b", "gpt-5.6-luna", "team")
+	noteTurnStateMintLocked(older, "idx-a", "team-a", "gpt-5.6-luna", "team", "")
+	noteTurnStateMintLocked(newer, "idx-a", "team-a", "gpt-5.6-luna", "team", "")
+	noteTurnStateMintLocked(older, "idx-a", "team-a", "gpt-5.1-codex", "team", "")
+	noteTurnStateMintLocked(newer, "idx-b", "team-b", "gpt-5.6-luna", "team", "")
 	recent := recentTurnStatesLocked()
 	state.mu.Unlock()
 
@@ -408,8 +408,8 @@ func TestOlderMintDoesNotReplaceANewerOne(t *testing.T) {
 	older := fernetToken(0x80, time.Now().Add(-30*time.Minute), 1)
 	newer := fernetToken(0x80, time.Now(), 1)
 	state.mu.Lock()
-	newerPooled := noteTurnStateMintLocked(newer, "idx-a", "team-a", "m", "team")
-	olderPooled := noteTurnStateMintLocked(older, "idx-a", "team-a", "m", "team")
+	newerPooled := noteTurnStateMintLocked(newer, "idx-a", "team-a", "m", "team", "")
+	olderPooled := noteTurnStateMintLocked(older, "idx-a", "team-a", "m", "team", "")
 	recent := recentTurnStatesLocked()
 	state.mu.Unlock()
 	if !newerPooled || olderPooled {
@@ -538,4 +538,44 @@ func TestHeaderReadsDoNotTrustKeyCasing(t *testing.T) {
 			t.Fatalf("got %q", got)
 		}
 	})
+}
+
+// A turn state belongs to a session, so the pool carries the one it was minted
+// under: what the request presented, updated by what the minting response set.
+// The two are of limited use apart.
+func TestThePoolKeepsTheSessionAStateWasMintedUnder(t *testing.T) {
+	resetRules(t)
+	resetTurnStates(t)
+	blob := fernetToken(0x80, time.Now(), 1)
+	const session = "__Secure-next-auth.session-token=rotated; oai-did=device"
+
+	state.mu.Lock()
+	pooled := noteTurnStateMintLocked(blob, "idx-a", "team-a", "m", "team", session)
+	origin, ok := state.turnStateLatest[turnStateLatestKey("idx-a", "m")]
+	state.mu.Unlock()
+	if !pooled || !ok {
+		t.Fatalf("pooled=%v found=%v", pooled, ok)
+	}
+	if origin.cookie != session {
+		t.Fatalf("cookie=%q", origin.cookie)
+	}
+
+	// It survives the round trip through storage, which is what makes it
+	// usable after a restart.
+	record := origin.persisted()
+	if record.Cookie != session {
+		t.Fatalf("persisted cookie=%q", record.Cookie)
+	}
+	restored, ok := restoreTurnState(record)
+	if !ok || restored.cookie != session {
+		t.Fatalf("restored ok=%v cookie=%q", ok, restored.cookie)
+	}
+
+	// A record written before the pool carried one reads back as no session
+	// rather than as a failure to restore.
+	record.Cookie = ""
+	older, ok := restoreTurnState(record)
+	if !ok || older.cookie != "" {
+		t.Fatalf("an older record should restore without a session: ok=%v cookie=%q", ok, older.cookie)
+	}
 }

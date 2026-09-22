@@ -3455,6 +3455,12 @@ async function showPoolState(item) {
       <div id="poolEnvelope"><div class="muted">解码中…</div></div>
     </div>
     <div class="history-detail-section">
+      <div class="history-detail-label"><span>会话 Cookie</span></div>
+      <div class="pool-state-value mono">${item.cookie
+        ? esc(item.cookie)
+        : '<span class="muted">没有记录会话 —— 入池时请求没有带 Cookie，响应也没有下发</span>'}</div>
+    </div>
+    <div class="history-detail-section">
       <div class="history-detail-label"><span>原始值</span></div>
       <div class="pool-state-value mono">${esc(item.state || "未保存原值")}</div>
     </div>

@@ -224,6 +224,7 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 				"max_chars":   origin.maxChars,
 				"minted_at":   origin.mintedAt,
 				"age_seconds": age,
+				"cookie":      origin.cookie,
 				"expired":     time.Since(origin.mintedAt) > windows[origin.authIndex],
 				// Per item as well, so a view that is not filtered to a single
 				// credential can still say what each row was judged against.
