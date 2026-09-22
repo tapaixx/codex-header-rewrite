@@ -305,3 +305,48 @@ func TestBracketsInsideStringsDoNotEndAPayload(t *testing.T) {
 		t.Fatalf("second=%s", payloads[1].payload)
 	}
 }
+
+// The reasoning effort is recorded beside the model, on the same
+// terminal-wins rule, and never enters the comparison.
+func TestReasoningEffortIsObservedAndNotCompared(t *testing.T) {
+	var observer modelObserver
+	observer.observeCallback([]byte(`event: response.created
+data: {"type":"response.created","response":{"model":"gpt-6-astra","reasoning":{"effort":"low"}}}
+
+`))
+	if got := observer.effort(); got != "low" {
+		t.Fatalf("effort=%q from the first event", got)
+	}
+	observer.observeCallback([]byte(`event: response.completed
+data: {"type":"response.completed","response":{"model":"gpt-6-astra","reasoning":{"effort":"high"}}}
+
+`))
+	if got := observer.effort(); got != "high" {
+		t.Fatalf("effort=%q, the terminal event should win", got)
+	}
+	// Two different efforts are not a conflict; only two models are.
+	if observer.conflicted() {
+		t.Fatal("a changed effort is not a model conflict")
+	}
+	// And it plays no part in the mismatch verdict.
+	if got := modelMismatch("gpt-6-astra", observer.model()); got == nil || *got {
+		t.Fatalf("same model with different efforts is not a mismatch: %v", got)
+	}
+}
+
+func TestRequestReasoningEffort(t *testing.T) {
+	cases := []struct{ body, want string }{
+		{`{"model":"gpt-6-astra","reasoning":{"effort":"xhigh","context":"all_turns"}}`, "xhigh"},
+		{`{"model":"gpt-6-astra","reasoning":{}}`, ""},
+		{`{"model":"gpt-6-astra"}`, ""},
+		{`{"reasoning":{"effort":"  medium  "}}`, "medium"},
+		{`not json`, ""},
+		{``, ""},
+		{`[{"reasoning":{"effort":"low"}}]`, ""}, // a request body is an object
+	}
+	for _, tc := range cases {
+		if got := requestReasoningEffort([]byte(tc.body)); got != tc.want {
+			t.Fatalf("%s -> %q want %q", tc.body, got, tc.want)
+		}
+	}
+}

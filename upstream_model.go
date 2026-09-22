@@ -28,6 +28,12 @@ type modelObserver struct {
 	terminal string
 	conflict bool
 	residual []byte
+	// The reasoning effort the response reports, tracked the same way as the
+	// model. It is recorded beside the model and never compared: an effort is
+	// a setting, not a claim about which model answered, so a difference here
+	// is not a mismatch.
+	effortFirst    string
+	effortTerminal string
 }
 
 func (o *modelObserver) observe(model string, terminal bool) {
@@ -58,6 +64,30 @@ func (o *modelObserver) model() string {
 }
 
 func (o *modelObserver) conflicted() bool { return o != nil && o.conflict }
+
+func (o *modelObserver) observeEffort(effort string, terminal bool) {
+	effort = strings.TrimSpace(effort)
+	if effort == "" || len([]rune(effort)) > 32 {
+		return
+	}
+	if terminal {
+		o.effortTerminal = effort
+		return
+	}
+	if o.effortFirst == "" {
+		o.effortFirst = effort
+	}
+}
+
+func (o *modelObserver) effort() string {
+	if o == nil {
+		return ""
+	}
+	if o.effortTerminal != "" {
+		return o.effortTerminal
+	}
+	return o.effortFirst
+}
 
 func normalizeObservedModel(model string) string {
 	model = strings.TrimSpace(model)
@@ -97,11 +127,17 @@ func (o *modelObserver) observePayload(payload []byte, eventType string) bool {
 		Type     string `json:"type"`
 		Model    string `json:"model"`
 		Response struct {
-			Model string `json:"model"`
+			Model     string `json:"model"`
+			Reasoning struct {
+				Effort string `json:"effort"`
+			} `json:"reasoning"`
 		} `json:"response"`
 		Message struct {
 			Model string `json:"model"`
 		} `json:"message"`
+		Reasoning struct {
+			Effort string `json:"effort"`
+		} `json:"reasoning"`
 		// Some hosts nest the event under a data key instead of sending it at
 		// the top level.
 		Data struct {
@@ -127,7 +163,9 @@ func (o *modelObserver) observePayload(payload []byte, eventType string) bool {
 	} else if declared.Data.Type != "" {
 		eventType = declared.Data.Type
 	}
-	o.observe(model, eventType == "" || isTerminalModelEvent(eventType))
+	terminal := eventType == "" || isTerminalModelEvent(eventType)
+	o.observe(model, terminal)
+	o.observeEffort(firstNonEmpty(declared.Response.Reasoning.Effort, declared.Reasoning.Effort), terminal)
 	return true
 }
 
@@ -437,4 +475,27 @@ func sentModel(model, requestedModel string) string {
 		return trimmed
 	}
 	return strings.TrimSpace(requestedModel)
+}
+
+// requestReasoningEffort reads the effort a request asked for. It is read from
+// the outgoing payload rather than inferred, and read once: the body is not
+// kept for this, only the short value is.
+func requestReasoningEffort(body []byte) string {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return ""
+	}
+	var asked struct {
+		Reasoning struct {
+			Effort string `json:"effort"`
+		} `json:"reasoning"`
+	}
+	if err := json.Unmarshal(trimmed, &asked); err != nil {
+		return ""
+	}
+	effort := strings.TrimSpace(asked.Reasoning.Effort)
+	if len([]rune(effort)) > 32 {
+		return ""
+	}
+	return effort
 }

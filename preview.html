@@ -1682,7 +1682,11 @@ body[data-workspace="history"] #historyPanel{grid-row:3!important}
   .history-summary td{padding:5px 9px!important;overflow:hidden}
   .history-model .chain{flex-wrap:nowrap;font-size:12px;gap:6px;overflow:hidden}
   .history-model .chain>span{white-space:nowrap;flex:none}
-  .history-model .chain>span:not(.tag):not(.arrow){flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;min-width:36px}
+  .history-model .chain>span:not(.tag):not(.arrow){flex:0 1 auto;min-width:36px}
+  /* Only the name clips. The wrapper must not, or it would cut the effort off
+     at the cell edge again. */
+  .history-model .chain>.model{overflow:visible}
+  .history-model .chain>span:not(.tag):not(.arrow):not(.model){overflow:hidden;text-overflow:ellipsis}
   /* A chip sliced at the cell edge reads as a bug; overflowing content fades
      out instead, and the full set is in the drawer. */
   .history-outcome{white-space:nowrap}
@@ -1763,6 +1767,17 @@ body[data-workspace="history"] #historyPanel{grid-row:3!important}
 .body-view .jn{color:var(--over)}
 .body-view .jb{color:var(--gone)}
 .body-view .jp{color:var(--text-mute);font-weight:600}
+/* The effort sits against the model name, a size down and dimmed, so the chain
+   still reads as two model names with the arrow between them. Name and effort
+   are one flex item and share a baseline; when the column is narrow only the
+   name gives way, because an effort truncated to "hig" says less than nothing
+   while an ellipsised model name is still recognisable. */
+.chain .model{display:inline-flex;align-items:baseline;min-width:0}
+.chain .mname{flex:0 1 auto;min-width:36px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chain .effort{
+  flex:none;margin-left:4px;font-size:.78em;font-weight:600;color:var(--text-mute);
+  letter-spacing:.01em
+}
 .body-view .jm{color:var(--warn);background:var(--over-weak);border-radius:3px;padding:0 3px}
 /* Locking the page with overflow:hidden collapsed the viewport's scroll range
    and snapped it to the top the moment the drawer opened. Fixing the body at
@@ -1929,10 +1944,16 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
 .panel,.panel-body{min-width:0!important}
 .pool-scroll{min-width:0;max-width:100%}
 .table-scroll{overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;min-width:0;max-width:100%}
-#historyPanel .history-table{table-layout:fixed!important;width:100%!important;min-width:860px!important}
+/* The model column comes from syncModelColumn; the table's minimum follows it
+   so widening the column widens the scroller rather than squeezing the rest.
+   606px is the sum of the five fixed columns. */
+#historyPanel .history-table{
+  table-layout:fixed!important;width:100%!important;
+  min-width:calc(606px + var(--history-model-w,250px))!important
+}
 #historyPanel th.history-time{width:164px!important}
 #historyPanel th.history-origin{width:64px!important}
-#historyPanel th.history-model{width:250px!important}
+#historyPanel th.history-model{width:var(--history-model-w,250px)!important}
 #historyPanel th.history-outcome{width:236px!important}
 #historyPanel th.history-latency{width:74px!important}
 #historyPanel th.history-status{width:68px!important}
@@ -2410,7 +2431,7 @@ html[data-theme="dark"]{
 /* Preview only: the management API is answered from fixtures baked in at build
    time by scripts/make-preview.mjs. Nothing here runs in the shipped panel. */
 (() => {
-  const F = {"credentials":[{"auth_index":"acct-a","auth_id":"auth-a","name":"alex.json","label":"alex@example.com","email":"alex@example.com","provider":"codex","type":"codex","plan_type":"team","plan_resolved":true},{"auth_index":"acct-b","auth_id":"auth-b","name":"sam.json","label":"sam@example.com","email":"sam@example.com","provider":"codex","type":"codex","plan_type":"plus","plan_resolved":true}],"rules":{"acct-a":{"auth_index":"acct-a","enabled":true,"set":{"X-Codex-Beta-Features":"remote_compaction_v2"},"remove":["X-Openai-Internal-Codex-Responses-Lite"],"inject_turn_state":true,"state_ttl_seconds":200,"reject_degraded_response":true,"reject_degraded_models":["gpt-6-astra"],"retry_on_degraded":true,"retry_attempts":2,"retry_proxies":["socks5://127.0.0.1:1080"],"updated_at":"2026-09-22T05:36:25.423Z"},"acct-b":{"auth_index":"acct-b","enabled":false,"set":{},"remove":[],"inject_turn_state":false,"state_ttl_seconds":0,"updated_at":"2026-09-21T06:36:25.423Z"}},"items":[{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["oai-did=demo-device; Path=/; HttpOnly"]},"id":"rec-1#1","request_id":"rec-1","started_at":"2026-09-22T06:35:55.423Z","completed_at":"2026-09-22T06:35:59.423Z","turn_state_injected":true,"turn_state_minted":{"digest":"a13f9c21b4e0","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-22T06:35:57.423Z","fernet_like":true,"decodable":true,"plan_type":"team","max_chars":332,"non_degraded":true,"pooled":true}},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_71bd"]},"id":"rec-2#1","request_id":"rec-2","started_at":"2026-09-22T06:33:25.423Z","completed_at":"2026-09-22T06:33:34.423Z","turn_state_rejected":true,"turn_state_injected":true,"turn_state_minted":{"digest":"7c02dd48fa91","chars":356,"bytes":265,"version":128,"issued_at":"2026-09-22T06:33:26.423Z","fernet_like":true,"decodable":true,"plan_type":"team","max_chars":332,"non_degraded":false,"pooled":false},"turn_state_echo":{"digest":"a13f9c21b4e0","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-22T06:29:45.423Z","fernet_like":true,"decodable":true},"turn_state_origin_index":"acct-a","turn_state_origin_label":"alex@example.com","turn_state_origin_model":"gpt-6-astra","turn_state_cross_account":false,"turn_state_cross_model":false,"turn_state_age_seconds":400,"turn_state_expired":true},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"plugin_retry","stream":true,"origin":"retry","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"status_code":200,"outcome":"succeeded","before_headers":{"Accept":["text/event-stream"],"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["codex-cli"]},"after_headers":{"Accept":["text/event-stream"],"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["codex-cli"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["oai-did=demo-device; Path=/; HttpOnly"]},"id":"retry-1789952479137822421-6#1","request_id":"retry-1789952479137822421-6","started_at":"2026-09-22T06:33:29.423Z","completed_at":"2026-09-22T06:33:31.423Z","retry_attempts":2,"turn_state_minted":{"digest":"e4418b0c7d35","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-22T06:33:30.423Z","fernet_like":true,"decodable":true,"plan_type":"team","max_chars":332,"non_degraded":true,"pooled":true}},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-5.6-luna","requested_model":"gpt-5.6-luna","upstream_model":"gpt-5.6-sol","model_mismatch":true,"status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["oai-did=demo-device; Path=/; HttpOnly"]},"id":"rec-3#1","request_id":"rec-3","started_at":"2026-09-22T06:21:25.423Z","completed_at":"2026-09-22T06:21:32.423Z"},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"","model_mismatch":null,"status_code":429,"outcome":"failed","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["oai-did=demo-device; Path=/; HttpOnly"]},"id":"rec-4#1","request_id":"rec-4","started_at":"2026-09-22T06:06:25.423Z","completed_at":"2026-09-22T06:06:26.423Z","error":"{\"error\":{\"message\":\"Rate limit reached for gpt-6-astra\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}"}],"bodies":{"rec-1#1":{"request_body":"{\"model\":\"gpt-6-astra\",\"instructions\":\"You are Codex, a coding agent.\",\"input\":\"[MASKED 412880 bytes]\",\"tools\":[{\"type\":\"function\",\"name\":\"shell\"},{\"type\":\"function\",\"name\":\"apply_patch\"}],\"reasoning\":{\"effort\":\"high\",\"context\":\"all_turns\"},\"parallel_tool_calls\":false,\"stream\":true,\"store\":false}","request_bytes":413021,"response_body":"event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"in_progress\",\"output\":\"[MASKED 2 bytes]\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":41,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"completed\",\"output\":\"[MASKED 2210 bytes]\",\"usage\":{\"input_tokens\":18422,\"output_tokens\":512}}}\n\ndata: [DONE]\n","response_bytes":2480},"rec-2#1":{"request_body":"{\"model\":\"gpt-6-astra\",\"instructions\":\"You are Codex, a coding agent.\",\"input\":\"[MASKED 412880 bytes]\",\"tools\":[{\"type\":\"function\",\"name\":\"shell\"},{\"type\":\"function\",\"name\":\"apply_patch\"}],\"reasoning\":{\"effort\":\"high\",\"context\":\"all_turns\"},\"parallel_tool_calls\":false,\"stream\":true,\"store\":false}","request_bytes":3324118,"response_body":"event: response.createddata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"created_at\":1790057487,\"status\":\"in_progress\",\"model\":\"gpt-6-astra\",\"output\":\"[MASKED 2 bytes]\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"low\",\"summary\":\"detailed\"},\"service_tier\":\"auto\",\"store\":false,\"temperature\":1.0}}event: response.output_text.deltadata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"嗨\",\"output_index\":0,\"sequence_number\":4}event: response.completeddata: {\"type\":\"response.completed\",\"sequence_number\":13,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-6-astra\",\"output\":\"[MASKED 2210 bytes]\",\"service_tier\":\"default\",\"usage\":{\"input_tokens\":21190,\"output_tokens\":11,\"total_tokens\":21201}}}","response_bytes":1960},"retry-1789952479137822421-6#1":{"request_body":"{\"model\":\"gpt-6-astra\",\"instructions\":\"You are Codex, a coding agent.\",\"input\":\"[MASKED 74 bytes]\",\"stream\":true,\"store\":false,\"tools\":[],\"parallel_tool_calls\":false}","request_bytes":286,"response_body":"event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"in_progress\",\"output\":\"[MASKED 2 bytes]\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":41,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"completed\",\"output\":\"[MASKED 2210 bytes]\",\"usage\":{\"input_tokens\":18422,\"output_tokens\":512}}}\n\ndata: [DONE]\n","response_bytes":2312}},"turnStates":[{"state":"gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","digest":"a13f9c21b4e0","auth_index":"acct-a","label":"alex@example.com","model":"gpt-6-astra","plan_type":"team","chars":332,"max_chars":332,"minted_at":"2026-09-22T06:35:40.423Z","age_seconds":45,"expired":false,"reuse_window_seconds":200},{"state":"gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","digest":"b7710f3e55aa","auth_index":"acct-a","label":"alex@example.com","model":"gpt-5.6-luna","plan_type":"team","chars":332,"max_chars":332,"minted_at":"2026-09-22T06:21:25.423Z","age_seconds":900,"expired":true,"reuse_window_seconds":200}],"teamState":"gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"};
+  const F = {"credentials":[{"auth_index":"acct-a","auth_id":"auth-a","name":"alex.json","label":"alex@example.com","email":"alex@example.com","provider":"codex","type":"codex","plan_type":"team","plan_resolved":true},{"auth_index":"acct-b","auth_id":"auth-b","name":"sam.json","label":"sam@example.com","email":"sam@example.com","provider":"codex","type":"codex","plan_type":"plus","plan_resolved":true}],"rules":{"acct-a":{"auth_index":"acct-a","enabled":true,"set":{"X-Codex-Beta-Features":"remote_compaction_v2"},"remove":["X-Openai-Internal-Codex-Responses-Lite"],"inject_turn_state":true,"state_ttl_seconds":200,"reject_degraded_response":true,"reject_degraded_models":["gpt-6-astra"],"retry_on_degraded":true,"retry_attempts":2,"retry_proxies":["socks5://127.0.0.1:1080"],"updated_at":"2026-09-22T05:51:28.599Z"},"acct-b":{"auth_index":"acct-b","enabled":false,"set":{},"remove":[],"inject_turn_state":false,"state_ttl_seconds":0,"updated_at":"2026-09-21T06:51:28.599Z"}},"items":[{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"high","upstream_effort":"high","status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["oai-did=demo-device; Path=/; HttpOnly"]},"id":"rec-1#1","request_id":"rec-1","started_at":"2026-09-22T06:50:58.599Z","completed_at":"2026-09-22T06:51:02.599Z","turn_state_injected":true,"turn_state_minted":{"digest":"a13f9c21b4e0","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-22T06:51:00.599Z","fernet_like":true,"decodable":true,"plan_type":"team","max_chars":332,"non_degraded":true,"pooled":true}},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"high","upstream_effort":"high","status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_71bd"]},"id":"rec-2#1","request_id":"rec-2","started_at":"2026-09-22T06:48:28.599Z","completed_at":"2026-09-22T06:48:37.599Z","turn_state_rejected":true,"turn_state_injected":true,"turn_state_minted":{"digest":"7c02dd48fa91","chars":356,"bytes":265,"version":128,"issued_at":"2026-09-22T06:48:29.599Z","fernet_like":true,"decodable":true,"plan_type":"team","max_chars":332,"non_degraded":false,"pooled":false},"turn_state_echo":{"digest":"a13f9c21b4e0","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-22T06:44:48.599Z","fernet_like":true,"decodable":true},"turn_state_origin_index":"acct-a","turn_state_origin_label":"alex@example.com","turn_state_origin_model":"gpt-6-astra","turn_state_cross_account":false,"turn_state_cross_model":false,"turn_state_age_seconds":400,"turn_state_expired":true},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"plugin_retry","stream":true,"origin":"retry","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"high","upstream_effort":"high","status_code":200,"outcome":"succeeded","before_headers":{"Accept":["text/event-stream"],"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["codex-cli"]},"after_headers":{"Accept":["text/event-stream"],"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["codex-cli"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["oai-did=demo-device; Path=/; HttpOnly"]},"id":"retry-1789952479137822421-6#1","request_id":"retry-1789952479137822421-6","started_at":"2026-09-22T06:48:32.599Z","completed_at":"2026-09-22T06:48:34.599Z","retry_attempts":2,"turn_state_minted":{"digest":"e4418b0c7d35","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-22T06:48:33.599Z","fernet_like":true,"decodable":true,"plan_type":"team","max_chars":332,"non_degraded":true,"pooled":true}},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-5.6-luna","requested_model":"gpt-5.6-luna","upstream_model":"gpt-5.6-sol","model_mismatch":true,"request_effort":"xhigh","upstream_effort":"low","status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["oai-did=demo-device; Path=/; HttpOnly"]},"id":"rec-3#1","request_id":"rec-3","started_at":"2026-09-22T06:36:28.599Z","completed_at":"2026-09-22T06:36:35.599Z"},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"","model_mismatch":null,"request_effort":"high","upstream_effort":"high","status_code":429,"outcome":"failed","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["oai-did=demo-device; Path=/; HttpOnly"]},"id":"rec-4#1","request_id":"rec-4","started_at":"2026-09-22T06:21:28.599Z","completed_at":"2026-09-22T06:21:29.599Z","error":"{\"error\":{\"message\":\"Rate limit reached for gpt-6-astra\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}"}],"bodies":{"rec-1#1":{"request_body":"{\"model\":\"gpt-6-astra\",\"instructions\":\"You are Codex, a coding agent.\",\"input\":\"[MASKED 412880 bytes]\",\"tools\":[{\"type\":\"function\",\"name\":\"shell\"},{\"type\":\"function\",\"name\":\"apply_patch\"}],\"reasoning\":{\"effort\":\"high\",\"context\":\"all_turns\"},\"parallel_tool_calls\":false,\"stream\":true,\"store\":false}","request_bytes":413021,"response_body":"event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"in_progress\",\"output\":\"[MASKED 2 bytes]\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":41,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"completed\",\"output\":\"[MASKED 2210 bytes]\",\"usage\":{\"input_tokens\":18422,\"output_tokens\":512}}}\n\ndata: [DONE]\n","response_bytes":2480},"rec-2#1":{"request_body":"{\"model\":\"gpt-6-astra\",\"instructions\":\"You are Codex, a coding agent.\",\"input\":\"[MASKED 412880 bytes]\",\"tools\":[{\"type\":\"function\",\"name\":\"shell\"},{\"type\":\"function\",\"name\":\"apply_patch\"}],\"reasoning\":{\"effort\":\"high\",\"context\":\"all_turns\"},\"parallel_tool_calls\":false,\"stream\":true,\"store\":false}","request_bytes":3324118,"response_body":"event: response.createddata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"created_at\":1790057487,\"status\":\"in_progress\",\"model\":\"gpt-6-astra\",\"output\":\"[MASKED 2 bytes]\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"low\",\"summary\":\"detailed\"},\"service_tier\":\"auto\",\"store\":false,\"temperature\":1.0,\"tools\":[{\"type\":\"function\",\"name\":\"view_image\",\"description\":\"image_url should be a base64-encoded `data:` URL; forward an `event:` block as-is\"}]}}event: response.output_text.deltadata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"嗨\",\"output_index\":0,\"sequence_number\":4}event: response.completeddata: {\"type\":\"response.completed\",\"sequence_number\":13,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-6-astra\",\"output\":\"[MASKED 2210 bytes]\",\"service_tier\":\"default\",\"usage\":{\"input_tokens\":21190,\"output_tokens\":11,\"total_tokens\":21201}}}","response_bytes":1960},"retry-1789952479137822421-6#1":{"request_body":"{\"model\":\"gpt-6-astra\",\"instructions\":\"You are Codex, a coding agent.\",\"input\":\"[MASKED 74 bytes]\",\"stream\":true,\"store\":false,\"tools\":[],\"parallel_tool_calls\":false}","request_bytes":286,"response_body":"event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"in_progress\",\"output\":\"[MASKED 2 bytes]\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":41,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"completed\",\"output\":\"[MASKED 2210 bytes]\",\"usage\":{\"input_tokens\":18422,\"output_tokens\":512}}}\n\ndata: [DONE]\n","response_bytes":2312}},"turnStates":[{"state":"gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","digest":"a13f9c21b4e0","auth_index":"acct-a","label":"alex@example.com","model":"gpt-6-astra","plan_type":"team","chars":332,"max_chars":332,"minted_at":"2026-09-22T06:50:43.599Z","age_seconds":45,"expired":false,"reuse_window_seconds":200},{"state":"gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","digest":"b7710f3e55aa","auth_index":"acct-a","label":"alex@example.com","model":"gpt-5.6-luna","plan_type":"team","chars":332,"max_chars":332,"minted_at":"2026-09-22T06:36:28.599Z","age_seconds":900,"expired":true,"reuse_window_seconds":200}],"teamState":"gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"};
   const json = (payload) => new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } });
   // Opened from the filesystem, localStorage is unavailable in some browsers
   // and throws in others, so the panel found no key and asked for one. Give it
@@ -2505,6 +2526,9 @@ function setWorkspace(view, scroll = true) {
     button.setAttribute("aria-current", String(button.dataset.workspace === next));
   }
   if (next === "rules" && store.rule) requestAnimationFrame(renderRulePreview);
+  // The history list is built while this workspace is still hidden, and a
+  // hidden element measures zero, so the column is sized once it can be seen.
+  if (next === "history") requestAnimationFrame(syncModelColumn);
   if (scroll) window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -3283,17 +3307,26 @@ function formatLatency(ms) {
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`;
   return `${Math.round(ms)} ms`;
 }
+// The reasoning effort rides along with the model it belongs to, one size down
+// and dimmed. It is never compared: an effort is a setting, not a claim about
+// which model answered, so a difference between the two sides is not a
+// mismatch and must not read like one.
+// The name and its effort are one flex item, but only the name may shrink:
+// inside the same ellipsis box the effort was the first thing sliced, and a
+// value cut to "hig" is worse than no value at all.
+const modelCell = (name, effort) => `<span class="model"><span class="mname">${esc(name)}</span>${
+  effort ? `<small class="effort" title="推理强度">${esc(effort)}</small>` : ""}</span>`;
 function modelChain(record) {
   const sent = record.model || record.sent_model || "";
   const upstream = record.upstream_model || "";
   const requested = record.requested_model || "";
   const parts = [];
   if (requested && requested !== sent) parts.push(`<span>${esc(requested)}</span><span class="arrow">→</span>`);
-  parts.push(`<span>${esc(sent || "未知")}</span>`, '<span class="arrow">→</span>');
+  parts.push(modelCell(sent || "未知", record.request_effort), '<span class="arrow">→</span>');
   // "Not read" rather than "not declared": a missing model can equally mean the
   // payload never carried one, never arrived, or could not be parsed, and the
   // plugin cannot tell those apart.
-  parts.push(upstream ? `<span>${esc(upstream)}</span>` : '<span class="tag flat" title="插件没有读取到模型：可能未提供、未收到或无法解析">未获取到</span>');
+  parts.push(upstream ? modelCell(upstream, record.upstream_effort) : '<span class="tag flat" title="插件没有读取到模型：可能未提供、未收到或无法解析">未获取到</span>');
   if (record.model_mismatch === true) parts.push('<span class="tag bad">模型不一致</span>');
   else if (record.model_mismatch === false) parts.push('<span class="tag ok">一致</span>');
   if (record.model_conflict) parts.push('<span class="tag warn" title="同一次响应里出现互相矛盾的模型声明">上游声明冲突</span>');
@@ -3354,6 +3387,7 @@ async function loadHistory(page = 1) {
     });
     body.append(row);
   }
+  syncModelColumn();
   renderPager();
 }
 
@@ -3612,11 +3646,85 @@ function paintJSON(text) {
   return out + esc(text.slice(last));
 }
 
-// A host may write "event: x" straight against "data: {...}" with nothing
-// between them, which reads as one unbroken line. Put the breaks back for
-// display; the recorded bytes are not changed.
-function reframeSSE(text) {
-  return text.replace(/(\S)(event:|data:)/g, "$1\n$2");
+// firstJSONText finds the first balanced JSON value at or after `from`,
+// respecting strings and their escapes. Without that, a value cannot be told
+// apart from the text around it when the framing that should separate them is
+// missing -- and a brace inside a string would end it early.
+function firstJSONText(text, from) {
+  let start = -1;
+  for (let i = from; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === " " || c === "\t" || c === "\r" || c === "\n") continue;
+    if (c === "{" || c === "[") start = i;
+    break;
+  }
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i += 1) {
+    const c = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === "\\") escaped = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') inString = true;
+    else if (c === "{" || c === "[") depth += 1;
+    else if (c === "}" || c === "]") {
+      depth -= 1;
+      if (depth === 0) return { start, end: i + 1 };
+    }
+  }
+  return null;
+}
+
+// The framing around a payload: event lines, blank lines, a [DONE] sentinel.
+function renderSSEFraming(chunk) {
+  const text = chunk.trim();
+  if (!text) return "";
+  return text.split(/\n+/).map((raw) => {
+    const line = raw.trim();
+    const match = /^(event:|data:)\s*(.*)$/.exec(line);
+    if (!match) return esc(line);
+    return `<span class="jp">${esc(match[1])}</span>${match[2] ? " " + esc(match[2]) : ""}`;
+  }).join("\n");
+}
+
+// Renders an SSE body by locating each payload rather than by splitting lines.
+// Splitting on the marker text is not safe: a tool description in a real Codex
+// request contains the literal "data:", so inserting a break before every
+// occurrence cut a JSON string in half and nothing after it formatted at all.
+// Every byte of the input still appears in the output exactly once.
+function renderSSE(text) {
+  const parts = [];
+  let cursor = 0;
+  let scan = 0;
+  while (scan < text.length) {
+    const marker = text.indexOf("data:", scan);
+    if (marker < 0) break;
+    const span = firstJSONText(text, marker + "data:".length);
+    if (!span) {
+      scan = marker + "data:".length;
+      continue;
+    }
+    const raw = text.slice(span.start, span.end);
+    let pretty;
+    try {
+      pretty = JSON.stringify(JSON.parse(raw), null, 2);
+    } catch {
+      // Balanced but not JSON, such as the [DONE] sentinel.
+      scan = marker + "data:".length;
+      continue;
+    }
+    parts.push(renderSSEFraming(text.slice(cursor, marker)));
+    parts.push(`<span class="jp">data:</span> ${paintJSON(pretty)}`);
+    cursor = span.end;
+    scan = span.end;
+  }
+  parts.push(renderSSEFraming(text.slice(cursor)));
+  return parts.filter((part) => part !== "").join("\n");
 }
 
 // A body is JSON, an SSE stream of JSON, or something else. The first two are
@@ -3628,13 +3736,7 @@ function renderBody(text) {
     try { return paintJSON(JSON.stringify(JSON.parse(trimmed), null, 2)); } catch { /* fall through */ }
   }
   if (!/(event:|data:)/.test(trimmed)) return esc(trimmed);
-  return reframeSSE(trimmed).split(/\n/).map((line) => {
-    const match = /^(\s*)(event:|data:)\s*(.*)$/.exec(line);
-    if (!match) return esc(line);
-    const head = esc(match[1]) + `<span class="jp">${esc(match[2])}</span> `;
-    if (!match[3] || match[3] === "[DONE]") return head + esc(match[3] || "");
-    try { return head + paintJSON(JSON.stringify(JSON.parse(match[3]), null, 2)); } catch { return head + esc(match[3]); }
-  }).join("\n");
+  return renderSSE(trimmed);
 }
 
 function bodyPaneHTML(label, text, bytes, maskedField, maxStored) {
@@ -4176,6 +4278,54 @@ try {
   }
 } catch { /* nothing to observe across a closed frame boundary */ }
 globalThis.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", applyHostTheme);
+
+// The model column is measured, not assumed. A fixed table layout ignores its
+// content, so the column had a hardcoded 250px while the chain it holds needs
+// past 360px once both models carry an effort -- and the names were ellipsised
+// to fit. Neither the name nor the effort may be cut, so the column is sized
+// to the widest chain actually on the page and the table's own minimum grows
+// with it; below that the horizontal scroller takes over, which is what it is
+// there for.
+//
+// The clamp is the honest limit: a name longer than the ceiling still
+// ellipsises rather than pushing the table arbitrarily wide, and the full value
+// is a click away in the drawer.
+const MODEL_COLUMN_MIN = 200;
+const MODEL_COLUMN_MAX = 520;
+function syncModelColumn() {
+  const panel = $("historyPanel");
+  if (!panel) return;
+  // Nothing to measure while the workspace is hidden: every rect would be zero
+  // and the column would settle on the floor. setWorkspace calls back when the
+  // panel is on screen.
+  if (!panel.offsetParent && getComputedStyle(panel).display === "none") return;
+  const chains = [...$("historyBody").querySelectorAll(".history-model .chain")];
+  if (!chains.length) {
+    panel.style.removeProperty("--history-model-w");
+    return;
+  }
+  // One offscreen container, measured in a single pass: the clones are laid
+  // out at their natural width with nothing allowed to shrink or clip.
+  const probe = document.createElement("div");
+  probe.setAttribute("style", "position:absolute;left:-9999px;top:0;visibility:hidden;contain:layout");
+  for (const chain of chains) {
+    const clone = chain.cloneNode(true);
+    clone.style.cssText = "width:max-content;flex-wrap:nowrap;overflow:visible";
+    for (const node of clone.querySelectorAll("*")) {
+      node.style.overflow = "visible";
+      node.style.textOverflow = "clip";
+      node.style.minWidth = "0";
+      node.style.flex = "none";
+    }
+    probe.append(clone);
+  }
+  panel.append(probe);
+  let need = 0;
+  for (const clone of probe.children) need = Math.max(need, clone.getBoundingClientRect().width);
+  probe.remove();
+  const width = Math.min(Math.max(Math.ceil(need) + 2, MODEL_COLUMN_MIN), MODEL_COLUMN_MAX);
+  panel.style.setProperty("--history-model-w", `${width}px`);
+}
 
 function syncStickyOffsets() {
   const bar = document.querySelector(".topbar");

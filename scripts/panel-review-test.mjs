@@ -24,7 +24,10 @@ await page.route('http://panel.test/**', async route => {
     data = {rule:{auth_index:idx,enabled:true,set:{'X-Owner':idx},remove:[],inject_turn_state:true}};
   }
   if (url.pathname.endsWith('/models')) data = {models:[{id:'m'}]};
-  if (url.pathname.endsWith('/history')) data = {total:1,page:1,total_pages:1,items:[{id:idx,auth_index:idx,model:'m',started_at:'2026-09-19T00:00:00Z',outcome:'failed',status_code:500,error:'ERROR'.repeat(300)}]};
+  if (url.pathname.endsWith('/history')) data = {total:1,page:1,total_pages:1,items:[{id:idx,auth_index:idx,
+    model:'gpt-6-astra-preview-long',requested_model:'gpt-6-astra-preview-long',upstream_model:'gpt-6-astra-preview-long',
+    request_effort:'xhigh',upstream_effort:'xhigh',model_mismatch:false,
+    started_at:'2026-09-19T00:00:00Z',outcome:'failed',status_code:500,error:'ERROR'.repeat(300)}]};
   // Deliberately return global data to exercise defensive client filtering.
   if (url.pathname.endsWith('/turn-states')) data = {turn_states:[{auth_index:'a',state:'state-a',model:'m',expired:false},{auth_index:'a',state:'old-a',model:'old',expired:true},{auth_index:'b',state:'state-b',model:'m',expired:false}]};
   await route.fulfill({contentType:'application/json',body:JSON.stringify(data)});
@@ -69,6 +72,26 @@ try {
       const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth);
       assert.ok(overflow<=1,`${width}px ${workspace} overflow ${overflow}`);
     }
+    // Neither the model name nor its effort may be covered at any width. The
+    // column is measured from its content and the table's own minimum follows
+    // it, so a viewport too narrow for both scrolls sideways instead of
+    // clipping.
+    await page.evaluate(()=>setWorkspace('history',false));
+    await page.waitForTimeout(120);
+    const cut = await page.evaluate(() => [...document.querySelectorAll('.history-model .mname, .history-model .effort')]
+      .filter((el) => {
+        const box = el.getBoundingClientRect();
+        const cell = el.closest('td').getBoundingClientRect();
+        return box.width === 0 || box.right > cell.right + 0.5 || el.scrollWidth > el.clientWidth + 1;
+      })
+      .map((el) => `${el.className}:${el.textContent}`));
+    assert.deepEqual(cut, [], `${width}px: covered text ${JSON.stringify(cut)}`);
+    // Below the width the table needs, the scroller is what gives way.
+    const scrolls = await page.evaluate(() => {
+      const sc = document.querySelector('#historyPanel .table-scroll');
+      return sc ? sc.scrollWidth - sc.clientWidth : 0;
+    });
+    if (width <= 900) assert.ok(scrolls > 0, `${width}px: the table should scroll sideways, not clip`);
   }
   assert.deepEqual(failures,[]);
   console.log('panel review regressions: passed');

@@ -298,6 +298,7 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 	// The payload as it goes upstream. This plugin rewrites headers and never
 	// the body, so what arrives here is what is sent.
 	pr.current.requestBody, pr.current.requestBytes = maskRequestBody(req.Body), len(req.Body)
+	pr.current.RequestEffort = requestReasoningEffort(req.Body)
 	state.mu.Unlock()
 	return requestInterceptResponse{Headers: updates, ClearHeaders: clears}, nil
 }
@@ -508,6 +509,7 @@ func finalizeLocked(attempt *pendingAttempt) {
 	attempt.UpstreamModel = attempt.models.model()
 	attempt.ModelMismatch = modelMismatch(sentModel(attempt.Model, attempt.RequestedModel), attempt.UpstreamModel)
 	attempt.ModelConflict = attempt.models.conflicted()
+	attempt.UpstreamEffort = attempt.models.effort()
 	// Masked once the whole stream is in hand: a frame split across two chunks
 	// would slip through a per-chunk mask.
 	attempt.RequestBody, _ = storedBody(attempt.requestBody)

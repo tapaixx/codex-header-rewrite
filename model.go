@@ -98,6 +98,11 @@ type historyRecord struct {
 	UpstreamModel string `json:"upstream_model,omitempty"`
 	ModelMismatch *bool  `json:"model_mismatch,omitempty"`
 	ModelConflict bool   `json:"model_conflict,omitempty"`
+	// The reasoning effort asked for and the one the response reports. Shown
+	// beside each model and never compared: an effort is a setting, not a
+	// claim about which model answered.
+	RequestEffort  string `json:"request_effort,omitempty"`
+	UpstreamEffort string `json:"upstream_effort,omitempty"`
 	// Origin separates live proxy traffic from operator-issued test requests.
 	Origin string `json:"origin,omitempty"`
 

@@ -8,6 +8,7 @@ page.on('pageerror', e => errors.push(e.message));
 const record = {
   id:'rec-1', request_id:'rec-1', auth_index:'a', attempt:1, origin:'live', model:'gpt-6-astra',
   requested_model:'gpt-6-astra', upstream_model:'gpt-6-astra', source_format:'openai-response', stream:true,
+  request_effort:'xhigh', upstream_effort:'low', model_mismatch:false,
   started_at:'2026-09-21T01:00:00Z', completed_at:'2026-09-21T01:00:04Z', outcome:'succeeded', status_code:200,
   before_headers:{'X-Old':['1'],'Authorization':['Bearer [REDACTED]']},
   after_headers:{'X-Old':['2'],'Authorization':['Bearer [REDACTED]']},
@@ -117,6 +118,29 @@ try {
   assert.equal(await unchanged.count(), 1);
   assert.equal(await unchanged.evaluate((el) => el.open), true, 'unchanged headers start open');
   assert.equal(await page.locator('#detailPane-reqh details .diff-row').first().isVisible(), true);
+
+  // The reasoning effort rides with each model, a size down, and takes no part
+  // in the verdict: these two disagree and the models still read as a match.
+  const efforts = await page.locator('.history-detail-head .chain .effort').allTextContents();
+  assert.deepEqual(efforts, ['xhigh','low'], JSON.stringify(efforts));
+  const sizes = await page.$$eval('.history-detail-head .chain .effort',
+    els => els.map(e => [parseFloat(getComputedStyle(e).fontSize), parseFloat(getComputedStyle(e.parentElement).fontSize)]));
+  for (const [own, parent] of sizes) assert.ok(own < parent, `effort ${own}px should be smaller than ${parent}px`);
+  assert.ok((await page.locator('.history-detail-head .chain').textContent()).includes('一致'),
+    'differing efforts must not read as a model mismatch');
+
+  // A payload whose tool description contains the literal "data:" must still
+  // format. Splitting on the marker cut the JSON string in half and nothing
+  // after it formatted at all.
+  const tricky = 'event: response.created\ndata: {"type":"response.created","response":{"model":"gpt-6-astra",'
+    + '"tools":[{"name":"view_image","description":"image_url should be a base64-encoded `data:` URL, and an `event:` block too"}]}}\n\n';
+  const rendered = await page.evaluate((body) => {
+    const host = document.createElement('div');
+    host.innerHTML = renderBody(body);
+    return host.textContent;
+  }, tricky);
+  assert.ok(/\n\s+"type": "response\.created"/.test(rendered), 'formatted: '+JSON.stringify(rendered.slice(0,80)));
+  assert.ok(rendered.includes('base64-encoded `data:` URL'), 'the literal marker survives inside the string');
 
   assert.deepEqual(errors,[]);
   console.log('detail tabs: passed');

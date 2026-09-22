@@ -29,7 +29,7 @@ const requestBody = JSON.stringify({
 // are gone, which is exactly the shape that used to read as no model at all.
 const unframedResponseBody =
   'event: response.created' +
-  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_68f2","object":"response","created_at":1790057487,"status":"in_progress","model":"gpt-6-astra","output":"[MASKED 2 bytes]","reasoning":{"context":"all_turns","effort":"low","summary":"detailed"},"service_tier":"auto","store":false,"temperature":1.0}}' +
+  'data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_68f2","object":"response","created_at":1790057487,"status":"in_progress","model":"gpt-6-astra","output":"[MASKED 2 bytes]","reasoning":{"context":"all_turns","effort":"low","summary":"detailed"},"service_tier":"auto","store":false,"temperature":1.0,"tools":[{"type":"function","name":"view_image","description":"image_url should be a base64-encoded `data:` URL; forward an `event:` block as-is"}]}}' +
   'event: response.output_text.delta' +
   'data: {"type":"response.output_text.delta","content_index":0,"delta":"\u55e8","output_index":0,"sequence_number":4}' +
   'event: response.completed' +
@@ -87,6 +87,7 @@ const record = (over) => ({
   auth_index: 'acct-a', auth_id: 'auth-a', credential_name: 'alex.json', credential_label: 'alex@example.com',
   attempt: 1, source_format: 'openai-response', stream: true, origin: 'live',
   model: 'gpt-6-astra', requested_model: 'gpt-6-astra', upstream_model: 'gpt-6-astra', model_mismatch: false,
+  request_effort: 'high', upstream_effort: 'high',
   status_code: 200, outcome: 'succeeded',
   before_headers: liveHeadersBefore, after_headers: liveHeadersAfter,
   response_headers: { 'X-Codex-Turn-State': [teamState], 'X-Request-Id': ['req_9f2a'], 'Set-Cookie': ['oai-did=demo-device; Path=/; HttpOnly'] },
@@ -110,7 +111,8 @@ const items = [
     after_headers: { 'Accept': ['text/event-stream'], 'Authorization': ['Bearer [REDACTED]'], 'Chatgpt-Account-Id': ['1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1'], 'Content-Type': ['application/json'], 'Cookie': ['__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device'], 'Originator': ['codex-cli'] },
     turn_state_minted: { digest: 'e4418b0c7d35', chars: 332, bytes: 249, version: 128, issued_at: at(175), fernet_like: true, decodable: true, plan_type: 'team', max_chars: 332, non_degraded: true, pooled: true } },
   record({ id: 'rec-3#1', request_id: 'rec-3', started_at: at(900), completed_at: at(893),
-    model: 'gpt-5.6-luna', requested_model: 'gpt-5.6-luna', upstream_model: 'gpt-5.6-sol', model_mismatch: true }),
+    model: 'gpt-5.6-luna', requested_model: 'gpt-5.6-luna', upstream_model: 'gpt-5.6-sol',
+    model_mismatch: true, request_effort: 'xhigh', upstream_effort: 'low' }),
   record({ id: 'rec-4#1', request_id: 'rec-4', started_at: at(1800), completed_at: at(1799),
     outcome: 'failed', status_code: 429, upstream_model: '', model_mismatch: null,
     error: '{"error":{"message":"Rate limit reached for gpt-6-astra","type":"rate_limit_error","code":"rate_limit_exceeded"}}' }),

@@ -51,8 +51,9 @@ type retryOutcome struct {
 	responseHeaders http.Header
 	// The model the retry's own response declared, read the same way a proxied
 	// response is read.
-	upstreamModel string
-	modelConflict bool
+	upstreamModel  string
+	modelConflict  bool
+	upstreamEffort string
 	// The payloads, for the detail. Both are capped at maxStoredBodyBytes.
 	requestBody   string
 	requestBytes  int
@@ -238,6 +239,7 @@ func retryOnce(ctx context.Context, authIndex, authID, model, cookie string) ret
 	var observer modelObserver
 	observer.observeBody(response.Body)
 	outcome.upstreamModel, outcome.modelConflict = observer.model(), observer.conflicted()
+	outcome.upstreamEffort = observer.effort()
 
 	if callErr != nil {
 		outcome.err = callErr.Error()
@@ -353,6 +355,7 @@ func recordRetrySeries(s retrySeries) {
 		ResponseHeaders: s.last.responseHeaders,
 		UpstreamModel:   s.last.upstreamModel,
 		ModelConflict:   s.last.modelConflict,
+		UpstreamEffort:  s.last.upstreamEffort,
 		RequestBody:     s.last.requestBody,
 		RequestBytes:    s.last.requestBytes,
 		ResponseBody:    s.last.responseBody,
