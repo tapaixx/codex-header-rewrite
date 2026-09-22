@@ -17,9 +17,12 @@ var (
 	// What a request asked is the conversation; what a response answered is the
 	// conversation too. The tool schemas are neither -- they are the same
 	// fifteen kilobytes of declarations on every single turn, and knowing the
-	// tools were present says as much as reading them again.
+	// tools were present says as much as reading them again. Usage goes the
+	// same way: this plugin does not account for tokens, and the per-item
+	// attribution a real response carries is larger than everything else in
+	// the frame put together.
 	requestContentFields  = []string{"input"}
-	responseContentFields = []string{"output", "tools"}
+	responseContentFields = []string{"output", "tools", "usage"}
 )
 
 const (

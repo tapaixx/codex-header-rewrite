@@ -29,7 +29,7 @@ func TestTheConversationIsMaskedAndTheRestSurvives(t *testing.T) {
 	if strings.Contains(maskedResponse, "the private answer") {
 		t.Fatalf("the answer survived masking: %s", maskedResponse)
 	}
-	for _, keep := range []string{"resp_1", "gpt-6-astra", "input_tokens"} {
+	for _, keep := range []string{"resp_1", "gpt-6-astra"} {
 		if !strings.Contains(maskedResponse, keep) {
 			t.Fatalf("masking dropped %q: %s", keep, maskedResponse)
 		}
@@ -125,7 +125,13 @@ func TestOnlyInformativeFramesSurvive(t *testing.T) {
 		t.Fatalf("tools should be masked by name, not dropped:\n%s", masked)
 	}
 	// Kept whole apart from output: the model, the settings, the usage.
-	for _, keep := range []string{`"model":"gpt-6-astra"`, `"effort":"low"`, `"status":"completed"`, `"input_tokens":21190`} {
+	if strings.Contains(masked, `"input_tokens":21190`) {
+		t.Fatalf("usage should be masked:\n%s", masked)
+	}
+	if !strings.Contains(masked, `"usage":"[MASKED `) {
+		t.Fatalf("usage should be masked by name, not dropped:\n%s", masked)
+	}
+	for _, keep := range []string{`"model":"gpt-6-astra"`, `"effort":"low"`, `"status":"completed"`} {
 		if !strings.Contains(masked, keep) {
 			t.Fatalf("masking dropped %s:\n%s", keep, masked)
 		}
@@ -188,21 +194,21 @@ func TestMaskingReachesAnUnframedStream(t *testing.T) {
 
 // The two directions mask different things, and only what each is told to.
 func TestMaskedFieldsPerDirection(t *testing.T) {
-	both := `{"input":["ask"],"output":["answer"],"tools":[{"name":"exec"}],"model":"gpt-6-astra"}`
+	both := `{"input":["ask"],"output":["answer"],"tools":[{"name":"exec"}],"usage":{"input_tokens":7},"model":"gpt-6-astra"}`
 
 	request := string(maskRequestBody([]byte(both)))
 	if !strings.Contains(request, `"input":"[MASKED `) {
 		t.Fatalf("a request masks input: %s", request)
 	}
 	// A request body's own tools are left alone: the ask was for the response's.
-	for _, keep := range []string{`"output":["answer"]`, `"tools":[{"name":"exec"}]`, `"model":"gpt-6-astra"`} {
+	for _, keep := range []string{`"output":["answer"]`, `"tools":[{"name":"exec"}]`, `"input_tokens":7`, `"model":"gpt-6-astra"`} {
 		if !strings.Contains(request, keep) {
 			t.Fatalf("a request should keep %s: %s", keep, request)
 		}
 	}
 
 	response := string(maskResponseBody([]byte(both)))
-	for _, name := range []string{"output", "tools"} {
+	for _, name := range []string{"output", "tools", "usage"} {
 		if !strings.Contains(response, `"`+name+`":"[MASKED `) {
 			t.Fatalf("a response masks %s: %s", name, response)
 		}

@@ -37,7 +37,7 @@ const unframedResponseBody =
   'event: response.output_item.done' +
   'data: {"masked":"406 bytes","type":"response.output_item.done"}' +
   'event: response.completed' +
-  'data: {"type":"response.completed","sequence_number":13,"response":{"id":"resp_68f2","object":"response","status":"completed","model":"gpt-6-astra","output":"[MASKED 2210 bytes]","service_tier":"default","usage":{"input_tokens":21190,"output_tokens":11,"total_tokens":21201}}}';
+  'data: {"type":"response.completed","sequence_number":13,"response":{"id":"resp_68f2","object":"response","status":"completed","model":"gpt-6-astra","output":"[MASKED 2210 bytes]","service_tier":"default","usage":"[MASKED 2104 bytes]"}}';
 
 const responseBody = [
   'event: response.created',
@@ -178,7 +178,7 @@ const stub = `
     }
     if (path.endsWith("/history/body")) {
       const found = F.bodies[q.get("id")];
-      return json({ id: q.get("id"), found: Boolean(found), masked_request_fields: ["input"], masked_response_fields: ["output", "tools"],
+      return json({ id: q.get("id"), found: Boolean(found), masked_request_fields: ["input"], masked_response_fields: ["output", "tools", "usage"],
         max_stored_bytes: 262144, request_body: "", response_body: "", request_bytes: 0, response_bytes: 0, ...(found || {}) });
     }
     if (path.endsWith("/history/clear")) return json({ cleared: authIndex });

@@ -24,7 +24,7 @@ await page.route('http://panel.test/**', async route => {
   if (u.pathname.endsWith('/history/body')) {
     bodyCalls++;
     assert.equal(u.searchParams.get('id'),'rec-1');
-    d = {id:'rec-1',found:true,masked_request_fields:['input'],masked_response_fields:['output','tools'],max_stored_bytes:262144,
+    d = {id:'rec-1',found:true,masked_request_fields:['input'],masked_response_fields:['output','tools','usage'],max_stored_bytes:262144,
          request_body:'{"model":"gpt-6-astra","input":"[MASKED 4096 bytes]","tools":[]}', request_bytes:400000,
          response_body:'event: response.completed\ndata: {"type":"response.completed","sequence_number":13,"stream":true,"response":{"model":"gpt-6-astra","output":"[MASKED 88 bytes]"}}\n\n',
          response_bytes:1024};
@@ -69,8 +69,10 @@ try {
   assert.equal(await page.locator('#detailPane-reqb').isVisible(), true);
   assert.equal(await page.locator('#detailPane-state').isVisible(), false);
   const reqText = await page.locator('#detailPane-reqb .body-view').textContent();
-  assert.ok(reqText.includes('\n  "model": "gpt-6-astra"'), 'json is pretty printed: '+JSON.stringify(reqText.slice(0,80)));
+  assert.ok(reqText.includes('"model": "gpt-6-astra"'), 'json is formatted: '+JSON.stringify(reqText.slice(0,80)));
   assert.ok(reqText.includes('[MASKED 4096 bytes]'), 'the masked field is shown as masked');
+  // The body is a tree of native details, so it folds.
+  assert.ok((await page.locator('#detailPane-reqb details.jnode').count()) > 0, 'the body renders as a tree');
   const reqMeta = await page.locator('#detailPane-reqb .body-meta').textContent();
   assert.ok(reqMeta.includes('input') && reqMeta.includes('已遮蔽'), reqMeta);
   assert.ok(reqMeta.includes('已截断'), 'a 400 KB body over the cap is flagged: '+reqMeta);
@@ -79,13 +81,37 @@ try {
   await page.locator('.detail-tab[data-pane="resb"]').click();
   const resText = await page.locator('#detailPane-resb .body-view').textContent();
   assert.ok(resText.startsWith('event: response.completed'), 'sse framing survives: '+JSON.stringify(resText.slice(0,40)));
-  assert.ok(resText.includes('\n  "type": "response.completed"'), 'the data payload is formatted');
+  assert.ok(resText.includes('"type": "response.completed"'), 'the data payload is formatted');
+
+  // Expand and collapse act on the pane they belong to, and folding hides
+  // what was folded.
+  const open = () => page.locator('#detailPane-resb details.jnode[open]').count();
+  const height = () => page.evaluate(() => Math.round(document.querySelector('#detailPane-resb .body-view').scrollHeight));
+  const all = await page.locator('#detailPane-resb details.jnode').count();
+  assert.ok(all > 0, 'the stream renders as trees');
+  const tall = await height();
+  await page.locator('#detailPane-resb [data-body-act="collapse"]').click();
+  assert.equal(await open(), 0, 'collapse closes every node');
+  const short = await height();
+  assert.ok(short < tall, `folding should shorten the pane: ${short} vs ${tall}`);
+  await page.locator('#detailPane-resb [data-body-act="expand"]').click();
+  assert.equal(await open(), all, 'expand opens every node');
+  assert.equal(await height(), tall, 'expanding restores the height');
+  // Indentation must not leave blank lines: whitespace between the tags of a
+  // details element renders as text.
+  assert.equal(await page.evaluate(() => {
+    let n = 0;
+    for (const d of document.querySelectorAll('#detailPane-resb details.jnode')) {
+      for (const c of d.childNodes) if (c.nodeType === 3 && c.textContent.length && !c.textContent.trim()) n += 1;
+    }
+    return n;
+  }), 0, 'stray whitespace nodes inside details');
   assert.ok(!(await page.locator('#detailPane-resb .body-meta').textContent()).includes('已截断'), 'a 1 KB body is not truncated');
 
   // Bodies are syntax coloured: keys, strings, numbers, and the masked value
   // called out on its own.
   const classes = await page.$$eval('#detailPane-resb .body-view span', els => [...new Set(els.map(e=>e.className))].sort());
-  assert.deepEqual(classes, ['jb','jk','jm','jn','jp','js'], JSON.stringify(classes));
+  for (const want of ['jk','jm','jn','jp','js']) assert.ok(classes.includes(want), `missing ${want} in ${JSON.stringify(classes)}`);
 
   // A stream whose framing the host dropped is put back on separate lines for
   // display, and still coloured.
@@ -93,9 +119,12 @@ try {
     document.querySelector('#detailResponseBody').innerHTML =
       bodyPaneHTML('Response Body', 'event: response.createddata: {"type":"response.created","response":{"model":"gpt-6-astra"}}', 120, ['output','tools'], 262144);
   });
-  const unframed = await page.locator('#detailPane-resb .body-view').textContent();
-  assert.ok(unframed.startsWith('event: response.created\ndata: {'), 'framing restored: '+JSON.stringify(unframed.slice(0,40)));
+  // The framing is put back as its own rows rather than as literal newlines,
+  // so read the rows.
+  const rows = await page.locator('#detailPane-resb .body-view .jevent').allTextContents();
+  assert.deepEqual(rows.map((r) => r.trim()), ['event: response.created', 'data:'], JSON.stringify(rows));
   assert.ok((await page.locator('#detailPane-resb .body-view .jk').count()) > 0, 'still coloured');
+  assert.ok((await page.locator('#detailPane-resb .body-view details.jnode').count()) > 0, 'and foldable');
 
   // It stays visible whichever tab is open.
   assert.equal(await stateBlock.isVisible(), true, 'turn state still visible on the body tab');
@@ -137,10 +166,17 @@ try {
   const rendered = await page.evaluate((body) => {
     const host = document.createElement('div');
     host.innerHTML = renderBody(body);
-    return host.textContent;
+    return {
+      text: host.textContent,
+      keys: [...host.querySelectorAll('.jk')].map((e) => e.textContent),
+      nodes: host.querySelectorAll('details.jnode').length,
+    };
   }, tricky);
-  assert.ok(/\n\s+"type": "response\.created"/.test(rendered), 'formatted: '+JSON.stringify(rendered.slice(0,80)));
-  assert.ok(rendered.includes('base64-encoded `data:` URL'), 'the literal marker survives inside the string');
+  assert.ok(rendered.nodes > 0, 'the payload became a tree: '+JSON.stringify(rendered.text.slice(0,80)));
+  for (const key of ['"type"', '"response"', '"model"', '"tools"']) {
+    assert.ok(rendered.keys.includes(key), `key ${key} missing from ${JSON.stringify(rendered.keys)}`);
+  }
+  assert.ok(rendered.text.includes('base64-encoded `data:` URL'), 'the literal marker survives inside the string');
 
   assert.deepEqual(errors,[]);
   console.log('detail tabs: passed');

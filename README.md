@@ -71,7 +71,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.21.7.so` | `codex-header-rewrite` | `0.21.7` |
+| `codex-header-rewrite-v0.21.8.so` | `codex-header-rewrite` | `0.21.8` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -84,7 +84,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.21.7.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.21.8.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
@@ -150,6 +150,11 @@ curl -s -H "Authorization: Bearer <management-key>" \
 
 历史详情的抽屉里，**X-Codex-Turn-State**（客户端回带与上游返回的 state 解析）常驻在标签条**上方**，切换标签页时不会消失 —— 它是判断这次请求为什么这样的前提，不该藏在某一页后面。下面四个标签页顺序固定：**Request Header**（改写差异）、**Request Body**、**Response Header**、**Response Body**。标签条是 sticky 的，向下滚动时会钉在抽屉顶部。
 
+**Body 可折叠（v0.21.8）**：格式化后的 JSON 是一棵可折叠的树，用的是原生 `<details>` —— 折叠交给浏览器，所以键盘可达、页内搜索能找到、也不存在一份需要和 DOM 对齐的开合状态。一个响应帧能嵌六层深，而读的人只要其中一支。
+
+- 节点前两层默认展开：帧本身和它的 `response` 对象正是打开这一页要看的东西，把它们折起来等于每次都要点一下才看得到模型。更深处**超过 10 个子项**的节点默认折叠，一个长数组就只占一行 `▸ [ … 42 项 ]`。
+- 每个 body 面板右上角有「全部展开 / 全部折叠 / 复制原文」。复制给的是**记录下来的原文**，不是渲染结果 —— 树好读但不好粘。
+
 Request Header 标签页里「未改动的 N 个 Header」默认展开 —— 它折叠是因为从前详情是一条长列、这块压在最底下；现在它独占一个标签页，没有需要跳过的内容了。
 
 **v0.21.5 修复：response body 里 `data:` 之后的 JSON 不格式化。** 显示时原本按 `event:` / `data:` 标记插入换行，但真实 Codex 请求的工具描述里就含有字面量 `` `data:` URL `` —— 换行被插进了 JSON 字符串中间，整条 JSON 从那里断开，后面全都不再格式化。现在改为按括号配对定位每个载荷（与 Go 侧同样的做法，字符串与转义都正确跳过），输入的每一个字节仍然原样出现一次。
@@ -161,16 +166,16 @@ Request Header 标签页里「未改动的 N 个 Header」默认展开 —— �
 | 方向 | 遮蔽的字段 |
 |---|---|
 | 请求体 | `input` |
-| 响应体（v0.21.7 起含 `tools`） | `output`、`tools` |
+| 响应体 | `output`、`tools`（v0.21.7 起）、`usage`（v0.21.8 起） |
 
-`tools` 之所以要遮：那是每一轮都重复一遍的同一份工具声明，约 15 KB，知道「带了工具」和把声明再读一遍信息量一样。详情里的遮蔽说明会列出当次实际遮掉的字段名。
+`tools` 之所以要遮：那是每一轮都重复一遍的同一份工具声明，约 15 KB，知道「带了工具」和把声明再读一遍信息量一样。`usage` 同理：这个插件不做用量核算，而真实响应里的逐项归因比整个帧的其余部分加起来还长。详情里的遮蔽说明会列出当次实际遮掉的字段名。
 
 **响应体按帧遮蔽（v0.21.6）**：只有三类帧因为它们说的话被保留，其余整个载荷替换掉：
 
 | 帧 | 处理 | 保留的理由 |
 |---|---|---|
-| `response.created` | 保留，`output` 与 `tools` 仍遮 | 模型、reasoning、service_tier 都在这里 |
-| 终局帧（`response.completed` / `done` / `failed` / `incomplete` / `cancelled`） | 保留，`output` 与 `tools` 仍遮 | 终局声明是模型判定优先采用的那条，还带 usage 与最终状态 |
+| `response.created` | 保留，按字段遮蔽后 | 模型、reasoning、service_tier、store、temperature 都在这里 |
+| 终局帧（`response.completed` / `done` / `failed` / `incomplete` / `cancelled`） | 保留，按字段遮蔽后 | 终局声明是模型判定优先采用的那条，还带最终状态 |
 | `error` / `response.error` | 保留 | 上游报错原文，短且是唯一的事故记录 |
 | 其余全部 | 载荷换成 `{"type":…,"masked":"N bytes"}` | `in_progress` 只是把 created 重复一遍；`output_text.delta` / `output_item.*` / `content_part.*` 是正在流出的答案 |
 

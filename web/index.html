@@ -1755,8 +1755,32 @@ body[data-workspace="history"] #historyPanel{grid-row:3!important}
   background:var(--sunk);font-family:var(--mono);font-size:11px;line-height:1.55;
   white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2
 }
-.body-meta{display:flex;flex-wrap:wrap;gap:4px 10px;margin:0 0 7px;font-size:10.5px;color:var(--text-mute)}
+.body-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:0 0 7px;font-size:10.5px;color:var(--text-mute)}
 .body-meta .warn-text{color:var(--warn)}
+.body-meta .spacer{flex:1 1 auto}
+.body-meta .body-act{min-height:26px;padding:0 8px;font-size:10.5px;border-radius:6px}
+/* The tree: one row per value, children indented behind a guide line so a deep
+   frame can be followed by eye. Rows are dense because a body is machine
+   output, not prose. */
+.json-tree{display:block}
+.json-tree .jrow,.json-tree summary{
+  display:block;padding:0 0 0 1px;white-space:pre-wrap;overflow-wrap:anywhere
+}
+.json-tree summary{list-style:none;cursor:pointer;border-radius:4px}
+.json-tree summary::-webkit-details-marker{display:none}
+.json-tree summary::before{
+  content:"▾";display:inline-block;width:1em;margin-left:-1em;
+  color:var(--text-mute);font-size:.85em
+}
+.json-tree details:not([open])>summary::before{content:"▸"}
+.json-tree summary:hover{background:var(--raised)}
+.json-tree summary:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.json-tree .jchildren{padding-left:1.15em;border-left:1px dashed var(--line);margin-left:.15em}
+.json-tree .jnode{display:block;padding-left:1em}
+.json-tree .jfold{color:var(--text-mute)}
+.json-tree details[open]>summary .jfold{display:none}
+.json-tree .jevent{margin-top:5px;color:var(--text-soft)}
+.json-tree .jevent:first-child{margin-top:0}
 /* Syntax colour for a recorded payload. The tokens are the panel's existing
    diff semantics rather than a new palette, so the two themes stay in step:
    keys take the accent, strings the added colour, numbers the overridden one.
@@ -3504,6 +3528,7 @@ function showRecord(record) {
     </div>
   </div>`);
   wireDetailTabs($("drawerBody"));
+  wireBodyControls($("drawerBody"));
   decodePendingCards($("drawerBody"));
   loadRecordBodies(record);
 }
@@ -3543,6 +3568,28 @@ function wireDetailTabs(root) {
   });
 }
 
+// Folding is the browser's, so expanding or collapsing everything is just
+// setting `open` on the nodes in one pane. Copy hands back the recorded text
+// rather than the rendering: a tree reads well and pastes badly, and what a
+// reader wants to paste elsewhere is what was actually stored.
+function wireBodyControls(root) {
+  if (!root) return;
+  root.addEventListener("click", (event) => {
+    const button = event.target.closest?.("[data-body-act]");
+    if (!button) return;
+    const pane = button.closest(".history-detail-section");
+    const view = pane?.querySelector(".body-view");
+    if (!view) return;
+    if (button.dataset.bodyAct === "copy") {
+      const text = store.recordBodies?.[view.closest(".detail-pane")?.id] || view.textContent;
+      navigator.clipboard?.writeText(text).then(() => toast("已复制原文"), () => toast("复制失败", true));
+      return;
+    }
+    const open = button.dataset.bodyAct === "expand";
+    for (const node of view.querySelectorAll("details.jnode")) node.open = open;
+  });
+}
+
 const BYTE_UNITS = ["B", "KB", "MB", "GB"];
 function formatBytes(bytes) {
   let value = Number(bytes) || 0;
@@ -3551,27 +3598,78 @@ function formatBytes(bytes) {
   return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${BYTE_UNITS[unit]}`;
 }
 
-// Colours a pretty-printed JSON document. The input is this function's own
-// output from JSON.stringify, so the scan only has to recognise tokens, not
-// validate them; every token is escaped before it is wrapped.
-function paintJSON(text) {
-  const token = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
-  let out = "";
-  let last = 0;
-  let match;
-  while ((match = token.exec(text))) {
-    out += esc(text.slice(last, match.index));
-    if (match[1] !== undefined) {
-      const cls = match[2] ? "jk" : (/^"\[MASKED /.test(match[1]) ? "jm" : "js");
-      out += `<span class="${cls}">${esc(match[1])}</span>${match[2] ? esc(match[2]) : ""}`;
-    } else if (match[3] !== undefined) {
-      out += `<span class="jb">${esc(match[3])}</span>`;
-    } else {
-      out += `<span class="jn">${esc(match[4])}</span>`;
+// A recorded body is rendered as a tree of native <details>, not as one block
+// of pre-formatted text: a response frame nests six levels deep and the reader
+// is after one branch of it. Using <details> means the folding is the
+// browser's -- keyboard reachable, findable by the page search, and with no
+// open/closed state of ours to keep in step with the DOM.
+const JSON_FOLD_THRESHOLD = 10;
+
+function jsonScalar(value) {
+  if (value === null) return '<span class="jb">null</span>';
+  switch (typeof value) {
+    case "boolean": return `<span class="jb">${value}</span>`;
+    case "number": return `<span class="jn">${esc(String(value))}</span>`;
+    default: {
+      const text = JSON.stringify(value);
+      // The mask is the one string in the document that is not what the
+      // upstream sent, so it is called out rather than coloured as a value.
+      const cls = /^"\[MASKED /.test(text) ? "jm" : "js";
+      return `<span class="${cls}">${esc(text)}</span>`;
     }
-    last = match.index + match[0].length;
   }
-  return out + esc(text.slice(last));
+}
+
+function jsonKey(key) {
+  return key === null ? "" : `<span class="jk">${esc(JSON.stringify(String(key)))}</span><span class="jp">:</span> `;
+}
+
+// depth decides nothing about correctness, only about what opens on arrival.
+// A big node starts folded so a long array is one line until it is asked for,
+// but not in the first two levels: the frame and its response object are what
+// the pane was opened to read, and folding those means a click to see the
+// model every time.
+function jsonNode(key, value, last, depth) {
+  const comma = last ? "" : '<span class="jp">,</span>';
+  if (value === null || typeof value !== "object") {
+    return `<div class="jrow">${jsonKey(key)}${jsonScalar(value)}${comma}</div>`;
+  }
+  const array = Array.isArray(value);
+  const entries = array ? value.map((item, index) => [index, item]) : Object.entries(value);
+  const [open, close] = array ? ["[", "]"] : ["{", "}"];
+  if (!entries.length) {
+    return `<div class="jrow">${jsonKey(key)}<span class="jp">${open}${close}</span>${comma}</div>`;
+  }
+  const folded = entries.length > JSON_FOLD_THRESHOLD && depth > 1;
+  const count = `${entries.length} ${array ? "项" : "字段"}`;
+  // Written without whitespace between the tags on purpose: any indentation
+  // here becomes a text node inside <details>, and those render as blank lines
+  // between a node and its children.
+  const children = entries.map(([k, v], index) => jsonNode(array ? null : k, v, index === entries.length - 1, depth + 1)).join("");
+  return `<details class="jnode"${folded ? "" : " open"}>` +
+    `<summary>${jsonKey(key)}<span class="jp">${open}</span><span class="jfold"> … ${esc(count)} </span>` +
+    `<span class="jfold jp">${close}</span>${folded ? comma : ""}</summary>` +
+    `<div class="jchildren">${children}</div>` +
+    `<div class="jrow jtail"><span class="jp">${close}</span>${comma}</div>` +
+    `</details>`;
+}
+
+function jsonTree(text) {
+  let value;
+  try { value = JSON.parse(text); } catch { return null; }
+  return `<div class="json-tree">${jsonNode(null, value, true, 0)}</div>`;
+}
+
+// The framing around a payload: event lines, blank lines, a [DONE] sentinel.
+function renderSSEFraming(chunk) {
+  const text = chunk.trim();
+  if (!text) return "";
+  return text.split(/\n+/).map((raw) => {
+    const line = raw.trim();
+    const match = /^(event:|data:)\s*(.*)$/.exec(line);
+    if (!match) return `<div class="jrow">${esc(line)}</div>`;
+    return `<div class="jrow jevent"><span class="jp">${esc(match[1])}</span>${match[2] ? " " + esc(match[2]) : ""}</div>`;
+  }).join("");
 }
 
 // firstJSONText finds the first balanced JSON value at or after `from`,
@@ -3608,18 +3706,6 @@ function firstJSONText(text, from) {
   return null;
 }
 
-// The framing around a payload: event lines, blank lines, a [DONE] sentinel.
-function renderSSEFraming(chunk) {
-  const text = chunk.trim();
-  if (!text) return "";
-  return text.split(/\n+/).map((raw) => {
-    const line = raw.trim();
-    const match = /^(event:|data:)\s*(.*)$/.exec(line);
-    if (!match) return esc(line);
-    return `<span class="jp">${esc(match[1])}</span>${match[2] ? " " + esc(match[2]) : ""}`;
-  }).join("\n");
-}
-
 // Renders an SSE body by locating each payload rather than by splitting lines.
 // Splitting on the marker text is not safe: a tool description in a real Codex
 // request contains the literal "data:", so inserting a break before every
@@ -3637,33 +3723,31 @@ function renderSSE(text) {
       scan = marker + "data:".length;
       continue;
     }
-    const raw = text.slice(span.start, span.end);
-    let pretty;
-    try {
-      pretty = JSON.stringify(JSON.parse(raw), null, 2);
-    } catch {
+    const tree = jsonTree(text.slice(span.start, span.end));
+    if (!tree) {
       // Balanced but not JSON, such as the [DONE] sentinel.
       scan = marker + "data:".length;
       continue;
     }
     parts.push(renderSSEFraming(text.slice(cursor, marker)));
-    parts.push(`<span class="jp">data:</span> ${paintJSON(pretty)}`);
+    parts.push(`<div class="jrow jevent"><span class="jp">data:</span></div>${tree}`);
     cursor = span.end;
     scan = span.end;
   }
   parts.push(renderSSEFraming(text.slice(cursor)));
-  return parts.filter((part) => part !== "").join("\n");
+  return parts.filter((part) => part !== "").join("");
 }
 
 // A body is JSON, an SSE stream of JSON, or something else. The first two are
-// formatted and coloured; the third is shown as it came rather than guessed at.
+// rendered as trees; the third is shown as it came rather than guessed at.
 function renderBody(text) {
   const trimmed = String(text || "").trim();
   if (!trimmed) return "";
   if (trimmed[0] === "{" || trimmed[0] === "[") {
-    try { return paintJSON(JSON.stringify(JSON.parse(trimmed), null, 2)); } catch { /* fall through */ }
+    const tree = jsonTree(trimmed);
+    if (tree) return tree;
   }
-  if (!/(event:|data:)/.test(trimmed)) return esc(trimmed);
+  if (!/(event:|data:)/.test(trimmed)) return `<div class="jrow">${esc(trimmed)}</div>`;
   return renderSSE(trimmed);
 }
 
@@ -3678,8 +3762,12 @@ function bodyPaneHTML(label, text, bytes, maskedFields, maxStored) {
     <div class="body-meta">
       ${(maskedFields || []).length ? `<span>${(maskedFields || []).map((f) => `<code>${esc(f)}</code>`).join("、")} 已遮蔽</span>` : ""}
       ${truncated ? `<span class="warn-text">已截断，只保留前 ${esc(formatBytes(maxStored))}</span>` : ""}
+      <span class="spacer"></span>
+      <button type="button" class="quiet body-act" data-body-act="expand">全部展开</button>
+      <button type="button" class="quiet body-act" data-body-act="collapse">全部折叠</button>
+      <button type="button" class="quiet body-act" data-body-act="copy">复制原文</button>
     </div>
-    <pre class="body-view">${renderBody(text)}</pre>`;
+    <div class="body-view">${renderBody(text)}</div>`;
 }
 
 // Bodies are fetched per record rather than carried in the list: a page of
@@ -3694,6 +3782,7 @@ async function loadRecordBodies(record) {
     // The reader may have closed this record or opened another meanwhile.
     if (store.selectedRecord !== id) return;
     const max = payload.max_stored_bytes || 0;
+    store.recordBodies = { "detailPane-reqb": payload.request_body || "", "detailPane-resb": payload.response_body || "" };
     request.innerHTML = bodyPaneHTML("Request Body", payload.request_body, payload.request_bytes, payload.masked_request_fields, max);
     response.innerHTML = bodyPaneHTML("Response Body", payload.response_body, payload.response_bytes, payload.masked_response_fields, max);
   } catch (error) {
