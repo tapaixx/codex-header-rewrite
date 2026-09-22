@@ -3021,7 +3021,7 @@ function diffHTML(before, after, emptyText = "暂无 Header 数据", animate = f
   }
   return { count: changed.length, hasRows: true, html: `<div class="diff">
     ${changed.map((row, index) => diffRowHTML(row, index, animate)).join("")}
-    ${unchanged.length ? `<details>
+    ${unchanged.length ? `<details open>
       <summary>未改动的 ${unchanged.length} 个 Header</summary>
       ${unchanged.map((row, index) => diffRowHTML(row, index, false)).join("")}
     </details>` : ""}

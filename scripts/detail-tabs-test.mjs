@@ -94,6 +94,13 @@ try {
   assert.ok((await page.locator('#detailPane-resh').textContent()).includes('X-Codex-Turn-State'));
   await page.locator('.detail-tab[data-pane="reqh"]').click();
   assert.ok((await page.locator('#detailPane-reqh').textContent()).includes('X-Old'));
+  // The unchanged headers open with the pane. They were folded away when the
+  // detail was one long column and this block sat below everything else; on a
+  // tab of its own there is nothing to scroll past.
+  const unchanged = page.locator('#detailPane-reqh details');
+  assert.equal(await unchanged.count(), 1);
+  assert.equal(await unchanged.evaluate((el) => el.open), true, 'unchanged headers start open');
+  assert.equal(await page.locator('#detailPane-reqh details .diff-row').first().isVisible(), true);
 
   assert.deepEqual(errors,[]);
   console.log('detail tabs: passed');
