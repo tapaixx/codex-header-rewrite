@@ -179,6 +179,7 @@ func saveRule(rule headerRule) (headerRule, error) {
 		return rule, err
 	}
 	state.rules[normalized.AuthIndex] = normalized
+	rescheduleProbe(normalized.AuthIndex)
 	return normalized, nil
 }
 func deleteRule(authIndex string) error {
@@ -191,6 +192,7 @@ func deleteRule(authIndex string) error {
 		return err
 	}
 	delete(state.rules, authIndex)
+	rescheduleProbe(authIndex)
 	return nil
 }
 
@@ -416,6 +418,7 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 	// state under the new one, not the old one.
 	session := applySetCookies(attempt.clientCookie, responseHeaders)
 	rememberLiveSessionLocked(attempt, session)
+	noteQuotaLocked(attempt.AuthIndex, responseHeaders)
 	// A frozen pool takes nothing in. The state is still classified so the
 	// history row says what the upstream sent; it just does not enter the pool.
 	if rule, ok := state.rules[attempt.AuthIndex]; !ok || rule.poolMaintained() {

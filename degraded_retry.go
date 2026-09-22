@@ -245,6 +245,9 @@ func retryOnce(ctx context.Context, authIndex, authID, model, cookie string) ret
 	outcome.upstreamModel, outcome.modelConflict = observer.model(), observer.conflicted()
 	outcome.upstreamEffort = observer.effort()
 	outcome.session = applySetCookies(cookie, response.Headers)
+	if callErr == nil {
+		noteQuota(authIndex, response.Headers)
+	}
 
 	if callErr != nil {
 		outcome.err = callErr.Error()

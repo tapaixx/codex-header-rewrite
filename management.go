@@ -28,6 +28,7 @@ const (
 	apiTestPath            = "/codex-header-rewrite/test"
 	apiTurnStateDecodePath = "/codex-header-rewrite/turn-state/decode"
 	apiTurnStatesPath      = "/codex-header-rewrite/turn-states"
+	apiQuotaPath           = "/codex-header-rewrite/quota"
 )
 
 type credentialView struct {
@@ -56,6 +57,7 @@ func registerManagement() managementRegistration {
 		{Method: http.MethodPost, Path: apiTestPath, Description: "Run a header rewrite test request"},
 		{Method: http.MethodPost, Path: apiTurnStateDecodePath, Description: "Decode an X-Codex-Turn-State envelope"},
 		{Method: http.MethodGet, Path: apiTurnStatesPath, Description: "List the newest turn state per credential and model"},
+		{Method: http.MethodGet, Path: apiQuotaPath, Description: "The credential's allowance as the upstream last reported it"},
 	}, Resources: []resourceRoute{{Path: resourceIndexPath, Menu: pluginName, Description: "Codex credential header rewrite and history"}}}
 }
 
@@ -258,6 +260,16 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"cleared": strings.TrimSpace(body.AuthIndex)}), nil
+	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiQuotaPath):
+		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
+		if authIndex == "" {
+			return jsonError(http.StatusBadRequest, "auth_index is required"), nil
+		}
+		quota, found := credentialQuotaFor(authIndex)
+		if !found {
+			return jsonResponse(http.StatusOK, map[string]any{"auth_index": authIndex, "quota": nil}), nil
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"auth_index": authIndex, "quota": quota}), nil
 	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiTurnStatesPath):
 		// One row per credential and model: a newer pooled state for the same pair
 		// replaces the older one, so this is exactly the set a client could

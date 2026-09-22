@@ -1925,6 +1925,24 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
 .chip-add::placeholder{color:var(--text-mute)}
 .chip-add:disabled{cursor:not-allowed}
 
+/* The credential's allowance on one line under the top bar: two bars for the
+   five-hour and weekly windows, what remains, when each resets, and when the
+   upstream last said so. It is read from responses, never requested. */
+.topbar{flex-wrap:wrap}
+.topbar-quota{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;padding:0 22px 8px;font-size:var(--fs-xs);color:var(--text-mute)}
+.quota-title{font-weight:600;color:var(--text-soft)}
+/* Both items are the same three columns -- label, bar, reading -- so the two
+   bars start at the same offset whether they sit side by side or stacked. */
+.quota-item{display:inline-grid;grid-template-columns:3.4em 96px minmax(15ch,auto);align-items:center;gap:8px;white-space:nowrap}
+.quota-label{color:var(--text-soft);font-weight:600}
+.qbar{width:96px;height:6px;border-radius:var(--r-pill);background:var(--sunk);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.qbar i{display:block;height:100%;border-radius:inherit;background:var(--set);transition:width var(--t-move) var(--ease),background var(--t-fade) var(--ease)}
+.quota-item[data-tone="low"] .qbar i{background:var(--over)}
+.quota-item[data-tone="out"] .qbar i{background:var(--gone)}
+#quotaRefresh{width:24px;height:24px;min-height:24px;padding:0}
+/* Stacked on a phone, both rows start at the edge so the two bars line up;
+   the 5H / Weekly labels say what the title said. */
+@media (max-width:820px){.topbar-quota{padding:0 10px 8px;gap:4px 12px}.quota-title{display:none}.quota-item{grid-template-columns:3.4em 1fr minmax(15ch,auto)}}
 /* The workspace switcher is a horizontal menu, not a tab strip: each item is
    a padded slot with icon and label, the current one (and a hovered one) is
    underlined across the full slot, one hairline runs under the row. */
@@ -2209,6 +2227,13 @@ html[data-theme="dark"]{color-scheme:dark!important}
     <span class="chip num" id="versionChip" hidden title="当前实际响应此页面的插件版本"></span>
     <button class="primary toolbar-action" id="keyBtn" title="管理密钥" aria-label="管理密钥"><svg class="i"><use href="#i-key"/></svg><span>管理密钥</span></button>
     <button class="toolbar-action toolbar-danger-soft" id="cleanupBtn" title="清理宿主中已不存在凭证的遗留数据" aria-label="清理遗留"><svg class="i"><use href="#i-eraser"/></svg><span>清理遗留</span></button>
+  </div>
+  <div class="topbar-quota" id="quotaBar" hidden>
+    <span class="quota-title">配额</span>
+    <span class="quota-item" id="quotaPrimary"><span class="quota-label">5H</span><span class="qbar"><i></i></span><span class="quota-text num"></span></span>
+    <span class="quota-item" id="quotaSecondary"><span class="quota-label">Weekly</span><span class="qbar"><i></i></span><span class="quota-text num"></span></span>
+    <span class="muted num" id="quotaObserved"></span>
+    <button class="quiet icon" id="quotaRefresh" type="button" title="重新读取配额" aria-label="重新读取配额"><svg class="i"><use href="#i-refresh"/></svg></button>
   </div>
 </header>
 
@@ -3010,7 +3035,49 @@ async function loadCredentials() {
     icon.classList.remove("spin");
   }
 }
+/* ---------- credential quota ---------------------------------------------
+   The upstream reports the allowance on every response; the plugin keeps the
+   newest reading per credential and this shows it. Refresh re-reads what the
+   plugin has -- it never spends a request to ask. */
+function quotaResetText(iso) {
+  if (!iso) return "";
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  if (at.getTime() - Date.now() <= 0) return "已重置";
+  const sameDay = at.toDateString() === new Date().toDateString();
+  const clock = at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return sameDay ? `${clock} 重置` : `${at.toLocaleDateString(undefined, { month: "numeric", day: "numeric" })} ${clock} 重置`;
+}
+function renderQuota(quota) {
+  const bar = $("quotaBar");
+  if (!bar) return;
+  if (!quota) { bar.hidden = true; return; }
+  const fill = (id, used, resetAt) => {
+    const item = $(id);
+    const left = Math.max(0, Math.min(100, 100 - Number(used || 0)));
+    item.querySelector(".qbar i").style.width = `${left}%`;
+    item.dataset.tone = left <= 5 ? "out" : (left <= 20 ? "low" : "");
+    const reset = quotaResetText(resetAt);
+    item.querySelector(".quota-text").textContent = `剩 ${Math.round(left)}%${reset ? " · " + reset : ""}`;
+    item.querySelector(".qbar").setAttribute("title", `已用 ${used}%`);
+  };
+  fill("quotaPrimary", quota.primary_used_percent, quota.primary_reset_at);
+  fill("quotaSecondary", quota.secondary_used_percent, quota.secondary_reset_at);
+  $("quotaObserved").textContent = quota.observed_at ? formatAge(Math.max(0, Math.round((Date.now() - new Date(quota.observed_at)) / 1000))) : "";
+  bar.hidden = false;
+}
+async function loadQuota() {
+  const epoch = store.selectionEpoch;
+  if (!store.selected) { renderQuota(null); return; }
+  try {
+    const payload = await api(`/quota?auth_index=${encodeURIComponent(store.selected)}`);
+    if (epoch !== store.selectionEpoch) return;
+    renderQuota(payload.quota || null);
+  } catch { if (epoch === store.selectionEpoch) renderQuota(null); }
+}
+$("quotaRefresh")?.addEventListener("click", () => loadQuota());
 async function selectCredential(authIndex) {
+  renderQuota(null);
   const epoch = ++store.selectionEpoch;
   store.selected = authIndex;
   store.rule = null;
@@ -3056,7 +3123,7 @@ async function selectCredential(authIndex) {
   renderCredentials();
   const cred = store.creds.find((item) => item.auth_index === authIndex);
   $("ruleTitle").textContent = "Header 规则";
-  await Promise.all([loadRule(), loadHistory(1), loadModels(cred), loadTurnStates()]);
+  await Promise.all([loadRule(), loadHistory(1), loadModels(cred), loadTurnStates(), loadQuota()]);
   if (epoch !== store.selectionEpoch) return;
   renderCredentialMenu();
   renderRulePreview();
@@ -4850,26 +4917,6 @@ function probeRateText() {
 }
 
 // Real usage beats an estimate, and the upstream reports it on every response.
-function probeQuotaText() {
-  for (const record of store.history || []) {
-    const headers = record.response_headers || {};
-    const read = (name) => {
-      for (const [key, values] of Object.entries(headers)) {
-        if (key.toLowerCase() === name) return Array.isArray(values) ? values[0] : values;
-      }
-      return "";
-    };
-    const primary = read("x-codex-primary-used-percent");
-    if (primary === "") continue;
-    const secondary = read("x-codex-secondary-used-percent");
-    const resets = Number(read("x-codex-primary-reset-after-seconds"));
-    const parts = [`主配额 <span class="num">${esc(primary)}%</span>`];
-    if (secondary !== "") parts.push(`次配额 <span class="num">${esc(secondary)}%</span>`);
-    if (resets > 0) parts.push(`${formatWindow(resets)}后重置`);
-    return parts.join(" · ");
-  }
-  return "";
-}
 
 function syncProbeControls() {
   if (!$("probeEnabled")) return;
@@ -4914,10 +4961,7 @@ function syncProbeControls() {
     ? "全天生效"
     : `UTC ${utcLabel(window.start)} → ${utcLabel(window.end)}${window.start > window.end ? "（跨午夜）" : ""}`;
   const rate = probeRateText();
-  const quota = probeQuotaText();
-  $("probeMeter").innerHTML = on
-    ? [quota, rate && esc(rate)].filter(Boolean).join(" · ") || ""
-    : "";
+  $("probeMeter").innerHTML = on && rate ? esc(rate) : "";
 }
 
 const utcLabel = (minute) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;

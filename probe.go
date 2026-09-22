@@ -44,11 +44,22 @@ const probeScanInterval = time.Second
 var probeSchedule struct {
 	sync.Mutex
 	nextDue map[string]time.Time
+	// rescan marks a credential whose rule changed while its task was running:
+	// the task's own next-due write is discarded and the scan looks again.
+	rescan map[string]bool
 }
 
 // probeRunning is far enough ahead that no scan will pick the credential up
 // again, and is always replaced by a deferred write when the task ends.
 const probeRunning = 365 * 24 * time.Hour
+
+// probeRequestTimeout bounds one upstream call, and probeTaskMaxAge bounds a
+// whole task: a request that never answers must not leave the credential
+// marked as running forever, which would silence its probe for good.
+const (
+	probeRequestTimeout = 90 * time.Second
+	probeTaskMaxAge     = 10 * time.Minute
+)
 
 var probeHTTPDoFunc = doHTTPOverTransport
 
@@ -57,7 +68,15 @@ func probeDueLocked(authIndex string, now time.Time) bool {
 		probeSchedule.nextDue = map[string]time.Time{}
 	}
 	due, ok := probeSchedule.nextDue[authIndex]
-	return !ok || !due.After(now)
+	if !ok || !due.After(now) {
+		return true
+	}
+	// The running marker is far in the future by construction; one that is
+	// older than any task could legitimately be is a task that died.
+	if due.After(now.Add(probeRunning/2)) && now.Sub(due.Add(-probeRunning)) > probeTaskMaxAge {
+		return true
+	}
+	return false
 }
 
 // setProbeDue records when the credential is next looked at; a zero time
@@ -68,11 +87,34 @@ func setProbeDue(authIndex string, at time.Time) {
 	if probeSchedule.nextDue == nil {
 		probeSchedule.nextDue = map[string]time.Time{}
 	}
+	if probeSchedule.rescan[authIndex] {
+		delete(probeSchedule.rescan, authIndex)
+		at = time.Time{}
+	}
 	if at.IsZero() {
 		delete(probeSchedule.nextDue, authIndex)
 		return
 	}
 	probeSchedule.nextDue[authIndex] = at
+}
+
+// rescheduleProbe is called whenever a credential's rule is saved or removed:
+// whatever was planned was planned under the old settings. An idle credential
+// is looked at on the next scan; a running one re-plans as soon as it ends.
+func rescheduleProbe(authIndex string) {
+	probeSchedule.Lock()
+	defer probeSchedule.Unlock()
+	if probeSchedule.nextDue == nil {
+		probeSchedule.nextDue = map[string]time.Time{}
+	}
+	if due, ok := probeSchedule.nextDue[authIndex]; ok && due.After(time.Now().Add(probeRunning/2)) {
+		if probeSchedule.rescan == nil {
+			probeSchedule.rescan = map[string]bool{}
+		}
+		probeSchedule.rescan[authIndex] = true
+		return
+	}
+	delete(probeSchedule.nextDue, authIndex)
 }
 
 // nextProbeWindowOpen is the next UTC instant the window starts, for a task
@@ -184,7 +226,9 @@ func runProbeTask(authIndex string, stop <-chan struct{}) {
 			return
 		default:
 		}
-		probeModel(ctx, authIndex, model, rule, session)
+		modelCtx, cancelModel := context.WithTimeout(ctx, probeRequestTimeout)
+		probeModel(modelCtx, authIndex, model, rule, session)
+		cancelModel()
 	}
 }
 
@@ -334,6 +378,13 @@ type probeAttempt struct {
 	response string
 	reqBytes int
 	resBytes int
+	// What the upstream declared, read from the response body on the same
+	// terms as a proxied response. With a priming request this is the real
+	// probe's response -- the priming response is only read for Set-Cookie.
+	upstreamModel  string
+	upstreamEffort string
+	modelConflict  bool
+	requestEffort  string
 }
 
 // probeModel runs one model's probe: at most two requests over one transport,
@@ -398,6 +449,10 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 	attempt.reqBytes = len(body)
 	attempt.response, _ = storedBody(maskResponseBody(response.Body))
 	attempt.resBytes = len(response.Body)
+	var observer modelObserver
+	observer.observeBody(response.Body)
+	attempt.upstreamModel, attempt.modelConflict, attempt.upstreamEffort = observer.model(), observer.conflicted(), observer.effort()
+	attempt.requestEffort = requestThinkingLevel(body, "", model)
 
 	if callErr != nil {
 		attempt.err = callErr.Error()
@@ -413,6 +468,7 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 	// The session this response leaves behind belongs to the egress it came
 	// back through, and nowhere else.
 	rememberSession(authIndex, attempt.egress, mode, applySetCookies(cookie, response.Headers))
+	noteQuota(authIndex, response.Headers)
 
 	attempt.blob = headerTurnState(response.Headers)
 	if attempt.blob == "" {
@@ -577,7 +633,10 @@ func recordProbe(authIndex string, rule headerRule, attempt probeAttempt) {
 		ProbeEgress: attempt.egress, ProbePrimed: attempt.primed,
 		ProbeCookieMode: probeCookieModeFor(rule),
 		ProbeExitRegion: cloudflareRegion(attempt.received),
+		UpstreamModel: attempt.upstreamModel, UpstreamEffort: attempt.upstreamEffort,
+		ModelConflict: attempt.modelConflict, RequestEffort: attempt.requestEffort,
 	}
+	record.ModelMismatch = modelMismatch(attempt.model, attempt.upstreamModel)
 	if attempt.info.Digest != "" {
 		info := attempt.info
 		record.TurnStateMinted = &info

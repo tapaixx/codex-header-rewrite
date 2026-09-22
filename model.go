@@ -422,6 +422,24 @@ type credentialSession struct {
 	// with it: a probe that refreshed its own clock would keep an abandoned
 	// account warm forever.
 	LastLiveAt time.Time `json:"last_live_at,omitempty"`
+	// Quota is the upstream's own account of the credential's allowance, as
+	// reported on the most recent response of any kind (live, retry or probe).
+	// It lives on the direct jar because it belongs to the credential, not to
+	// whichever exit the response came back through.
+	Quota *credentialQuota `json:"quota,omitempty"`
+}
+
+// credentialQuota mirrors the X-Codex-Primary-* / X-Codex-Secondary-* headers:
+// the primary window is the five-hour allowance, the secondary the weekly one.
+// Used percent is what the upstream said; reset times are absolute.
+type credentialQuota struct {
+	PrimaryUsedPercent     float64   `json:"primary_used_percent"`
+	PrimaryResetAt         time.Time `json:"primary_reset_at,omitempty"`
+	PrimaryWindowMinutes   int       `json:"primary_window_minutes,omitempty"`
+	SecondaryUsedPercent   float64   `json:"secondary_used_percent"`
+	SecondaryResetAt       time.Time `json:"secondary_reset_at,omitempty"`
+	SecondaryWindowMinutes int       `json:"secondary_window_minutes,omitempty"`
+	ObservedAt             time.Time `json:"observed_at"`
 }
 
 const (

@@ -235,6 +235,12 @@ const stub = `
       const items = authIndex === "acct-a" ? F.items : [];
       return json({ auth_index: authIndex, page: 1, page_size: 10, total: items.length, total_pages: 1, items });
     }
+    if (path.endsWith("/quota")) {
+      return json({ auth_index: authIndex, quota: authIndex === "acct-a" ? {
+        primary_used_percent: 47, primary_reset_at: new Date(Date.now() + 82 * 60000).toISOString(), primary_window_minutes: 300,
+        secondary_used_percent: 15, secondary_reset_at: new Date(Date.now() + 3 * 86400000).toISOString(), secondary_window_minutes: 10080,
+        observed_at: new Date(Date.now() - 42000).toISOString() } : null });
+    }
     if (path.endsWith("/turn-states")) {
       return json({ turn_states: F.turnStates.filter((s) => s.auth_index === authIndex), reuse_window_seconds: F.rules[authIndex]?.state_ttl_seconds || 200 });
     }

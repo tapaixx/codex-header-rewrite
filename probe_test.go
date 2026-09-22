@@ -201,7 +201,9 @@ func probeStub(t *testing.T, blob string, setCookie []string) *[]hostHTTPRequest
 	sent := []hostHTTPRequest{}
 	probeHTTPDoFunc = func(_ context.Context, _ *http.Transport, req hostHTTPRequest, _ bool) (hostHTTPResponse, error) {
 		sent = append(sent, req)
-		headers := http.Header{turnStateHeader: {blob}, "Cf-Ray": {"a3e22f4439f2dddf-IAD"}}
+		headers := http.Header{turnStateHeader: {blob}, "Cf-Ray": {"a3e22f4439f2dddf-IAD"},
+			"X-Codex-Primary-Used-Percent": {"47"}, "X-Codex-Primary-Window-Minutes": {"300"},
+			"X-Codex-Secondary-Used-Percent": {"15"}, "X-Codex-Secondary-Reset-After-Seconds": {"3600"}}
 		for _, value := range setCookie {
 			headers.Add("Set-Cookie", value)
 		}
@@ -251,6 +253,15 @@ func TestProbePoolsTheStateWithItsSession(t *testing.T) {
 	}
 	if row.ProbeExitRegion != "IAD" {
 		t.Fatalf("the datacentre should come from Cf-Ray, got %q", row.ProbeExitRegion)
+	}
+	// The probe's own response is read like any other: the model it declares
+	// and its effort land on the row, so the probe history reads like the rest.
+	if row.UpstreamModel != "gpt-6-astra" || row.ModelMismatch == nil || *row.ModelMismatch {
+		t.Fatalf("the row should carry the model the upstream declared: %#v", row)
+	}
+	// And the allowance the response reported is kept for the credential.
+	if quota, ok := credentialQuotaFor("idx-a"); !ok || quota.PrimaryUsedPercent != 47 || quota.SecondaryUsedPercent != 15 || quota.SecondaryResetAt.IsZero() {
+		t.Fatalf("the quota reading should be kept: %+v %v", quota, ok)
 	}
 	if row.ProbePrimed {
 		t.Fatal("the credential mode does not prime")
@@ -399,5 +410,66 @@ func TestSwitchedOffProbeSchedulesNothing(t *testing.T) {
 	probeSchedule.Unlock()
 	if scheduled {
 		t.Fatal("an off probe must leave no next-due time behind")
+	}
+}
+
+// A saved rule re-plans the probe: an idle credential is due on the next scan,
+// a running one throws its own next-due write away and is due when it ends.
+func TestRuleChangeReplansTheProbe(t *testing.T) {
+	setProbeDue("idx-idle", time.Now().Add(time.Hour))
+	rescheduleProbe("idx-idle")
+	probeSchedule.Lock()
+	_, idleStill := probeSchedule.nextDue["idx-idle"]
+	probeSchedule.Unlock()
+	if idleStill {
+		t.Fatal("an idle credential must be due on the next scan after its rule changes")
+	}
+	setProbeDue("idx-busy", time.Now().Add(probeRunning))
+	rescheduleProbe("idx-busy")
+	setProbeDue("idx-busy", time.Now().Add(time.Hour)) // the task ending under the old plan
+	probeSchedule.Lock()
+	_, busyStill := probeSchedule.nextDue["idx-busy"]
+	probeSchedule.Unlock()
+	if busyStill {
+		t.Fatal("a running credential must re-plan when its task ends, not keep the old plan")
+	}
+}
+
+// A task that died mid-request leaves the running marker behind; once it is
+// older than any task could be, the credential is due again.
+func TestStaleRunningMarkerBecomesDue(t *testing.T) {
+	now := time.Now()
+	probeSchedule.Lock()
+	defer probeSchedule.Unlock()
+	if probeSchedule.nextDue == nil {
+		probeSchedule.nextDue = map[string]time.Time{}
+	}
+	probeSchedule.nextDue["idx-live"] = now.Add(probeRunning)
+	if probeDueLocked("idx-live", now.Add(probeTaskMaxAge/2)) {
+		t.Fatal("a task within its allowed age is still running")
+	}
+	if !probeDueLocked("idx-live", now.Add(probeTaskMaxAge+time.Minute)) {
+		t.Fatal("a marker older than the task limit must count as due")
+	}
+}
+
+// The pool changing under the probe re-plans it: a mint or an eviction clears
+// an idle credential's plan so the next scan looks again.
+func TestPoolChangesReplanTheProbe(t *testing.T) {
+	resetState(t)
+	resetTurnStates(t)
+	setProbeDue("idx-a", time.Now().Add(time.Hour))
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	pooled := noteTurnStateMintLocked(fernetToken(0x80, time.Now(), 1), "idx-a", "A", "gpt-5.6-luna", "team", "")
+	state.mu.Unlock()
+	if !pooled {
+		t.Fatal("fixture state did not enter the pool")
+	}
+	probeSchedule.Lock()
+	_, planned := probeSchedule.nextDue["idx-a"]
+	probeSchedule.Unlock()
+	if planned {
+		t.Fatal("a mint must clear the old plan")
 	}
 }

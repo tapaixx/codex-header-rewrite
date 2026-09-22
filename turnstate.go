@@ -527,6 +527,12 @@ func noteTurnStateMintLocked(blob, authIndex, label, model, plan, cookie string)
 	if state.turnStateWrites%turnStateSweepPeriod == 0 || len(state.turnStates) > turnStateMaxEntries {
 		sweepTurnStatesLocked(now)
 	}
+	// A state entering the pool changes what the probe has to do next -- an
+	// idle credential is re-planned on the next scan, a running task when it
+	// ends. It is one map write; the requests only happen if something is due.
+	if pooled {
+		rescheduleProbe(authIndex)
+	}
 	return pooled
 }
 
@@ -648,6 +654,8 @@ func invalidateTurnStateLocked(authIndex, model, digest string) bool {
 		}
 	}
 	delete(state.turnStateLatest, key)
+	// A model just lost its state: the probe's plan was made without that.
+	rescheduleProbe(authIndex)
 	return true
 }
 
