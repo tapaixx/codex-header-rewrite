@@ -1725,7 +1725,7 @@ body[data-workspace="history"] #historyPanel{grid-row:3!important}
    instead of wrapping: a wrapped tab row moves the panel under it every time
    the labels reflow. */
 .detail-tabs{
-  position:sticky;top:0;z-index:2;display:flex;gap:2px;margin:0 0 12px;padding:0 0 1px;
+  position:sticky;top:0;z-index:2;display:flex;gap:2px;margin:12px 0;padding:0 0 1px;
   overflow-x:auto;scrollbar-width:none;
   border-bottom:1px solid var(--line);
   background:color-mix(in srgb,var(--surface) 96%,transparent);
@@ -3425,7 +3425,6 @@ function showRecord(record) {
   }
   const requestDiff = diffHTML(record.before_headers, record.after_headers, "没有记录 Request Header");
   const tabs = [
-    ["state", "X-Codex-Turn-State", ""],
     ["reqh", "Request Header", requestDiff.count ? String(requestDiff.count) : ""],
     ["reqb", "Request Body", ""],
     ["resh", "Response Header", ""],
@@ -3445,15 +3444,13 @@ function showRecord(record) {
       <div class="history-detail-label"><span>上游错误</span><span>${record.status_code ? `HTTP ${esc(String(record.status_code))}` : ""}</span></div>
       <pre class="history-error-full">${esc(prettyError(record.error))}</pre>
     </div>` : ""}
+    ${turnStateDetail(record) || '<div class="history-detail-section"><div class="empty">这次请求没有回带，上游也没有返回 X-Codex-Turn-State</div></div>'}
     <div class="detail-tabs" role="tablist" aria-label="请求详情分页">
       ${tabs.map(([key, label, count], index) => `<button class="detail-tab" role="tab" id="detailTab-${key}"
         aria-controls="detailPane-${key}" aria-selected="${index === 0}" data-pane="${key}"
         tabindex="${index === 0 ? 0 : -1}">${esc(label)}${count ? `<span class="count">${esc(count)}</span>` : ""}</button>`).join("")}
     </div>
-    <div class="detail-pane" role="tabpanel" id="detailPane-state" aria-labelledby="detailTab-state" tabindex="0">
-      ${turnStateDetail(record) || '<div class="history-detail-section"><div class="empty">这次请求没有回带，上游也没有返回 X-Codex-Turn-State</div></div>'}
-    </div>
-    <div class="detail-pane" role="tabpanel" id="detailPane-reqh" aria-labelledby="detailTab-reqh" tabindex="0" hidden>
+    <div class="detail-pane" role="tabpanel" id="detailPane-reqh" aria-labelledby="detailTab-reqh" tabindex="0">
       <div class="history-detail-section">
         <div class="history-detail-label"><span>Request Header 差异</span><span class="${requestDiff.count ? "num" : ""}">${requestDiff.count ? `${requestDiff.count} 处改动` : (requestDiff.hasRows ? "无改动" : "无数据")}</span></div>
         ${requestDiff.html}

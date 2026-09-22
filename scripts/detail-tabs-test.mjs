@@ -39,13 +39,26 @@ try {
   await page.click('.history-summary');
   await page.waitForSelector('.detail-tabs');
 
-  // Five tabs, in the order asked for, first one selected.
+  // Four tabs, in the order asked for, first one selected.
   const labels = await page.locator('.detail-tab').allTextContents();
   assert.deepEqual(labels.map(t=>t.replace(/\d+$/,'').trim()),
-    ['X-Codex-Turn-State','Request Header','Request Body','Response Header','Response Body'], JSON.stringify(labels));
+    ['Request Header','Request Body','Response Header','Response Body'], JSON.stringify(labels));
   assert.equal(await page.locator('.detail-tab').first().getAttribute('aria-selected'),'true');
-  assert.equal(await page.locator('#detailPane-state').isVisible(), true);
+  assert.equal(await page.locator('#detailPane-reqh').isVisible(), true);
   assert.equal(await page.locator('#detailPane-reqb').isVisible(), false);
+
+  // The turn state is not a tab: it sits above the strip and stays put while
+  // the panes change under it.
+  assert.equal(await page.locator('.detail-tab[data-pane="state"]').count(), 0, 'no turn-state tab');
+  const stateBlock = page.locator('.history-detail-shell > .history-detail-section').filter({hasText:'X-Codex-Turn-State'}).first();
+  assert.equal(await stateBlock.isVisible(), true, 'turn state visible with the first tab');
+  const above = await page.evaluate(() => {
+    const strip = document.querySelector('.detail-tabs');
+    const block = [...document.querySelectorAll('.history-detail-shell > .history-detail-section')]
+      .find((el) => el.textContent.includes('X-Codex-Turn-State'));
+    return block ? block.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING : 0;
+  });
+  assert.ok(above, 'the turn state comes before the tab strip');
 
   await page.waitForFunction(()=>!document.querySelector('#detailRequestBody').textContent.includes('读取中'));
   assert.equal(bodyCalls,1,'the body is fetched once per record');
@@ -83,10 +96,13 @@ try {
   assert.ok(unframed.startsWith('event: response.created\ndata: {'), 'framing restored: '+JSON.stringify(unframed.slice(0,40)));
   assert.ok((await page.locator('#detailPane-resb .body-view .jk').count()) > 0, 'still coloured');
 
+  // It stays visible whichever tab is open.
+  assert.equal(await stateBlock.isVisible(), true, 'turn state still visible on the body tab');
+
   // Keyboard moves along the strip.
   await page.locator('.detail-tab[data-pane="resb"]').press('ArrowRight');
-  assert.equal(await page.locator('.detail-tab[data-pane="state"]').getAttribute('aria-selected'),'true','wraps to the first');
-  await page.locator('.detail-tab[data-pane="state"]').press('End');
+  assert.equal(await page.locator('.detail-tab[data-pane="reqh"]').getAttribute('aria-selected'),'true','wraps to the first');
+  await page.locator('.detail-tab[data-pane="reqh"]').press('End');
   assert.equal(await page.locator('.detail-tab[data-pane="resb"]').getAttribute('aria-selected'),'true');
 
   // Header panes still hold what they held before the tabs existed.
