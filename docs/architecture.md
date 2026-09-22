@@ -35,8 +35,11 @@ CPA 替换版本化 `.so` 时先对旧实例调用 `plugin.quiesce`，再注册�
 
 - 终局事件（`response.completed` / `response.done` / `response.failed` / `response.incomplete` / `response.cancelled`）的声明覆盖先前声明；否则保留第一个声明。
 - 两个声明互相矛盾时记为 `model_conflict`，不猜测哪个为准。
-- chunk 边界和 SSE 帧边界不对齐，未完成的尾帧会缓存到下一个 chunk（上限 64 KiB），`request.complete` 时再 flush 一次。
+- chunk 边界和 SSE 帧边界不对齐。先按 `\n\n` 切出完整帧；剩下的尾巴**当场尝试按一帧解析**：解析成功说明它本来就是完整的一帧（宿主逐事件回调时不带空行分隔符），解析失败说明只是被截断，才缓存到下一个 chunk（上限 64 KiB），`request.complete` 时再 flush 一次。
+- 一帧里的多个 `data:` 行按 SSE 规范用 `\n` 拼接后解析；拼接结果不是合法 JSON 时，再退化为把每一行当作独立载荷（宿主把多个事件塞进一帧的情形）。
 - 上游一次都没声明模型时，判定结果是「未知」（`model_mismatch` 缺省），不是「一致」。
+
+被拦截的降智响应同样会读模型：chunk 仍然到达插件，只是不下发给客户端。后台重试不读 body，所以重试行的上游模型恒为「未获取到」。
 
 载荷只在内存里解析，取出模型名后即丢弃；请求体和响应体都不进入持久化。
 

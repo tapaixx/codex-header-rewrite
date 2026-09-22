@@ -70,9 +70,11 @@ func normalizeObservedModel(model string) string {
 // observePayload reads one JSON payload. eventType decides whether the
 // declaration is terminal; an empty event type means the payload is a whole
 // response body rather than a stream frame.
-func (o *modelObserver) observePayload(payload []byte, eventType string) {
+// It reports whether the payload parsed, which is what tells a caller the
+// bytes it held were a complete frame rather than a truncated one.
+func (o *modelObserver) observePayload(payload []byte, eventType string) bool {
 	if o == nil || len(bytes.TrimSpace(payload)) == 0 {
-		return
+		return false
 	}
 	var declared struct {
 		Type     string `json:"type"`
@@ -85,7 +87,7 @@ func (o *modelObserver) observePayload(payload []byte, eventType string) {
 		} `json:"message"`
 	}
 	if err := json.Unmarshal(payload, &declared); err != nil {
-		return
+		return false
 	}
 	model := declared.Response.Model
 	if model == "" {
@@ -98,6 +100,7 @@ func (o *modelObserver) observePayload(payload []byte, eventType string) {
 		eventType = declared.Type
 	}
 	o.observe(model, eventType == "" || isTerminalModelEvent(eventType))
+	return true
 }
 
 // CPA callbacks may contain a complete JSON event or data line without SSE
@@ -165,6 +168,17 @@ func (o *modelObserver) observeStream(chunk []byte) {
 		o.observeFrame(data[:index])
 		data = data[index+2:]
 	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return
+	}
+	// A host that hands over one event per callback strips the blank line, so
+	// there is no separator left to find and waiting for one would buffer the
+	// entire stream and read none of it. Parse the tail as a frame: if it is
+	// complete its payload is valid JSON, and if it is merely truncated it is
+	// not, so a frame genuinely split across chunks keeps buffering.
+	if o.observeFrame(data) {
+		return
+	}
 	if len(data) > maxStreamResidual {
 		return
 	}
@@ -183,31 +197,55 @@ func (o *modelObserver) flushStream() {
 	o.observeFrame(residual)
 }
 
-func (o *modelObserver) observeFrame(frame []byte) {
+// observeFrame reads one SSE frame and reports whether any payload in it
+// parsed as JSON.
+func (o *modelObserver) observeFrame(frame []byte) bool {
 	eventType := ""
 	var payload []byte
+	var lines [][]byte
 	for _, rawLine := range bytes.Split(frame, []byte("\n")) {
 		line := bytes.TrimRight(rawLine, "\r")
 		switch {
 		case bytes.HasPrefix(line, []byte("event:")):
 			eventType = string(bytes.TrimSpace(line[len("event:"):]))
 		case bytes.HasPrefix(line, []byte("data:")):
+			value := bytes.TrimSpace(line[len("data:"):])
+			lines = append(lines, value)
 			// SSE joins consecutive data lines of one frame with newlines.
 			if len(payload) > 0 {
 				payload = append(payload, '\n')
 			}
-			payload = append(payload, bytes.TrimSpace(line[len("data:"):])...)
+			payload = append(payload, value...)
 		}
 	}
 	if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
-		return
+		return false
 	}
 	// A frame with data but no event line is a chat-completions style chunk;
 	// treat it as non-terminal unless its payload says otherwise.
 	if eventType == "" {
 		eventType = "chunk"
 	}
-	o.observePayload(payload, eventType)
+	if o.observePayload(payload, eventType) {
+		return true
+	}
+	// The joined form is the spec, but a host that packs several events into
+	// one frame leaves data lines that are each a payload of their own. Only
+	// tried once the joined form has failed, so a conforming frame is never
+	// read twice.
+	if len(lines) < 2 {
+		return false
+	}
+	parsed := false
+	for _, line := range lines {
+		if bytes.Equal(line, []byte("[DONE]")) {
+			continue
+		}
+		if o.observePayload(line, eventType) {
+			parsed = true
+		}
+	}
+	return parsed
 }
 
 func isTerminalModelEvent(eventType string) bool {

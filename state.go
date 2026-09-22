@@ -446,6 +446,10 @@ func observeStreamHeaders(req streamChunkInterceptRequest) streamChunkInterceptR
 		return streamChunkInterceptResponse{}
 	}
 	if pr.current.rejecting {
+		// Withholding a response from the client is no reason to stop reading
+		// which model served it: the chunk still arrives here, and the history
+		// row for an intercepted request is exactly where that matters.
+		pr.current.models.observeCallback(req.Body)
 		// The first payload chunk becomes the terminal error; nothing of the
 		// upstream body reaches the client after that.
 		pr.current.rejectedChunks++

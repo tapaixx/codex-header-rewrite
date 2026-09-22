@@ -66,15 +66,23 @@ func TestFrameSplitAcrossChunksIsStillRead(t *testing.T) {
 	}
 }
 
+// A complete frame is read at the chunk boundary rather than held for a blank
+// line that may never arrive. Waiting for one is what made every live stream
+// report no model at all: the host hands over one event per callback and
+// strips the separator, so the observer buffered the stream and read none of
+// it. flushStream stays safe to call afterwards and adds nothing.
 func TestFinalFrameWithoutBlankLineIsRead(t *testing.T) {
 	var o modelObserver
 	o.observeStream([]byte("event: response.completed\ndata: {\"response\":{\"model\":\"gpt-5.6-luna\"}}"))
-	if got := o.model(); got != "" {
-		t.Fatalf("unterminated frame should wait for more input, got %q", got)
+	if got := o.model(); got != "gpt-5.6-luna" {
+		t.Fatalf("model=%q at the chunk boundary", got)
+	}
+	if len(o.residual) != 0 {
+		t.Fatalf("a frame that was read should not stay buffered: %q", o.residual)
 	}
 	o.flushStream()
-	if got := o.model(); got != "gpt-5.6-luna" {
-		t.Fatalf("model=%q", got)
+	if got := o.model(); got != "gpt-5.6-luna" || o.conflicted() {
+		t.Fatalf("model=%q conflict=%v after flush", got, o.conflicted())
 	}
 }
 
@@ -139,5 +147,84 @@ func TestObservedModelIsLengthCapped(t *testing.T) {
 	o.observe(string(long), true)
 	if got := len([]rune(o.model())); got != upstreamModelMaxLength {
 		t.Fatalf("length=%d", got)
+	}
+}
+
+// Every shape a host has been seen to hand a stream over in. The one that was
+// missed in practice is a single complete event with no blank line after it:
+// there is no separator left to find, so the observer buffered the whole
+// stream and read none of it. Across 153 real records not one upstream model
+// was captured.
+func TestEveryStreamDeliveryShapeIsRead(t *testing.T) {
+	const (
+		created   = `{"type":"response.created","sequence_number":0,"response":{"id":"r","object":"response","model":"gpt-6-astra","status":"in_progress"}}`
+		delta     = `{"type":"response.output_text.delta","sequence_number":1,"delta":"hi"}`
+		completed = `{"type":"response.completed","sequence_number":9,"response":{"id":"r","object":"response","model":"gpt-6-astra","status":"completed"}}`
+	)
+	cases := []struct {
+		name   string
+		chunks []string
+	}{
+		{"frames terminated by a blank line", []string{
+			"event: response.created\ndata: " + created + "\n\n",
+			"event: response.output_text.delta\ndata: " + delta + "\n\n",
+			"event: response.completed\ndata: " + completed + "\n\n"}},
+		{"one event per callback, no blank line", []string{
+			"event: response.created\ndata: " + created,
+			"event: response.output_text.delta\ndata: " + delta,
+			"event: response.completed\ndata: " + completed}},
+		{"one event per callback, single newline", []string{
+			"event: response.created\ndata: " + created + "\n",
+			"event: response.completed\ndata: " + completed + "\n"}},
+		{"data line with no event line", []string{
+			"data: " + created + "\n\n", "data: " + completed + "\n\n"}},
+		{"data line with no newline at all", []string{
+			"data: " + created, "data: " + completed}},
+		{"bare JSON payloads", []string{created, completed}},
+		{"one frame split across two chunks", []string{
+			"event: response.created\ndata: " + created[:40], created[40:] + "\n\n"}},
+		{"several frames in one chunk", []string{
+			"event: response.created\ndata: " + created + "\n\nevent: response.completed\ndata: " + completed + "\n\n"}},
+		{"several events packed into one frame", []string{
+			"data: " + created + "\ndata: " + completed + "\n\n"}},
+		{"CRLF framing", []string{
+			"event: response.created\r\ndata: " + created + "\r\n\r\n",
+			"event: response.completed\r\ndata: " + completed + "\r\n\r\n"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var observer modelObserver
+			for _, chunk := range tc.chunks {
+				observer.observeCallback([]byte(chunk))
+			}
+			observer.flushStream()
+			if got := observer.model(); got != "gpt-6-astra" {
+				t.Fatalf("model=%q", got)
+			}
+			if observer.conflicted() {
+				t.Fatal("one model was declared, so there is no conflict")
+			}
+		})
+	}
+}
+
+// Parsing the tail of a chunk must not eat a frame that is merely truncated:
+// its payload is not valid JSON yet, so it has to keep buffering.
+func TestATruncatedFrameKeepsBuffering(t *testing.T) {
+	const created = `{"type":"response.created","response":{"model":"gpt-6-astra"}}`
+	var observer modelObserver
+	observer.observeCallback([]byte("event: response.created\ndata: " + created[:30]))
+	if got := observer.model(); got != "" {
+		t.Fatalf("half a frame declared %q", got)
+	}
+	if len(observer.residual) == 0 {
+		t.Fatal("the half frame should still be buffered")
+	}
+	observer.observeCallback([]byte(created[30:]))
+	if got := observer.model(); got != "gpt-6-astra" {
+		t.Fatalf("model=%q after the frame completed", got)
+	}
+	if observer.conflicted() {
+		t.Fatal("the two halves are one declaration, not two")
 	}
 }
