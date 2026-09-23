@@ -3245,6 +3245,14 @@ function pickHeader(headers, lowerName) {
   }
   return null;
 }
+function headerValues(headers, lowerName) {
+  if (!headers) return [];
+  for (const [name, values] of Object.entries(headers)) {
+    if (name.toLowerCase() !== lowerName) continue;
+    return (Array.isArray(values) ? values : [values]).map((value) => String(value ?? ""));
+  }
+  return [];
+}
 function diffRows(before, after) {
   const names = new Map();
   Object.keys(before || {}).forEach((name) => names.set(name.toLowerCase(), name));
@@ -3315,6 +3323,183 @@ function responseHeadersHTML(headers) {
 function renderResponseHeaders(headers, prefixHTML = "") {
   const entries = Object.entries(headers || {}).sort((a, b) => a[0].localeCompare(b[0]));
   $("diffExtra").innerHTML = `${prefixHTML}${entries.length ? `<div class="sub">上游 Response Header</div>${responseHeadersHTML(headers)}` : ""}`;
+}
+
+/* ---------- cookie diagnostics ----------------------------------------
+   Cookie and Set-Cookie are already stored verbatim in history. This view
+   parses those recorded headers in the drawer so old rows gain diagnostics. */
+const COOKIE_KINDS = {
+  "__oailb": "OpenAI 路由 JWT",
+  "__cf_bm": "Cloudflare Bot Management",
+  "__cflb": "Cloudflare LB affinity"
+};
+
+
+function base64URLBytes(text) {
+  const normalized = String(text || "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+  const raw = atob(padded);
+  return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+}
+
+function decodeCookieJWT(value) {
+  const parts = String(value || "").split(".");
+  if (parts.length !== 3 || parts.some((part) => !part)) return null;
+  try {
+    const decoder = new TextDecoder();
+    const header = JSON.parse(decoder.decode(base64URLBytes(parts[0])));
+    const payload = JSON.parse(decoder.decode(base64URLBytes(parts[1])));
+    return {
+      header, payload,
+      header_chars: parts[0].length,
+      payload_chars: parts[1].length,
+      signature_chars: parts[2].length,
+      signature_bytes: base64URLBytes(parts[2]).length,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function splitSetCookieLine(line) {
+  return String(line || "").split(/,(?=\s*[!#$%&'*+.^_|~0-9A-Za-z-]+=)/).map((part) => part.trim()).filter(Boolean);
+}
+
+function parseRequestCookies(headers) {
+  const cookies = [];
+  for (const line of headerValues(headers, "cookie")) {
+    for (const part of line.split(";")) {
+      const item = part.trim();
+      if (!item) continue;
+      const eq = item.indexOf("=");
+      cookies.push({ name: eq >= 0 ? item.slice(0, eq).trim() : item, value: eq >= 0 ? item.slice(eq + 1).trim() : "", attrs: null });
+    }
+  }
+  return cookies;
+}
+
+function parseSetCookies(headers) {
+  const cookies = [];
+  for (const raw of headerValues(headers, "set-cookie").flatMap(splitSetCookieLine)) {
+    const parts = raw.split(";").map((part) => part.trim()).filter(Boolean);
+    if (!parts.length) continue;
+    const eq = parts[0].indexOf("=");
+    const attrs = {};
+    for (const attr of parts.slice(1)) {
+      const split = attr.indexOf("=");
+      const key = (split >= 0 ? attr.slice(0, split) : attr).trim().toLowerCase();
+      if (!key) continue;
+      attrs[key] = split >= 0 ? attr.slice(split + 1).trim() : true;
+    }
+    cookies.push({
+      name: eq >= 0 ? parts[0].slice(0, eq).trim() : parts[0],
+      value: eq >= 0 ? parts[0].slice(eq + 1).trim() : "",
+      attrs,
+    });
+  }
+  return cookies;
+}
+
+function cookieTime(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  const date = new Date(number * 1000);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function cookieDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function cookieSeconds(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value)) return String(seconds || "-");
+  if (Math.abs(value) % 3600 === 0) return `${value} 秒 · ${value / 3600} 小时`;
+  if (Math.abs(value) % 60 === 0) return `${value} 秒 · ${value / 60} 分钟`;
+  return `${value} 秒`;
+}
+
+function embeddedCloudflareTime(cookie) {
+  if (cookie.name !== "__cf_bm") return null;
+  const match = String(cookie.value || "").match(/(?:^|-)(\d{10}(?:\.\d+)?)(?=-|$)/);
+  return match ? cookieTime(match[1]) : null;
+}
+
+function cookieAttrsRows(attrs) {
+  if (!attrs) return "";
+  const rows = [];
+  if (attrs.domain) rows.push(`<dt>Domain</dt><dd class="mono">${esc(attrs.domain)}</dd>`);
+  if (attrs.path) rows.push(`<dt>Path</dt><dd class="mono">${esc(attrs.path)}</dd>`);
+  if (attrs["max-age"] !== undefined) rows.push(`<dt>Max-Age</dt><dd class="num">${esc(cookieSeconds(attrs["max-age"]))}</dd>`);
+  const expires = cookieDate(attrs.expires);
+  if (expires) {
+    rows.push(`<dt>Expires (本地)</dt><dd>${esc(expires.toLocaleString())}</dd>`);
+    rows.push(`<dt>Expires (UTC)</dt><dd class="num">${esc(expires.toUTCString())}</dd>`);
+  }
+  if (attrs.samesite) rows.push(`<dt>SameSite</dt><dd class="mono">${esc(attrs.samesite)}</dd>`);
+  rows.push(`<dt>Secure</dt><dd>${attrs.secure === true ? '<span class="tag ok">是</span>' : '<span class="muted">否 / 未声明</span>'}</dd>`);
+  rows.push(`<dt>HttpOnly</dt><dd>${attrs.httponly === true ? '<span class="tag ok">是</span>' : '<span class="muted">否 / 未声明</span>'}</dd>`);
+  return rows.join("");
+}
+
+function cookieItemHTML(cookie) {
+  const jwt = decodeCookieJWT(cookie.value);
+  const kind = COOKIE_KINDS[cookie.name] || (jwt ? "JWT" : "Cookie");
+  const rows = [`<dt>值长度</dt><dd class="num">${cookie.value.length} 个字符</dd>`];
+  if (jwt) {
+    const header = jwt.header || {};
+    const payload = jwt.payload || {};
+    if (header.alg !== undefined) rows.push(`<dt>算法</dt><dd class="mono">${esc(String(header.alg))}</dd>`);
+    if (header.kid !== undefined) rows.push(`<dt>Key ID</dt><dd class="mono">${esc(String(header.kid))}</dd>`);
+    if (header.typ !== undefined) rows.push(`<dt>类型</dt><dd class="mono">${esc(String(header.typ))}</dd>`);
+    if (payload.host !== undefined) rows.push(`<dt>路由目标</dt><dd class="mono">${esc(String(payload.host))}</dd>`);
+    if (payload.iss !== undefined) rows.push(`<dt>签发方</dt><dd class="mono">${esc(String(payload.iss))}</dd>`);
+    if (payload.aud !== undefined) rows.push(`<dt>Audience</dt><dd class="mono">${esc(Array.isArray(payload.aud) ? payload.aud.join(", ") : String(payload.aud))}</dd>`);
+    const iat = cookieTime(payload.iat);
+    const exp = cookieTime(payload.exp);
+    if (iat) {
+      rows.push(`<dt>iat (本地)</dt><dd>${esc(iat.toLocaleString())}</dd>`);
+      rows.push(`<dt>iat (UTC)</dt><dd class="num">${esc(iat.toUTCString())}</dd>`);
+    }
+    if (exp) {
+      rows.push(`<dt>exp (本地)</dt><dd>${esc(exp.toLocaleString())}</dd>`);
+      rows.push(`<dt>exp (UTC)</dt><dd class="num">${esc(exp.toUTCString())}</dd>`);
+    }
+    if (iat && exp) rows.push(`<dt>JWT 有效期</dt><dd class="num">${esc(cookieSeconds((exp.getTime() - iat.getTime()) / 1000))}</dd>`);
+    rows.push(`<dt>JWT 段长度</dt><dd class="num">${jwt.header_chars} / ${jwt.payload_chars} / ${jwt.signature_chars} 字符</dd>`);
+    rows.push(`<dt>签名</dt><dd class="num">${jwt.signature_bytes} 字节 <span class="muted">· 仅解码，未验签</span></dd>`);
+  }
+  const cfTime = embeddedCloudflareTime(cookie);
+  if (cfTime) {
+    rows.push(`<dt>内嵌时间 (本地)</dt><dd>${esc(cfTime.toLocaleString())}</dd>`);
+    rows.push(`<dt>内嵌时间 (UTC)</dt><dd class="num">${esc(cfTime.toUTCString())}</dd>`);
+  }
+  rows.push(cookieAttrsRows(cookie.attrs));
+  return `<div class="ts-sub"><code>${esc(cookie.name || "(无名称)")}</code> <span class="tag flat">${esc(kind)}</span></div>
+    <dl class="ts-grid">${rows.join("")}</dl>`;
+}
+
+function cookieCard(label, cookies, emptyText) {
+  if (!cookies.length) return absentCard(label, emptyText);
+  return `<div class="ts-block">
+    <div class="ts-title">${esc(label)} <span class="tag flat num">${cookies.length} 个</span></div>
+    <div class="ts-body">${cookies.map(cookieItemHTML).join("")}</div>
+  </div>`;
+}
+
+function cookieDetail(record) {
+  const requestCookies = parseRequestCookies(record.after_headers || record.before_headers);
+  const responseCookies = parseSetCookies(record.response_headers);
+  if (!requestCookies.length && !responseCookies.length) return "";
+  return `<div class="history-detail-section">
+    <div class="history-detail-label"><span>Cookie</span><span class="muted">结构解析</span></div>
+    <div class="ts-pair">
+      ${cookieCard("发往上游", requestCookies, "本次请求没有向上游发送 Cookie")}
+      ${cookieCard("上游返回", responseCookies, "响应没有返回 Set-Cookie")}
+    </div>
+  </div>`;
 }
 
 /* ---------- status vocabulary ----------------------------------------- */
@@ -3781,6 +3966,7 @@ function showRecord(record) {
     </div>` : ""}
     ${probeDetail(record)}
     ${turnStateDetail(record) || '<div class="history-detail-section"><div class="empty">这次请求没有回带，上游也没有返回 X-Codex-Turn-State</div></div>'}
+    ${cookieDetail(record)}
     <div class="detail-tabs" role="tablist" aria-label="请求详情分页">
       ${tabs.map(([key, label, count], index) => `<button class="detail-tab" role="tab" id="detailTab-${key}"
         aria-controls="detailPane-${key}" aria-selected="${index === 0}" data-pane="${key}"
