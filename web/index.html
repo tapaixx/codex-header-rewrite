@@ -1337,7 +1337,11 @@ body[data-workspace="history"] #turnStatePanel .state-pool{display:block}
 .pool-table th{text-align:left;font-size:11px;color:var(--text-mute);font-weight:600;padding:5px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
 .pool-table td{padding:5px 9px;border-top:1px solid var(--line);font-size:12px;vertical-align:middle;white-space:nowrap}
 .pool-table tbody tr:first-child td{border-top:0}
-.pool-lb-host{font-size:11px}
+.pool-lb-host{font-size:11px;overflow-wrap:anywhere}
+/* Text cells wrap rather than push the table past its card; model names and
+   tags stay on one line so a row still scans. */
+.pool-table td.pool-lb-host,.pool-table td.pool-minted{white-space:normal}
+.pool-table td.pool-minted{min-width:9em}
 .pool-cookie-raw{margin-top:8px}
 .pool-cookie-raw>summary{cursor:pointer;font-size:12px;color:var(--text-soft);padding:4px 0;list-style-position:inside}
 .pool-cookie-raw>summary:hover{color:var(--text)}
@@ -1651,15 +1655,11 @@ input:disabled,select:disabled,textarea:disabled{background:var(--sunk);color:va
   .history-model .chain>span:not(.tag):not(.arrow):not(.model){overflow:hidden;text-overflow:ellipsis}
   /* A chip sliced at the cell edge reads as a bug; overflowing content fades
      out instead, and the full set is in the drawer. */
-  .history-outcome{white-space:nowrap}
+  .history-outcome{white-space:normal}
   /* The fade lives on a wrapper inside the cell. On the cell itself it also
      faded the cell's own top border, which broke the row line just before
      耗时 and made the last two columns read as a frozen block. */
-  .history-outcome-wrap{
-    display:block;overflow:hidden;
-    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);
-    mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)
-  }
+  .history-outcome-wrap{display:flex;flex-wrap:wrap;gap:3px}
   /* Smaller chips in the list: the row is a summary, and each chip that
      shrinks is another verdict that fits before the fade. */
   .history-summary .tag{font-size:11px;padding:1px 6px;gap:3px}
@@ -2043,7 +2043,7 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
 #historyPanel th.history-origin{width:64px!important}
 #historyPanel th.history-model{width:var(--history-model-w,250px)!important}
 #historyPanel th.history-route{width:140px!important}
-#historyPanel td.history-route{font-size:11px;color:var(--text-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#historyPanel td.history-route{font-size:11px;color:var(--text-soft);white-space:normal;overflow-wrap:anywhere}
 #historyPanel th.history-outcome{width:236px!important}
 #historyPanel th.history-latency{width:74px!important}
 #historyPanel th.history-status{width:68px!important}
@@ -2069,12 +2069,10 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
 #historyPanel .history-model .chain{flex-wrap:nowrap!important;font-size:12px;gap:5px;overflow:hidden}
 #historyPanel .history-model .chain>span{white-space:nowrap;flex:none}
 #historyPanel .history-model .chain>span:not(.tag):not(.arrow){flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;min-width:36px}
-#historyPanel .history-outcome{white-space:nowrap!important}
-#historyPanel .history-outcome-wrap{
-  display:block;overflow:hidden;
-  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent);
-  mask-image:linear-gradient(90deg,#000 calc(100% - 22px),transparent)
-}
+/* Every verdict stays readable: the tags wrap onto another line rather than
+   fading out at the cell edge. */
+#historyPanel .history-outcome{white-space:normal!important}
+#historyPanel .history-outcome-wrap{display:flex;flex-wrap:wrap;gap:3px;align-items:center}
 
 /* Sticky offsets are measured, not assumed. The top bar changes height with
    the viewport -- it wraps to two rows on a phone -- so every hardcoded offset
@@ -3571,37 +3569,41 @@ function cookieDetail(record) {
    read: which credential returned it, when, and whether this request is echoing someone
    else's. */
 function turnStateTags(record) {
+  // One idea per tag. The verdict and what happened to the pool are separate
+  // tags; the details a reader might want are in the hover text.
   const tags = [];
+  const tag = (kind, label, title = "") => tags.push(`<span class="tag ${kind}"${title ? ` title="${esc(title)}"` : ""}>${esc(label)}</span>`);
   if (record.turn_state_cross_account === true) {
-    tags.push(`<span class="tag bad" title="该 state 来自 ${esc(maskIdentity(record.turn_state_origin_label || record.turn_state_origin_index || "另一个凭证"))}">跨账号回带</span>`);
+    tag("bad", "跨账号", `回带的 state 来自 ${maskIdentity(record.turn_state_origin_label || record.turn_state_origin_index || "另一个凭证")}`);
   } else if (record.turn_state_cross_model === true) {
-    tags.push(`<span class="tag bad" title="该 state 对应模型 ${esc(record.turn_state_origin_model || "另一个模型")}">跨模型回带</span>`);
+    tag("bad", "跨模型", `回带的 state 对应模型 ${record.turn_state_origin_model || "另一个模型"}`);
   } else if (record.turn_state_cross_account === false) {
-    tags.push('<span class="tag ok">回带一致</span>');
+    tag("ok", "回带一致");
   } else if (record.turn_state_echo) {
-    tags.push('<span class="tag flat" title="没有记录到这个 blob 的来源凭证">回带来源未知</span>');
+    tag("flat", "来源未知", "没有记录到回带 state 的来源凭证");
   }
   if (record.turn_state_expired) {
-    tags.push(`<span class="tag warn num" title="超过复用窗口（经验值 1 小时）">已过期${record.turn_state_age_seconds ? ` ${Math.round(record.turn_state_age_seconds / 60)} 分钟` : ""}</span>`);
+    tag("warn", "已过期", record.turn_state_age_seconds ? `回带的 state 已 ${Math.round(record.turn_state_age_seconds / 60)} 分钟，超过复用窗口` : "超过复用窗口");
   }
-  if (record.turn_state_stripped) tags.push('<span class="tag warn">已摘除</span>');
-  if (record.turn_state_injected) tags.push('<span class="tag ok" title="本次请求的 X-Codex-Turn-State 由插件从 State 池注入">State 已注入</span>');
-  if (record.cookie_injected) tags.push('<span class="tag ok" title="池里那条 state 带着的会话 Cookie 已合并进本次请求">Cookie 已注入</span>');
-  if (record.retry_attempts) tags.push(`<span class="tag flat num" title="一次降智响应触发的重试系列，合并为一行">重试 ${record.retry_attempts} 次</span>`);
-  if (record.turn_state_rejected) tags.push('<span class="tag bad" title="上游返回的 state 判定为降智，本次响应未下发给客户端">已拦截 · 未下发</span>');
-  if (record.turn_state_invalidated) tags.push('<span class="tag bad" title="注入的 state 之上，上游又铸了一个新 state；这条已从池中移除，不会再注入">注入后仍降智 · 已失效</span>');
-  // The healthy live turn has no minted state to hang a verdict on: the
-  // upstream returned none, and that silence is the verdict.
-  if (record.turn_state_held) tags.push('<span class="tag ok" title="注入的 state 发出后，上游没有回写新的 state：这一轮没有降智">不降智</span>');
+  if (record.turn_state_stripped) tag("warn", "已摘除", "不可复用的回带 state 已从请求里摘掉");
+  if (record.turn_state_injected) tag("ok", "注入 State", "本次请求的 X-Codex-Turn-State 由插件从 State 池注入");
+  if (record.cookie_injected) tag("ok", "注入 Cookie", "池里那条 state 带着的会话 Cookie 已合并进本次请求");
+  if (record.retry_attempts) tag("flat", `重试 ${record.retry_attempts} 次`, "一次降智响应触发的重试系列，合并为一行");
+  if (record.turn_state_rejected) tag("bad", "已拦截", "判为降智，这次响应没有下发给客户端");
+  if (record.turn_state_invalidated) tag("bad", "已剔除", "注入的 state 之上上游又回写了一个，注入的那条已从池里移除");
   const minted = record.turn_state_minted;
-  if (minted?.pooled && minted.manual_pool) tags.push('<span class="tag ok">已手动入池</span>');
-  else if (minted?.pooled) {
-    tags.push(minted.non_degraded === true ? '<span class="tag ok">不降智 · 已入池</span>' : '<span class="tag ok">已入池</span>');
-  } else if (minted?.non_degraded === false) tags.push('<span class="tag bad">疑似降智 · 未入池</span>');
-  else if (record.probe_verify_error) tags.push('<span class="tag warn" title="多重判断的复核请求失败，没有判定，这条 state 不入池">复核失败 · 未入池</span>');
-  else if (minted?.suspect) tags.push('<span class="tag warn" title="旧版耗时规则判为可疑，这条 state 未入池">可疑 · 未入池</span>');
-  else if (minted?.manual_pool) tags.push('<span class="tag warn" title="本次请求没有注入 state，无法判定；在详情的分析页手动入池">需手动入池</span>');
-  else if (minted) tags.push('<span class="tag warn" title="State 池维护关闭时收到的 state 不入池">未入池</span>');
+  // The verdict. A healthy live turn has no minted state: the upstream wrote
+  // none back, and that silence is the verdict.
+  if (record.turn_state_held) tag("ok", "不降智", "注入的 state 发出后，上游没有回写新 state");
+  else if (minted?.non_degraded === true) tag("ok", "不降智");
+  else if (minted?.non_degraded === false) tag("bad", "降智");
+  else if (record.probe_verify_error) tag("warn", "复核失败", `多重判断的复核请求失败：${record.probe_verify_error}`);
+  else if (minted?.suspect) tag("warn", "可疑", "旧版耗时规则判为可疑");
+  // What happened to the pool.
+  if (minted?.pooled) tag("ok", minted.manual_pool ? "手动入池" : "已入池");
+  else if (minted?.manual_pool && minted.non_degraded === undefined && !record.probe_verify_error) {
+    tag("warn", "需手动入池", "没有注入 state，无法判定；在详情的分析页手动入池");
+  } else if (minted) tag("flat", "未入池");
   return tags.join("");
 }
 // Why a state carries no verdict, by the rule that declined to give one.

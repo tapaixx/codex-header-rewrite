@@ -43,9 +43,9 @@ try {
   assert.equal(await page.locator('#detailPane-analysis [data-manual-pool]').count(), 0, 'the action is gone once pooled');
   assert.equal(await page.locator('#historyDrawer').isVisible(), true, 'the drawer stays open');
   const drawerTags = await page.locator('#drawerBody .history-detail-label').first().textContent();
-  assert.ok(drawerTags.includes('已手动入池') && !drawerTags.includes('需手动入池'), drawerTags);
+  assert.ok(drawerTags.includes('手动入池') && !drawerTags.includes('需手动入池'), drawerTags);
   const rowText = await page.locator('#historyBody .history-summary').first().textContent();
-  assert.ok(rowText.includes('已手动入池') && !rowText.includes('需手动入池'), rowText);
+  assert.ok(rowText.includes('手动入池') && !rowText.includes('需手动入池'), rowText);
 
   // Probe rows pool themselves and never get the action.
   await page.locator('#drawerClose').click();
@@ -59,7 +59,7 @@ try {
   // wired once, so after several records one click still copies once.
   await page.locator('#drawerClose').click();
   await page.evaluate(() => { store.historyTab = 'live'; return loadHistory(1); });
-  await page.waitForFunction(() => document.querySelector('#historyBody .history-summary')?.textContent.includes('已手动入池'));
+  await page.waitForFunction(() => document.querySelector('#historyBody .history-summary')?.textContent.includes('手动入池') && !document.querySelector('#historyBody .history-summary')?.textContent.includes('需手动入池'));
   for (const index of [1, 2, 0]) {
     await page.evaluate((i) => document.querySelectorAll('#historyBody .history-summary')[i].click(), index);
     await page.waitForSelector('#drawerBody .detail-tabs');
