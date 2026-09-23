@@ -88,8 +88,10 @@ func TestNonDegradedStateLimitsAreInclusivePerPlan(t *testing.T) {
 		{plan: "", chars: 1, want: false, max: 0, known: false},
 		{plan: "   ", chars: 1, want: false, max: 0, known: false},
 	}
+	useLengthJudgement(t)
 	for _, tt := range tests {
-		got, max, known := nonDegradedTurnState(strings.Repeat("x", tt.chars), tt.plan)
+		v := judgeDegraded(strings.Repeat("x", tt.chars), tt.plan)
+		got, max, known := v.Eligible, v.MaxChars, v.Judged
 		if got != tt.want || max != tt.max || known != tt.known {
 			t.Fatalf("plan=%s chars=%d: got (%v,%d,%v), want (%v,%d,%v)", tt.plan, tt.chars, got, max, known, tt.want, tt.max, tt.known)
 		}
@@ -97,6 +99,7 @@ func TestNonDegradedStateLimitsAreInclusivePerPlan(t *testing.T) {
 }
 
 func TestOnlyNonDegradedStatesEnterThePool(t *testing.T) {
+	useLengthJudgement(t)
 	resetTurnStates(t)
 	teamGood := strings.Repeat("a", teamStateMaxChars)
 	teamDegraded := strings.Repeat("b", teamStateMaxChars+1)

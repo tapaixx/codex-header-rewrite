@@ -269,6 +269,8 @@ func TestNonStreamingResponseBodyIsReadForTheModelOnly(t *testing.T) {
 // A turn chain across a credential switch: the upstream mints the blob under
 // idx-a, then the next request goes out under idx-b still echoing it.
 func TestForeignTurnStateEchoIsFlaggedAndOptionallyStripped(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	stubCredentialPlan(t, "team")
 	for _, strip := range []bool{false, true} {
 		p := resetState(t)
@@ -538,6 +540,8 @@ func TestDisabledRulePinsNothing(t *testing.T) {
 // neither hands anything out nor takes anything in, though history still
 // records what the upstream sent.
 func TestFrozenPoolNeitherInjectsNorMints(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -687,6 +691,8 @@ func lastAttempt(t *testing.T) historyRecord {
 // carrying the chain. It leaves the pool -- memory and store -- and the
 // attempt says so, so the next request is not handed the same dead state.
 func TestExpiredInjectedStateIsInvalidatedWhenTheResponseIsDegraded(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -717,6 +723,8 @@ func TestExpiredInjectedStateIsInvalidatedWhenTheResponseIsDegraded(t *testing.T
 // Age is not part of it: a state inside the window that went out and came
 // back degraded is just as dead as an expired one, and leaves the pool.
 func TestFreshInjectedStateIsEvictedByADegradedResponse(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -768,6 +776,8 @@ func rejectFixture(t *testing.T, reject bool) {
 // With the flag on, a non-stream response whose minted state is degraded is
 // replaced by an error object and marked, and the attempt records it.
 func TestDegradedNonStreamResponseIsWithheldWhenTheRuleAsks(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	rejectFixture(t, true)
 	degraded := fernetToken(0x80, time.Now(), 40)
 	out := observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {degraded}}, Body: []byte(`{"id":"resp"}`)})
@@ -783,6 +793,8 @@ func TestDegradedNonStreamResponseIsWithheldWhenTheRuleAsks(t *testing.T) {
 // On a stream the decision is taken on the header chunk: the first payload
 // chunk becomes a terminal error event and every later chunk is dropped.
 func TestDegradedStreamIsCutAtTheFirstChunk(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	rejectFixture(t, true)
 	degraded := fernetToken(0x80, time.Now(), 40)
 	head := observeStreamHeaders(streamChunkInterceptRequest{RequestID: "r", ChunkIndex: streamChunkHeaderInitIndex, ResponseHeaders: http.Header{turnStateHeader: {degraded}}})
@@ -800,6 +812,8 @@ func TestDegradedStreamIsCutAtTheFirstChunk(t *testing.T) {
 }
 
 func TestDegradedModelScopeForBothResponsePaths(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	for _, stream := range []bool{false, true} {
 		for _, tc := range []struct {
 			name   string
@@ -963,5 +977,40 @@ func TestPooledSessionFollowsTheRotatingResponse(t *testing.T) {
 	const want = "session=rotated; oai-did=device; issued=fresh"
 	if origin.cookie != want {
 		t.Fatalf("pooled session=%q want %q", origin.cookie, want)
+	}
+}
+
+// With the judgement paused (the default), a state of any length enters the
+// pool, no response is withheld and no state is evicted; history says why it
+// carries no verdict.
+func TestPausedJudgementPoolsAnyStateAndInterceptsNothing(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true, RejectDegradedResponse: true}
+	state.mu.Unlock()
+	long := fernetToken(0x80, time.Now(), 40) // far past the old team limit
+	response := injectTestRequest(t, "paused", nil)
+	if response.Headers.Get(turnStateHeader) != "" {
+		t.Fatal("nothing pooled yet, nothing to inject")
+	}
+	observeResponse(responseInterceptRequest{RequestID: "paused", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {long}}})
+	state.mu.Lock()
+	attempt := *state.pending["paused"].current
+	state.mu.Unlock()
+	completeRequest(requestCompletion{RequestID: "paused", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+	if origin, pooled := pooledFor(t); !pooled || origin.blob != long {
+		t.Fatal("under the paused judgement every state enters the pool")
+	}
+	if attempt.TurnStateRejected || attempt.TurnStateInvalidated {
+		t.Fatalf("nothing is withheld or evicted without a verdict: %+v", attempt.historyRecord)
+	}
+	if info := attempt.TurnStateMinted; info == nil || info.NonDegraded != nil || info.Judgement != degradedRulePaused {
+		t.Fatalf("history should carry no verdict and name the paused rule: %+v", info)
+	}
+	if got := injectTestRequest(t, "next", nil).Headers.Get(turnStateHeader); got != long {
+		t.Fatalf("the pooled state should go out on the next request, got %q", got)
 	}
 }

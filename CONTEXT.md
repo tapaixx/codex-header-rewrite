@@ -9,7 +9,7 @@ An `X-Codex-Turn-State` blob received from an upstream response, before any qual
 _Avoid_: Minted state
 
 **Non-degraded state**:
-An observed state whose wire-text length is within the inclusive limit for its credential plan: a team plan at most 332 characters, any personal (non-team) plan at most 292 characters. A credential that claims no plan at all is unclassified, not personal.
+An observed state the judgement in force (`degraded.go`) did not mark as degraded. The judgement is currently paused, so every observed state counts as non-degraded and enters the pool; the former wire-length rule (team at most 332 characters, personal at most 292, no plan claim means unclassified) is kept as `judgeByLength`.
 _Avoid_: Good state, valid state
 
 **Minting**:

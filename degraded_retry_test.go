@@ -29,6 +29,8 @@ func TestRetryRequiresRejectionSwitch(t *testing.T) {
 }
 
 func TestRetryRejectsRotatedIdentityAndUsesCurrentPlan(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	resetState(t)
 	resetTurnStates(t)
 	sent := retryStub(t, "pro", []string{strings.Repeat("x", 300)})
@@ -124,6 +126,8 @@ func retryStub(t *testing.T, plan string, blobs []string) *[]hostHTTPRequest {
 // "hi", stops at the first non-degraded answer, pools it, and reports the
 // whole series as one history row.
 func TestRetryPoolsTheFirstNonDegradedStateAndRecordsOneRow(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	resetState(t)
 	resetTurnStates(t)
 	degraded := fernetToken(0x80, time.Now(), 40)
@@ -173,6 +177,8 @@ func TestRetryPoolsTheFirstNonDegradedStateAndRecordsOneRow(t *testing.T) {
 // Every attempt degraded: nothing is pooled, the row says how many were made
 // and that it failed, and the attempt cap is respected.
 func TestRetryStopsAtTheCapAndReportsFailure(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	resetState(t)
 	resetTurnStates(t)
 	degraded := fernetToken(0x80, time.Now(), 40)
@@ -258,6 +264,8 @@ func TestRetrySelectsProxyPerCallAndKeepsCredentialsIsolated(t *testing.T) {
 // finished. Returning first sends the client straight back at an upstream
 // whose pool has not been refilled, which is the loop this exists to break.
 func TestWithheldResponseWaitsForTheRetrySeries(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -320,6 +328,8 @@ func TestWithheldResponseWaitsForTheRetrySeries(t *testing.T) {
 // same caller to the upstream: the Cookie of that request travels with the
 // series, and is recorded as sent so the two can be compared.
 func TestRetryCarriesTheInterceptedCookie(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	resetState(t)
 	resetTurnStates(t)
 	good := fernetToken(0x80, time.Now(), 1)
@@ -443,6 +453,8 @@ func TestSetCookieFromTheResponseUpdatesTheRetryCookie(t *testing.T) {
 // End to end: the cookie the retry sends is the merged one, and the history row
 // shows it, so the session a retry presented can be compared afterwards.
 func TestRetrySendsTheCookieTheResponseRotated(t *testing.T) {
+	// These exercise the length rule; it is switched on for the test.
+	useLengthJudgement(t)
 	resetState(t)
 	resetTurnStates(t)
 	sent := retryStub(t, "team", []string{fernetToken(0x80, time.Now(), 1)})

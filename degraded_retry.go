@@ -265,8 +265,7 @@ func retryOnce(ctx context.Context, authIndex, authID, model, cookie string) ret
 		outcome.err = fmt.Sprintf("no %s in the response (HTTP %d)", turnStateHeader, response.StatusCode)
 		return outcome
 	}
-	nonDegraded, _, knownPlan := nonDegradedTurnState(blob, plan)
-	outcome.blob, outcome.nonDegraded, outcome.plan = blob, knownPlan && nonDegraded, plan
+	outcome.blob, outcome.nonDegraded, outcome.plan = blob, judgeDegraded(blob, plan).Eligible, plan
 	return outcome
 }
 

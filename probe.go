@@ -476,10 +476,9 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 		recordProbe(authIndex, rule, attempt)
 		return
 	}
-	nonDegraded, _, knownPlan := nonDegradedTurnState(attempt.blob, plan)
 	state.mu.Lock()
 	info := classifyTurnState(decodeTurnState(attempt.blob), attempt.blob, plan)
-	if knownPlan && nonDegraded {
+	if judgeDegraded(attempt.blob, plan).Eligible {
 		// The state and the session that produced it enter the pool together.
 		info.Pooled = noteTurnStateMintLocked(attempt.blob, authIndex, credentialLabelLocked(authIndex), model, plan,
 			applySetCookies(cookie, response.Headers))

@@ -53,6 +53,12 @@ const responseBody = [
 const teamState = 'gAAAAAB' + 'q'.repeat(324);
 const degradedState = 'gAAAAAB' + 'q'.repeat(348);
 
+// Cookies as the upstream really sets them: a routing JWT (unsigned here), a
+// Cloudflare bot token with its embedded issue time, and the LB affinity cookie.
+const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const nowSec = Math.floor(Date.now() / 1000);
+const oailb = `${b64url({ alg: 'HS256', typ: 'JWT', kid: 'gw-2' })}.${b64url({ host: 'gw-iad-7.internal', iss: 'oai-lb', aud: 'chatgpt.com', iat: nowSec - 600, exp: nowSec + 6600 })}.${b64url({ sig: 'not-a-real-signature-just-bytes-for-preview' })}`;
+const cfbm = `2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-${nowSec - 300}-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH`;
 const credentials = [
   { auth_index: 'acct-a', auth_id: 'auth-a', name: 'alex.json', label: 'alex@example.com', email: 'alex@example.com', provider: 'codex', type: 'codex', plan_type: 'team', plan_resolved: true },
   { auth_index: 'acct-b', auth_id: 'auth-b', name: 'sam.json', label: 'sam@example.com', email: 'sam@example.com', provider: 'codex', type: 'codex', plan_type: 'plus', plan_resolved: true },
@@ -85,7 +91,7 @@ const liveHeadersBefore = {
   'Authorization': ['Bearer [REDACTED]'],
   'Chatgpt-Account-Id': ['1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1'],
   'Content-Type': ['application/json'],
-  'Cookie': ['__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device'],
+  'Cookie': [`__oailb=${oailb}; __cf_bm=${cfbm}; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device`],
   'Originator': ['@agentclientprotocol/codex-acp'],
   'X-Codex-Turn-State': [teamState],
   'X-Openai-Internal-Codex-Responses-Lite': ['true'],
@@ -103,14 +109,14 @@ const record = (over) => ({
   request_effort: 'high', upstream_effort: 'high',
   status_code: 200, outcome: 'succeeded',
   before_headers: liveHeadersBefore, after_headers: liveHeadersAfter,
-  response_headers: { 'X-Codex-Turn-State': [teamState], 'X-Request-Id': ['req_9f2a'], 'Set-Cookie': ['oai-did=demo-device; Path=/; HttpOnly'] },
+  response_headers: { 'X-Codex-Turn-State': [teamState], 'X-Request-Id': ['req_9f2a'], 'Set-Cookie': [`__cf_bm=${cfbm}; path=/; expires=${new Date(Date.now() + 1800 * 1000).toUTCString()}; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None`, `__cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; SameSite=None; Secure; path=/; expires=${new Date(Date.now() + 86400 * 1000).toUTCString()}; HttpOnly`, `__oailb=${oailb}; path=/; Max-Age=7200; SameSite=Lax; Secure`] },
   ...over,
 });
 
 const items = [
   record({ id: 'rec-1#1', request_id: 'rec-1', started_at: at(30), completed_at: at(26),
     turn_state_injected: true,
-    turn_state_minted: { digest: 'a13f9c21b4e0', chars: 332, bytes: 249, version: 128, issued_at: at(28), fernet_like: true, decodable: true, plan_type: 'team', max_chars: 332, non_degraded: true, pooled: true } }),
+    turn_state_minted: { digest: 'a13f9c21b4e0', chars: 332, bytes: 249, version: 128, issued_at: at(28), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'paused', pooled: true } }),
   record({ id: 'rec-2#1', request_id: 'rec-2', started_at: at(180), completed_at: at(171),
     outcome: 'succeeded', turn_state_rejected: true, turn_state_injected: true,
     response_headers: { 'X-Codex-Turn-State': [degradedState], 'X-Request-Id': ['req_71bd'] },
@@ -122,7 +128,7 @@ const items = [
     started_at: at(176), completed_at: at(174), retry_attempts: 2, source_format: 'plugin_retry',
     before_headers: { 'Accept': ['text/event-stream'], 'Authorization': ['Bearer [REDACTED]'], 'Chatgpt-Account-Id': ['1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1'], 'Content-Type': ['application/json'], 'Cookie': ['__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device'], 'Originator': ['codex-cli'] },
     after_headers: { 'Accept': ['text/event-stream'], 'Authorization': ['Bearer [REDACTED]'], 'Chatgpt-Account-Id': ['1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1'], 'Content-Type': ['application/json'], 'Cookie': ['__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device'], 'Originator': ['codex-cli'] },
-    turn_state_minted: { digest: 'e4418b0c7d35', chars: 332, bytes: 249, version: 128, issued_at: at(175), fernet_like: true, decodable: true, plan_type: 'team', max_chars: 332, non_degraded: true, pooled: true } },
+    turn_state_minted: { digest: 'e4418b0c7d35', chars: 332, bytes: 249, version: 128, issued_at: at(175), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'paused', pooled: true } },
   record({ id: 'rec-3#1', request_id: 'rec-3', started_at: at(900), completed_at: at(893),
     model: 'gpt-5.6-luna', requested_model: 'gpt-5.6-luna', upstream_model: 'gpt-5.6-sol',
     model_mismatch: true, request_effort: 'xhigh', upstream_effort: 'low' }),
@@ -142,11 +148,11 @@ const bodies = {
 };
 
 const turnStates = [
-  { state: teamState, digest: 'a13f9c21b4e0', auth_index: 'acct-a', label: 'alex@example.com', model: 'gpt-6-astra', plan_type: 'team', chars: 332, max_chars: 332, minted_at: at(45), age_seconds: 45, expired: false, reuse_window_seconds: 200,
+  { state: teamState, digest: 'a13f9c21b4e0', auth_index: 'acct-a', label: 'alex@example.com', model: 'gpt-6-astra', plan_type: 'team', chars: 332, max_chars: 0, minted_at: at(45), age_seconds: 45, expired: false, reuse_window_seconds: 200,
     cookie: '__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device' },
   // Pooled before the session was recorded, which reads as "no session" rather
   // than as an error.
-  { state: teamState, digest: 'b7710f3e55aa', auth_index: 'acct-a', label: 'alex@example.com', model: 'gpt-5.6-luna', plan_type: 'team', chars: 332, max_chars: 332, minted_at: at(900), age_seconds: 900, expired: true, reuse_window_seconds: 200, cookie: '' },
+  { state: teamState, digest: 'b7710f3e55aa', auth_index: 'acct-a', label: 'alex@example.com', model: 'gpt-5.6-luna', plan_type: 'team', chars: 332, max_chars: 0, minted_at: at(900), age_seconds: 900, expired: true, reuse_window_seconds: 200, cookie: '' },
 ];
 
 // Probe rows: one succeeded and pooled, one primed through a rotating exit,
@@ -165,7 +171,7 @@ const probeRow = (over) => ({
 const probes = [
   probeRow({ id: 'probe-1#1', request_id: 'probe-1', started_at: at(12), completed_at: at(10),
     probe_egress: 'socks5://127.0.0.1:1080', probe_primed: true,
-    turn_state_minted: { digest: 'c91a0e77bb42', chars: 332, bytes: 249, version: 128, issued_at: at(11), fernet_like: true, decodable: true, plan_type: 'team', max_chars: 332, non_degraded: true, pooled: true } }),
+    turn_state_minted: { digest: 'c91a0e77bb42', chars: 332, bytes: 249, version: 128, issued_at: at(11), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'paused', pooled: true } }),
   probeRow({ id: 'probe-2#1', request_id: 'probe-2', started_at: at(75), completed_at: at(73),
     model: 'gpt-5.6-luna', requested_model: 'gpt-5.6-luna', upstream_model: 'gpt-5.6-luna',
     probe_egress: '', probe_primed: false, probe_cookie_mode: 'credential', probe_exit_region: 'LHR',
@@ -248,7 +254,7 @@ const stub = `
       const token = (body && body.token) || "";
       return json({ info: { digest: "a13f9c21b4e0", chars: token.length, bytes: Math.max(0, Math.round((token.length * 3) / 4) - 8),
         version: 128, issued_at: new Date(Date.now() - 45000).toISOString(), fernet_like: true, decodable: true,
-        plan_type: "team", max_chars: 332, non_degraded: token.length <= 332 },
+        plan_type: "team", judgement: "paused" },
         origin_label: "alex@example.com", origin_auth_index: "acct-a" });
     }
     if (path.endsWith("/rule")) {

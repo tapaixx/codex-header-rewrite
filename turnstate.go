@@ -39,9 +39,7 @@ const (
 	turnStateTTL         = 2 * time.Hour
 	turnStateMaxEntries  = 512
 	turnStateSweepPeriod = 128
-	teamStateMaxChars    = 332
 	// Every plan that is not a team plan shares the shorter personal limit.
-	personalStateMaxChars = 292
 )
 
 // turnStateInfo is the non-secret envelope of one observed blob. Digest is a
@@ -62,6 +60,9 @@ type turnStateInfo struct {
 	PlanType    string    `json:"plan_type,omitempty"`
 	MaxChars    int       `json:"max_chars,omitempty"`
 	NonDegraded *bool     `json:"non_degraded,omitempty"`
+	// Judgement names the rule that answered ("length" / "paused"), so a row
+	// without a verdict says why.
+	Judgement string `json:"judgement,omitempty"`
 	Pooled      bool      `json:"pooled,omitempty"`
 }
 
@@ -142,29 +143,15 @@ func rawFieldFold(object map[string]json.RawMessage, name string) json.RawMessag
 	return nil
 }
 
-// nonDegradedTurnState applies the observed inclusive wire-text thresholds:
-// a team plan may run to 332 characters, every personal (non-team) plan to 292.
-// A credential that claims no plan at all cannot prove that a state is
-// non-degraded, so it never enters the pool -- guessing the shorter limit would
-// mark a valid team state as degraded, and guessing the longer one would pool a
-// degraded personal state.
-func nonDegradedTurnState(blob, plan string) (nonDegraded bool, maxChars int, knownPlan bool) {
-	switch normalizePlanType(plan) {
-	case "":
-		return false, 0, false
-	case "team":
-		maxChars = teamStateMaxChars
-	default:
-		maxChars = personalStateMaxChars
-	}
-	return len(blob) <= maxChars, maxChars, true
-}
-
+// classifyTurnState attaches the judgement in force to a decoded state, for
+// history. The rule itself lives in degraded.go.
 func classifyTurnState(info turnStateInfo, blob, plan string) turnStateInfo {
 	info.PlanType = normalizePlanType(plan)
-	nonDegraded, maxChars, knownPlan := nonDegradedTurnState(blob, plan)
-	info.MaxChars = maxChars
-	if knownPlan {
+	verdict := judgeDegraded(blob, plan)
+	info.MaxChars = verdict.MaxChars
+	info.Judgement = verdict.Rule
+	if verdict.Judged {
+		nonDegraded := !verdict.Degraded
 		info.NonDegraded = &nonDegraded
 	}
 	return info
@@ -248,8 +235,9 @@ func (origin turnStateOrigin) persisted() persistedTurnState {
 
 func restoreTurnState(record persistedTurnState) (turnStateOrigin, bool) {
 	blob := strings.TrimSpace(record.State)
-	nonDegraded, maxChars, knownPlan := nonDegradedTurnState(blob, record.PlanType)
-	if blob == "" || record.AuthIndex == "" || !knownPlan || !nonDegraded {
+	verdict := judgeDegraded(blob, record.PlanType)
+	maxChars := verdict.MaxChars
+	if blob == "" || record.AuthIndex == "" || !verdict.Eligible {
 		return turnStateOrigin{}, false
 	}
 	seen := record.SeenAt
@@ -496,10 +484,11 @@ func noteTurnStateMintLocked(blob, authIndex, label, model, plan, cookie string)
 	if blob == "" || digest == "" || authIndex == "" {
 		return false
 	}
-	nonDegraded, maxChars, knownPlan := nonDegradedTurnState(blob, plan)
-	if !knownPlan || !nonDegraded {
+	verdict := judgeDegraded(blob, plan)
+	if !verdict.Eligible {
 		return false
 	}
+	maxChars := verdict.MaxChars
 	now := time.Now().UTC()
 	info := decodeTurnState(blob)
 	minted := info.IssuedAt
@@ -664,8 +653,7 @@ func turnStateForInjectionLocked(authIndex, model, plan string) (turnStateOrigin
 	if !ok || origin.blob == "" {
 		return turnStateOrigin{}, false
 	}
-	qualified, _, knownPlan := nonDegradedTurnState(origin.blob, plan)
-	if !knownPlan || !qualified {
+	if !judgeDegraded(origin.blob, plan).Eligible {
 		return turnStateOrigin{}, false
 	}
 	return origin, true
