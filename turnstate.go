@@ -395,6 +395,31 @@ func applySetCookies(cookie string, responseHeaders http.Header) string {
 	return strings.Join(parts, "; ")
 }
 
+// mergeCookieHeader lays the overlay's crumbs over the base cookie: a name in
+// both takes the overlay's value in the base's position, names only in the
+// overlay are appended. Cookie names are case-sensitive (RFC 6265).
+func mergeCookieHeader(base, overlay string) string {
+	order := make([]string, 0, 8)
+	values := make(map[string]string, 8)
+	for _, cookie := range []string{base, overlay} {
+		for _, crumb := range strings.Split(cookie, ";") {
+			name, value, ok := cutCookieCrumb(crumb)
+			if !ok {
+				continue
+			}
+			if _, seen := values[name]; !seen {
+				order = append(order, name)
+			}
+			values[name] = value
+		}
+	}
+	parts := make([]string, 0, len(order))
+	for _, name := range order {
+		parts = append(parts, name+"="+values[name])
+	}
+	return strings.Join(parts, "; ")
+}
+
 // parseSetCookie reads what a Set-Cookie header assigns, and whether it is
 // clearing the cookie rather than setting one.
 func parseSetCookie(assignment string) (name, value string, cleared bool) {

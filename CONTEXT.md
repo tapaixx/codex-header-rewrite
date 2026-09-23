@@ -20,6 +20,10 @@ _Avoid_: Observing, receiving
 A string named in the server's plugin config (`probe_degraded_markers`). A probe response whose event names, event types or field names contain one is degraded. Markers are server configuration only and never appear in the repository, the binary, the panel or the management API.
 _Avoid_: Signature, fingerprint
 
+**Cookie injection**:
+Merging the session pooled with a state into an outbound request's Cookie header, pooled values winning on a name clash. A switch of its own (`inject_cookie`), independent of state injection, off by default, and inert while the pool is frozen.
+_Avoid_: Session replay
+
 **Manual pool**:
 An operator minting a recorded live state from the history drawer. The plugin rebuilds the entry from the stored record (response state, request Cookie merged with Set-Cookie) without calling the upstream, and it takes the slot even from a newer state.
 _Avoid_: Force pool, pin

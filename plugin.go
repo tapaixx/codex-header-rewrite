@@ -6,7 +6,7 @@ import (
 )
 
 func pluginRegistration() registration {
-	return registration{SchemaVersion: schemaVersion, Metadata: metadata{Name: pluginName, Version: pluginVersion, Author: "tapaixx", GitHubRepository: "https://github.com/tapaixx/codex-header-rewrite", Logo: pluginLogo, ConfigFields: []configField{{Name: "data_path", Type: "string", Description: "bbolt data path. Defaults to plugins/data/codex-header-rewrite.db"}}}, Capabilities: registrationCapabilities{RequestInterceptor: true, RequestLifecyclePlugin: true, ResponseInterceptor: true, StreamChunkInterceptor: true, ManagementAPI: true}}
+	return registration{SchemaVersion: schemaVersion, Metadata: metadata{Name: pluginName, Version: pluginVersion, Author: "tapaixx", GitHubRepository: "https://github.com/tapaixx/codex-header-rewrite", Logo: pluginLogo, ConfigFields: []configField{{Name: "data_path", Type: "string", Description: "bbolt data path. Defaults to plugins/data/codex-header-rewrite.db"}, {Name: "probe_degraded_markers", Type: "string", Description: "Automatic state probe: comma-separated markers. A probe response whose event names, event types or field names contain one is judged degraded and its state is not pooled. Empty: probes are not judged. Server configuration only; never shown in the panel."}}}, Capabilities: registrationCapabilities{RequestInterceptor: true, RequestLifecyclePlugin: true, ResponseInterceptor: true, StreamChunkInterceptor: true, ManagementAPI: true}}
 }
 
 func handleMethod(method string, raw []byte) ([]byte, error) {

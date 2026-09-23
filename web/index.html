@@ -2250,6 +2250,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
       <span class="light" data-light="rule" data-on="0"><i></i>Header 规则</span>
       <span class="light" data-light="pool" data-on="0"><i></i>State 维护</span>
       <span class="light" data-light="inject" data-on="0"><i></i>State 注入</span>
+      <span class="light" data-light="cookie" data-on="0"><i></i>Cookie 注入</span>
       <span class="light" data-light="reject" data-on="0"><i></i>降智拦截</span>
       <span class="light" data-light="retry" data-on="0"><i></i>拦截重试</span>
       <span class="light" data-light="probe" data-on="0"><i></i>自动探针</span>
@@ -2429,6 +2430,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
         <div class="spacer"></div>
         <label class="switch panel-switch"><input type="checkbox" id="poolMaintain" checked disabled><span>State 池维护<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="State 池维护的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">插件从每个响应里读 <code>X-Codex-Turn-State</code>：合格的入池、过期的标记，池子一直是活的。</span><span class="hint-k">关掉</span><span class="hint-v">池子冻结：不入池、不注入，自动探针和拦截后重试也停下，已有记录原样保留。</span><span class="hint-p">这是池子的总开关，默认开启；「注入 State」只在它开着时生效。</span></span></span></span></label>
         <label class="switch panel-switch"><input type="checkbox" id="poolInject" disabled><span>注入 State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="注入 State 的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">从池里取「该凭证 + 当前模型」的合格 state 写进请求的 <code>X-Codex-Turn-State</code>（池里没有就不写），并摘掉确认来自其他凭证或其他模型的回带值。</span><span class="hint-k">关掉</span><span class="hint-v">完全不碰这个 Header，客户端带什么就原样发什么。</span><span class="hint-p">与「启用改写」无关，规则关着也照样注入；规则<b>启用</b>且手工设置或移除了这个 Header 时，以手工为准。默认关闭。</span></span></span></span></label>
+        <label class="switch panel-switch"><input type="checkbox" id="poolCookie" disabled><span>注入 Cookie<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="注入 Cookie 的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">池里「该凭证 + 当前模型」那条 state 入池时带着的会话 Cookie，合并进请求的 <code>Cookie</code>：同名的以池里为准，客户端独有的保留。池里没有、或那条没有会话，就不动。</span><span class="hint-k">关掉</span><span class="hint-v">完全不碰 <code>Cookie</code>，客户端带什么就原样发什么。</span><span class="hint-p">与「注入 State」各自独立，可以只开一个。同样只在 State 池维护开着时生效；规则<b>启用</b>且手工设置或移除了 <code>Cookie</code> 时，以手工为准。默认关闭。</span></span></span></span></label>
         <span class="muted" id="turnStateMeta"></span>
         <button class="quiet icon" id="turnStateRefresh" title="刷新" aria-label="刷新回合状态"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
@@ -2703,6 +2705,7 @@ function renderStatusLights() {
     rule: !!rule?.enabled,
     pool: !!rule && !frozen,
     inject: !!rule && (rule.inject_turn_state ?? rule.strip_foreign_turn_state) ? (frozen ? "held" : true) : false,
+    cookie: !!rule?.inject_cookie ? (frozen ? "held" : true) : false,
     reject: !!rule?.reject_degraded_response,
     retry: !!rule?.reject_degraded_response && !!rule?.retry_on_degraded ? (frozen ? "held" : true) : false,
     probe: !!rule?.probe_enabled ? (frozen ? "held" : true) : false,
@@ -3098,6 +3101,7 @@ async function selectCredential(authIndex) {
   $("ruleEnabled").checked = false;
   if ($("poolMaintain")) $("poolMaintain").checked = true;
   if ($("poolInject")) $("poolInject").checked = false;
+  if ($("poolCookie")) $("poolCookie").checked = false;
   syncPoolControls();
   if ($("rejectDegraded")) $("rejectDegraded").checked = false;
   if ($("retryDegraded")) $("retryDegraded").checked = false;
@@ -3204,6 +3208,7 @@ async function loadRule() {
   $("ruleEnabled").checked = !!store.rule.enabled;
   if ($("poolMaintain")) $("poolMaintain").checked = store.rule.maintain_state_pool !== false;
   if ($("poolInject")) $("poolInject").checked = !!(store.rule.inject_turn_state ?? store.rule.strip_foreign_turn_state);
+  if ($("poolCookie")) $("poolCookie").checked = !!store.rule.inject_cookie;
   syncPoolControls();
   if ($("rejectDegraded")) $("rejectDegraded").checked = !!store.rule.reject_degraded_response;
   if ($("retryDegraded")) $("retryDegraded").checked = !!store.rule.retry_on_degraded;
@@ -3236,7 +3241,7 @@ function renderWarnings(warnings) {
 // Spread first: the rule carries response-side and probe settings this form
 // does not render, and rebuilding it from the visible fields alone would save
 // them away as zero.
-const collectRule = () => ({ ...(store.rule || {}), auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), inject_turn_state: !!$("poolInject")?.checked, maintain_state_pool: $("poolMaintain") ? $("poolMaintain").checked : true, state_ttl_seconds: ruleStateTTL(), reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts(), retry_proxies: degradedProxies(), retry_proxy_enabled: !!$("retryProxyOn")?.checked, ...collectProbe() });
+const collectRule = () => ({ ...(store.rule || {}), auth_index: store.selected, enabled: $("ruleEnabled").checked, set: readPairs($("setRows")), remove: readNames($("removeRows")), inject_turn_state: !!$("poolInject")?.checked, inject_cookie: !!$("poolCookie")?.checked, maintain_state_pool: $("poolMaintain") ? $("poolMaintain").checked : true, state_ttl_seconds: ruleStateTTL(), reject_degraded_response: !!$("rejectDegraded")?.checked, reject_degraded_models: degradedModels(), retry_on_degraded: !!$("retryDegraded")?.checked, retry_attempts: degradedRetryAttempts(), retry_proxies: degradedProxies(), retry_proxy_enabled: !!$("retryProxyOn")?.checked, ...collectProbe() });
 
 /* ---------- the header diff -------------------------------------------
    One row per header. The name is written once and the value change is shown
@@ -3531,7 +3536,8 @@ function turnStateTags(record) {
     tags.push(`<span class="tag warn num" title="超过复用窗口（经验值 1 小时）">已过期${record.turn_state_age_seconds ? ` ${Math.round(record.turn_state_age_seconds / 60)} 分钟` : ""}</span>`);
   }
   if (record.turn_state_stripped) tags.push('<span class="tag warn">已摘除</span>');
-  if (record.turn_state_injected) tags.push('<span class="tag ok" title="本次请求的 X-Codex-Turn-State 由插件从 State 池注入">已注入</span>');
+  if (record.turn_state_injected) tags.push('<span class="tag ok" title="本次请求的 X-Codex-Turn-State 由插件从 State 池注入">State 已注入</span>');
+  if (record.cookie_injected) tags.push('<span class="tag ok" title="池里那条 state 带着的会话 Cookie 已合并进本次请求">Cookie 已注入</span>');
   if (record.retry_attempts) tags.push(`<span class="tag flat num" title="一次降智响应触发的重试系列，合并为一行">重试 ${record.retry_attempts} 次</span>`);
   if (record.turn_state_rejected) tags.push('<span class="tag bad" title="上游返回的 state 判定为降智，本次响应未下发给客户端">已拦截 · 未下发</span>');
   if (record.turn_state_invalidated) tags.push('<span class="tag bad" title="注入的是已过期的池 state，上游铸回的仍是降智 state；这条 state 已从池中移除，不会再注入">注入后仍降智 · 已失效</span>');
@@ -5050,8 +5056,11 @@ function syncPoolControls() {
   $("poolMaintain").disabled = !ready;
   // A frozen pool cannot inject, so the injection switch waits for it.
   const frozen = !$("poolMaintain").checked;
-  $("poolInject").disabled = !ready || frozen;
-  $("poolInject").parentElement.title = ready && frozen ? "State 池已暂停维护，注入不生效" : "";
+  for (const id of ["poolInject", "poolCookie"]) {
+    if (!$(id)) continue;
+    $(id).disabled = !ready || frozen;
+    $(id).parentElement.title = ready && frozen ? "State 池已暂停维护，注入不生效" : "";
+  }
 }
 async function savePoolSettings() {
   if (!store.selected || !store.rule) { toast("先选择一个凭证", true); return; }
@@ -5066,7 +5075,7 @@ async function savePoolSettings() {
     // switches both off and keeps them off until the pool is live again.
     const payload = await api("/rule", { method: "PUT", body: {
       ...store.rule, auth_index: store.selected,
-      maintain_state_pool: maintained, inject_turn_state: $("poolInject").checked,
+      maintain_state_pool: maintained, inject_turn_state: $("poolInject").checked, inject_cookie: !!$("poolCookie")?.checked,
       ...(maintained ? {} : { retry_on_degraded: false, probe_enabled: false }),
     } });
     if (epoch !== store.selectionEpoch) return;
@@ -5080,6 +5089,7 @@ async function savePoolSettings() {
     if (epoch !== store.selectionEpoch) return;
     $("poolMaintain").checked = previous.maintain_state_pool !== false;
     $("poolInject").checked = !!(previous.inject_turn_state ?? previous.strip_foreign_turn_state);
+    if ($("poolCookie")) $("poolCookie").checked = !!previous.inject_cookie;
     fail(error);
   } finally {
     poolSaving = false;
@@ -5090,7 +5100,7 @@ async function savePoolSettings() {
 }
 // Whether the pool is frozen, as the other two cards read it.
 const poolFrozen = () => !!$("poolMaintain") && !$("poolMaintain").checked;
-for (const id of ["poolMaintain", "poolInject"]) $(id)?.addEventListener("change", savePoolSettings);
+for (const id of ["poolMaintain", "poolInject", "poolCookie"]) $(id)?.addEventListener("change", savePoolSettings);
 
 /* ---------- automatic state probe ---------------------------------------
    The window is stored as minutes into a UTC day and edited in browser time,

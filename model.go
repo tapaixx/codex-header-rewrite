@@ -54,6 +54,11 @@ type headerRule struct {
 	// supplies X-Codex-Turn-State from the pool and drops an echo it can prove
 	// is unusable; off, it leaves the header exactly as the client sent it.
 	InjectTurnState bool `json:"inject_turn_state"`
+	// InjectCookie is the pool's second injection switch, independent of the
+	// first: on, the session pooled with the state for this credential and
+	// model is merged into the request's Cookie header, pooled values winning
+	// where names clash. Off (the default), the Cookie header is left alone.
+	InjectCookie bool `json:"inject_cookie,omitempty"`
 	// LegacyGuard carried the same switch before it became an injection
 	// control. It is read so rules saved earlier keep working, and never
 	// written; validateRule folds it into InjectTurnState.
@@ -191,6 +196,9 @@ type historyRecord struct {
 	// TurnStateInjected reports that the plugin supplied the header from the
 	// pool rather than passing through whatever the client sent.
 	TurnStateInjected bool `json:"turn_state_injected,omitempty"`
+	// CookieInjected reports that the pooled session was merged into the
+	// request's Cookie header.
+	CookieInjected bool `json:"cookie_injected,omitempty"`
 	// TurnStateInvalidated reports that the injected state was past the reuse
 	// window and the upstream still minted a degraded state, so the pooled
 	// entry was dropped rather than injected again.

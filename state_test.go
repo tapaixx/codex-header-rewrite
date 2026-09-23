@@ -1119,3 +1119,94 @@ func TestManualPoolRefusals(t *testing.T) {
 		t.Fatalf("the route needs a row id, got %d", resp.StatusCode)
 	}
 }
+
+// poolWithCookie pools one state with a session for idx-a on gpt-5.6-luna.
+func poolWithCookie(t *testing.T, rule headerRule, cookie string) string {
+	t.Helper()
+	blob := fernetToken(0x80, time.Now(), 1)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.rules["idx-a"] = rule
+	ok := noteTurnStateMintLocked(blob, "idx-a", "A", "gpt-5.6-luna", "team", cookie)
+	state.mu.Unlock()
+	if !ok {
+		t.Fatal("fixture state did not enter the pool")
+	}
+	return blob
+}
+
+// Cookie injection is independent of state injection: on its own it merges
+// the pooled session into the request's Cookie, pooled values winning, and
+// leaves X-Codex-Turn-State alone. The session a response mints under is the
+// one that went out.
+func TestCookieInjectionMergesThePooledSession(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	poolWithCookie(t, headerRule{AuthIndex: "idx-a", InjectCookie: true}, "sid=pool; cf=x")
+	response := injectTestRequest(t, "cookie-only", http.Header{"Cookie": {"sid=client; keep=1"}})
+	if got := response.Headers.Get("Cookie"); got != "sid=pool; keep=1; cf=x" {
+		t.Fatalf("outbound cookie = %q", got)
+	}
+	if response.Headers.Get(turnStateHeader) != "" {
+		t.Fatal("the state switch is off; no state goes out")
+	}
+	state.mu.Lock()
+	attempt := state.pending["cookie-only"].current
+	injected, stateInjected, session, after := attempt.CookieInjected, attempt.TurnStateInjected, attempt.clientCookie, attempt.AfterHeaders.Get("Cookie")
+	state.mu.Unlock()
+	if !injected || stateInjected {
+		t.Fatalf("cookie injected=%v state injected=%v", injected, stateInjected)
+	}
+	if session != "sid=pool; keep=1; cf=x" || after != session {
+		t.Fatalf("the recorded session and after view should be what went out: %q / %q", session, after)
+	}
+
+	// Both switches on: both go out.
+	state.mu.Lock()
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", InjectCookie: true, InjectTurnState: true}
+	state.mu.Unlock()
+	both := injectTestRequest(t, "both", nil)
+	if both.Headers.Get(turnStateHeader) == "" || both.Headers.Get("Cookie") != "sid=pool; cf=x" {
+		t.Fatalf("both switches: state=%q cookie=%q", both.Headers.Get(turnStateHeader), both.Headers.Get("Cookie"))
+	}
+}
+
+// Nothing goes out when the pool is frozen, when an enabled rule names Cookie
+// by hand, when the switch is off, or when the pooled state has no session.
+func TestCookieInjectionStandsDown(t *testing.T) {
+	off := false
+	cases := []struct {
+		name   string
+		rule   headerRule
+		cookie string
+	}{
+		{"switch off", headerRule{AuthIndex: "idx-a", InjectTurnState: true}, "sid=pool"},
+		{"frozen pool", headerRule{AuthIndex: "idx-a", InjectCookie: true, MaintainStatePool: &off}, "sid=pool"},
+		{"pinned by the rule", headerRule{AuthIndex: "idx-a", Enabled: true, InjectCookie: true, Set: map[string]string{"cookie": "sid=operator"}}, "sid=pool"},
+		{"no session pooled", headerRule{AuthIndex: "idx-a", InjectCookie: true}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stubCredentialPlan(t, "team")
+			resetState(t)
+			resetTurnStates(t)
+			rule := tc.rule
+			rule.MaintainStatePool = nil
+			poolWithCookie(t, rule, tc.cookie)
+			state.mu.Lock()
+			state.rules["idx-a"] = tc.rule
+			state.mu.Unlock()
+			response := injectTestRequest(t, "req", http.Header{"Cookie": {"sid=client"}})
+			if got := response.Headers.Get("Cookie"); got == "sid=pool" || strings.Contains(got, "pool") {
+				t.Fatalf("no pooled cookie should go out, got %q", got)
+			}
+			state.mu.Lock()
+			injected := state.pending["req"].current.CookieInjected
+			state.mu.Unlock()
+			if injected {
+				t.Fatal("the record must not claim an injection")
+			}
+		})
+	}
+}

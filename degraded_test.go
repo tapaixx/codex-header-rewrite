@@ -121,3 +121,26 @@ func TestPluginConfigReadsProbeMarkers(t *testing.T) {
 		t.Fatalf("no key, no markers: %+v", cfg)
 	}
 }
+
+// The management form may save the markers as a list; the host re-encodes it
+// as a block sequence, which reads the same as the comma form.
+func TestPluginConfigReadsABlockListOfMarkers(t *testing.T) {
+	cfg := parsePluginConfig([]byte("enabled: true\nprobe_degraded_markers:\n    - one\n    - \"two\"\ndata_path: z.db\npriority: 100\n"))
+	if cfg.DataPath != "z.db" || strings.Join(cfg.ProbeMarkers, "|") != "one|two" {
+		t.Fatalf("cfg=%+v", cfg)
+	}
+	if cfg := parsePluginConfig([]byte("probe_degraded_markers: \"\"\n")); len(cfg.ProbeMarkers) != 0 {
+		t.Fatalf("an empty value names nothing: %+v", cfg)
+	}
+}
+
+// The markers are an item in the host's plugin config form, beside data_path.
+func TestRegistrationDeclaresTheMarkerField(t *testing.T) {
+	names := []string{}
+	for _, field := range pluginRegistration().Metadata.ConfigFields {
+		names = append(names, field.Name+":"+field.Type)
+	}
+	if strings.Join(names, ",") != "data_path:string,probe_degraded_markers:string" {
+		t.Fatalf("config fields = %v", names)
+	}
+}

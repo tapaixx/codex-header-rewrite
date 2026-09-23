@@ -582,3 +582,19 @@ func TestThePoolKeepsTheSessionAStateWasMintedUnder(t *testing.T) {
 		t.Fatalf("an older record should restore without a session: ok=%v cookie=%q", ok, older.cookie)
 	}
 }
+
+// The overlay wins on a clash, in the base's position; names are case-sensitive.
+func TestMergeCookieHeader(t *testing.T) {
+	cases := []struct{ base, overlay, want string }{
+		{"a=1; b=2", "b=9; c=3", "a=1; b=9; c=3"},
+		{"", "s=1", "s=1"},
+		{"s=1", "", "s=1"},
+		{"Session=1", "session=2", "Session=1; session=2"},
+		{"a=1;;  b=2", "a=0", "a=0; b=2"},
+	}
+	for _, tc := range cases {
+		if got := mergeCookieHeader(tc.base, tc.overlay); got != tc.want {
+			t.Fatalf("merge(%q, %q) = %q, want %q", tc.base, tc.overlay, got, tc.want)
+		}
+	}
+}

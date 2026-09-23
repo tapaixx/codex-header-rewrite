@@ -85,7 +85,13 @@ func poolFromHistory(authIndex, id string) (manualPoolResult, error) {
 		label = record.CredentialName
 	}
 	model := sentModel(record.Model, record.RequestedModel)
-	session := applySetCookies(joinCookieHeader(record.BeforeHeaders), record.ResponseHeaders)
+	// The session the upstream saw: the rewritten headers carry an injected
+	// or rule-set Cookie, the original ones whatever the client sent.
+	sent := joinCookieHeader(record.AfterHeaders)
+	if sent == "" {
+		sent = joinCookieHeader(record.BeforeHeaders)
+	}
+	session := applySetCookies(sent, record.ResponseHeaders)
 	info := classifyTurnState(decodeTurnState(blob), blob, plan)
 	info.ManualPool = true
 

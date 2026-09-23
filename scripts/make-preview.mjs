@@ -115,7 +115,7 @@ const record = (over) => ({
 
 const items = [
   record({ id: 'rec-1#1', request_id: 'rec-1', started_at: at(30), completed_at: at(26),
-    turn_state_injected: true,
+    turn_state_injected: true, cookie_injected: true,
     // A live state under the paused judgement: recorded, waiting for a manual pool.
     turn_state_minted: { digest: 'a13f9c21b4e0', chars: 332, bytes: 249, version: 128, issued_at: at(28), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'paused', manual_pool: true } }),
   record({ id: 'rec-2#1', request_id: 'rec-2', started_at: at(180), completed_at: at(171),

@@ -97,6 +97,16 @@ request.intercept_after
 ```
 
 ```text
+request.intercept_after（与上面的 state 注入互不依赖）
+ -> 无规则、池冻结或 inject_cookie 关闭 -> 不动 Cookie
+ -> 规则启用且手工写过 Cookie -> 不动（operator 优先）
+ -> 查池 (auth_index + model)，那条带会话
+    -> Cookie = mergeCookieHeader(改写后的 Cookie, 池里的会话)   // 同名以池为准
+    -> 写入 updates，从 ClearHeaders 撤回同名移除，attempt 记 cookie_injected
+    -> attempt.clientCookie = 合并结果：本次响应铸出的 state 记在它名下
+```
+
+```text
 management POST /codex-header-rewrite/turn-state/pool {auth_index, id}
  -> 池冻结 -> 409
  -> 在该凭证的请求历史里找这条记录（最多 50 条，逐条比对 id）-> 找不到 404

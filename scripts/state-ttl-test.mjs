@@ -97,9 +97,25 @@ try {
   await new Promise(r=>setTimeout(r,300));
   assert.equal(saved.maintain_state_pool, false, 'freezing saved');
   assert.equal(await page.locator('#poolInject').isDisabled(), true, 'a frozen pool cannot inject');
+  assert.equal(await page.locator('#poolCookie').isDisabled(), true, 'nor inject a cookie');
   await page.evaluate(()=>document.querySelector('#poolMaintain').click());
   await new Promise(r=>setTimeout(r,300));
   assert.equal(await page.locator('#poolInject').isDisabled(), false, 'thawed, it is back');
+
+  // The cookie switch sits beside the state switch and saves on its own; the
+  // two do not move each other.
+  assert.equal(await page.locator('#turnStatePanel .panel-head #poolCookie').count(), 1, 'the cookie switch lives on the pool card');
+  assert.equal(await page.locator('#poolCookie').isChecked(), false, 'cookie injection defaults off');
+  const cookieLight = page.locator('#statusLights .light[data-light="cookie"]');
+  assert.equal(await cookieLight.getAttribute('data-on'), '0', 'its light is off');
+  await page.evaluate(()=>document.querySelector('#poolCookie').click());
+  await new Promise(r=>setTimeout(r,300));
+  assert.equal(saved.inject_cookie, true, 'turning it on saved at once');
+  assert.equal(saved.inject_turn_state, false, 'without touching state injection');
+  assert.equal(await cookieLight.getAttribute('data-on'), '1', 'and its light came on');
+  await page.evaluate(()=>document.querySelector('#saveRule').click());
+  await new Promise(r=>setTimeout(r,300));
+  assert.equal(saved.inject_cookie, true, 'saving the header rule keeps it');
 
   assert.deepEqual(errors, []);
   console.log('state ttl panel: ok');

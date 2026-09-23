@@ -112,11 +112,24 @@ func configurePlugin(raw []byte) error {
 
 func parsePluginConfig(raw []byte) pluginConfig {
 	cfg := pluginConfig{DataPath: defaultDataPath}
+	// The host re-encodes the block with a YAML library, so a list written in
+	// its management form arrives as a block sequence under the key; a single
+	// comma-separated string arrives as a scalar. Both read the same.
+	inMarkerList := false
 	for _, line := range strings.Split(string(raw), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
+		if item, isItem := strings.CutPrefix(line, "- "); isItem || line == "-" {
+			if inMarkerList {
+				if marker := strings.Trim(strings.TrimSpace(item), "\"'"); marker != "" {
+					cfg.ProbeMarkers = append(cfg.ProbeMarkers, marker)
+				}
+			}
+			continue
+		}
+		inMarkerList = false
 		key, value, ok := strings.Cut(line, ":")
 		if !ok {
 			continue
@@ -130,7 +143,11 @@ func parsePluginConfig(raw []byte) pluginConfig {
 		case "probe_degraded_markers":
 			// One line, comma separated; YAML list brackets and quotes are
 			// tolerated so either spelling of a short list reads the same.
-			value = strings.Trim(strings.TrimSpace(value), "[]")
+			if strings.TrimSpace(value) == "" {
+				inMarkerList = true
+				continue
+			}
+			value = strings.Trim(strings.Trim(strings.TrimSpace(value), "\"'"), "[]")
 			for _, part := range strings.Split(value, ",") {
 				if marker := strings.Trim(strings.TrimSpace(part), "\"'"); marker != "" {
 					cfg.ProbeMarkers = append(cfg.ProbeMarkers, marker)
@@ -300,6 +317,27 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 			injected = true
 		}
 	}
+	// The cookie switch is the state switch's twin: same pool, same entry, same
+	// master switch, and a Cookie the operator set or removed by hand in an
+	// enabled rule outranks it. The two do not depend on each other.
+	injectingCookie := hasRule && rule.InjectCookie && rule.poolMaintained()
+	cookiePinned := hasRule && rule.Enabled && ruleMentionsHeader(rule, "Cookie")
+	outboundCookie := ""
+	if injectingCookie && !cookiePinned {
+		if pooled, ok := turnStateForInjectionLocked(authIndex, sentModel(req.Model, req.RequestedModel), cred.PlanType); ok && pooled.cookie != "" {
+			if after == nil {
+				after = make(http.Header)
+			}
+			outboundCookie = mergeCookieHeader(joinCookieHeader(after), pooled.cookie)
+			if updates == nil {
+				updates = make(http.Header)
+			}
+			updates.Set("Cookie", outboundCookie)
+			deleteHeaderFold(after, "Cookie")
+			after.Set("Cookie", outboundCookie)
+			clears = removeHeaderNameFold(clears, "Cookie")
+		}
+	}
 	pr.current = &pendingAttempt{historyRecord: historyRecord{ID: fmt.Sprintf("%s#%d", req.RequestID, pr.attempts), RequestID: req.RequestID, Attempt: pr.attempts, AuthIndex: authIndex, AuthID: authID, CredentialName: cred.Name, CredentialLabel: cred.Label, CredentialPlan: cred.PlanType, Model: req.Model, RequestedModel: req.RequestedModel, SourceFormat: req.SourceFormat, Stream: req.Stream, StartedAt: time.Now().UTC(), BeforeHeaders: redactHeaders(before), AfterHeaders: redactHeaders(after), Outcome: "in_flight", Origin: originLive}}
 	if echoed {
 		info := echo.info
@@ -323,6 +361,12 @@ func interceptAfter(req requestInterceptRequest) (requestInterceptResponse, erro
 	}
 	pr.current.TurnStateSessionID = clientSessionID(req.Headers)
 	pr.current.clientCookie = joinCookieHeader(req.Headers)
+	// With the pooled session merged in, that is the session the upstream
+	// sees, so it is the one a state minted by this response belongs to.
+	if outboundCookie != "" {
+		pr.current.clientCookie = outboundCookie
+		pr.current.CookieInjected = true
+	}
 	// The payload as it goes upstream. This plugin rewrites headers and never
 	// the body, so what arrives here is what is sent.
 	pr.current.requestBody, pr.current.requestBytes = maskRequestBody(req.Body), len(req.Body)
