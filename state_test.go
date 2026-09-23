@@ -743,6 +743,8 @@ func TestFreshInjectedStateIsEvictedByADegradedResponse(t *testing.T) {
 // An expired state that came back non-degraded is simply superseded by the new
 // mint, which is the ordinary path; nothing is invalidated.
 func TestExpiredInjectedStateIsSupersededByAGoodResponse(t *testing.T) {
+	// Live states pool themselves only under a rule that judges them.
+	useLengthJudgement(t)
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -955,6 +957,8 @@ func TestLegacyGuardKeyBecomesTheInjectionSwitch(t *testing.T) {
 // by the minting response's Set-Cookie, so a response that rotates the session
 // pools the state under the new one.
 func TestPooledSessionFollowsTheRotatingResponse(t *testing.T) {
+	// Live states pool themselves only under a rule that judges them.
+	useLengthJudgement(t)
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -980,10 +984,11 @@ func TestPooledSessionFollowsTheRotatingResponse(t *testing.T) {
 	}
 }
 
-// With the judgement paused (the default), a state of any length enters the
-// pool, no response is withheld and no state is evicted; history says why it
-// carries no verdict.
-func TestPausedJudgementPoolsAnyStateAndInterceptsNothing(t *testing.T) {
+// Paused, the judgement vouches for nothing a live request brings back: the
+// state is recorded -- its provenance still feeds cross-account detection --
+// but it does not pool itself, and the history row says it waits for a hand.
+// Nothing is intercepted or evicted either, since there is no verdict.
+func TestPausedJudgementHoldsLiveStatesForAManualPool(t *testing.T) {
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -992,25 +997,125 @@ func TestPausedJudgementPoolsAnyStateAndInterceptsNothing(t *testing.T) {
 	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true, RejectDegradedResponse: true}
 	state.mu.Unlock()
 	long := fernetToken(0x80, time.Now(), 40) // far past the old team limit
-	response := injectTestRequest(t, "paused", nil)
+	response := injectTestRequest(t, "paused", http.Header{"Cookie": {"sid=one"}})
 	if response.Headers.Get(turnStateHeader) != "" {
 		t.Fatal("nothing pooled yet, nothing to inject")
 	}
-	observeResponse(responseInterceptRequest{RequestID: "paused", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {long}}})
+	observeResponse(responseInterceptRequest{RequestID: "paused", StatusCode: 200, ResponseHeaders: http.Header{
+		turnStateHeader: {long}, "Set-Cookie": {"cf=two; Path=/; HttpOnly"}}})
 	state.mu.Lock()
 	attempt := *state.pending["paused"].current
 	state.mu.Unlock()
 	completeRequest(requestCompletion{RequestID: "paused", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
-	if origin, pooled := pooledFor(t); !pooled || origin.blob != long {
-		t.Fatal("under the paused judgement every state enters the pool")
+	if _, pooled := pooledFor(t); pooled {
+		t.Fatal("a live state must not pool itself while the judgement is paused")
 	}
 	if attempt.TurnStateRejected || attempt.TurnStateInvalidated {
 		t.Fatalf("nothing is withheld or evicted without a verdict: %+v", attempt.historyRecord)
 	}
-	if info := attempt.TurnStateMinted; info == nil || info.NonDegraded != nil || info.Judgement != degradedRulePaused {
-		t.Fatalf("history should carry no verdict and name the paused rule: %+v", info)
+	if info := attempt.TurnStateMinted; info == nil || info.Pooled || !info.ManualPool || info.NonDegraded != nil || info.Judgement != degradedRulePaused {
+		t.Fatalf("history should say the state waits for a manual pool, with no verdict: %+v", info)
 	}
-	if got := injectTestRequest(t, "next", nil).Headers.Get(turnStateHeader); got != long {
-		t.Fatalf("the pooled state should go out on the next request, got %q", got)
+	state.mu.Lock()
+	origin, known := lookupTurnStateOriginLocked(long)
+	state.mu.Unlock()
+	if !known || origin.authIndex != "idx-a" {
+		t.Fatal("the state's provenance is still recorded, for cross-account detection")
+	}
+	if got := injectTestRequest(t, "next", nil).Headers.Get(turnStateHeader); got != "" {
+		t.Fatalf("an unpooled live state must not be injected, got %q", got)
+	}
+
+	// The operator pools it from history. The session is rebuilt from the
+	// recorded Cookie and Set-Cookie, the same merge the live path makes.
+	record := lastAttempt(t)
+	result, err := poolFromHistory("idx-a", record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Info.Pooled || !result.Info.ManualPool || result.ReplacedNewer {
+		t.Fatalf("manual pool result: %+v", result)
+	}
+	pooled, ok := pooledFor(t)
+	if !ok || pooled.blob != long || pooled.cookie != "sid=one; cf=two" {
+		t.Fatalf("pooled %v: blob match=%v cookie=%q", ok, pooled.blob == long, pooled.cookie)
+	}
+	page, _ := state.store.History("idx-a", 1, pageSize)
+	if minted := page.Items[0].TurnStateMinted; minted == nil || !minted.Pooled || !minted.ManualPool {
+		t.Fatalf("the history row should now read pooled by hand: %+v", minted)
+	}
+	if got := injectTestRequest(t, "after-manual", nil).Headers.Get(turnStateHeader); got != long {
+		t.Fatalf("the manually pooled state should go out on the next request, got %q", got)
+	}
+}
+
+// A manual pool is the operator's pick, so it takes the slot even from a
+// newer state; the result says so, so the panel can too.
+func TestManualPoolTakesTheSlotFromANewerState(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	older := fernetToken(0x80, time.Now().Add(-10*time.Minute), 2)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true}
+	state.mu.Unlock()
+	injectTestRequest(t, "old", nil)
+	observeResponse(responseInterceptRequest{RequestID: "old", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {older}}})
+	completeRequest(requestCompletion{RequestID: "old", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+	newer := poolFixture(t, headerRule{})
+	record := lastAttempt(t)
+	result, err := poolFromHistory("idx-a", record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.ReplacedNewer {
+		t.Fatal("the result should say a newer state was replaced")
+	}
+	if origin, _ := pooledFor(t); origin.blob != older || origin.blob == newer {
+		t.Fatal("the manual pick should hold the slot")
+	}
+}
+
+// Frozen, the pool takes nothing in by hand either; unknown rows are refused.
+func TestManualPoolRefusals(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true}
+	state.mu.Unlock()
+	injectTestRequest(t, "live", nil)
+	observeResponse(responseInterceptRequest{RequestID: "live", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {fernetToken(0x80, time.Now(), 2)}}})
+	completeRequest(requestCompletion{RequestID: "live", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+	record := lastAttempt(t)
+
+	off := false
+	state.mu.Lock()
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, MaintainStatePool: &off}
+	state.mu.Unlock()
+	statusOf := func(err error) int {
+		var failure *manualPoolError
+		if errors.As(err, &failure) {
+			return failure.status
+		}
+		return 0
+	}
+	if _, err := poolFromHistory("idx-a", record.ID); statusOf(err) != http.StatusConflict {
+		t.Fatalf("a frozen pool must refuse a manual pool, got %v", err)
+	}
+	if _, pooled := pooledFor(t); pooled {
+		t.Fatal("nothing should have entered the frozen pool")
+	}
+	state.mu.Lock()
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true}
+	state.mu.Unlock()
+	if _, err := poolFromHistory("idx-a", "no-such-row"); statusOf(err) != http.StatusNotFound {
+		t.Fatalf("an unknown row is not found, got %v", err)
+	}
+	resp, _ := handleManagementAPI(managementRequest{Method: http.MethodPost, Path: "/v0/management" + apiTurnStatePoolPath, Body: []byte(`{"auth_index":"idx-a"}`)})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("the route needs a row id, got %d", resp.StatusCode)
 	}
 }

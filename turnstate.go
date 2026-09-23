@@ -60,10 +60,14 @@ type turnStateInfo struct {
 	PlanType    string    `json:"plan_type,omitempty"`
 	MaxChars    int       `json:"max_chars,omitempty"`
 	NonDegraded *bool     `json:"non_degraded,omitempty"`
+	// ManualPool marks a live state the rule in force would not pool on its
+	// own (see autoPoolsLive): eligible, held back for an operator. With
+	// Pooled it reads "pooled by hand", without it "waiting for a hand".
+	ManualPool bool `json:"manual_pool,omitempty"`
 	// Judgement names the rule that answered ("length" / "paused"), so a row
 	// without a verdict says why.
 	Judgement string `json:"judgement,omitempty"`
-	Pooled      bool      `json:"pooled,omitempty"`
+	Pooled    bool   `json:"pooled,omitempty"`
 }
 
 // normalizePlanType keeps whatever plan the credential claims, lowercased.
@@ -146,8 +150,13 @@ func rawFieldFold(object map[string]json.RawMessage, name string) json.RawMessag
 // classifyTurnState attaches the judgement in force to a decoded state, for
 // history. The rule itself lives in degraded.go.
 func classifyTurnState(info turnStateInfo, blob, plan string) turnStateInfo {
+	return classifyTurnStateWith(info, plan, judgeDegraded(blob, plan))
+}
+
+// classifyTurnStateWith attaches a verdict reached some other way -- the
+// probe's, on its whole response.
+func classifyTurnStateWith(info turnStateInfo, plan string, verdict degradedVerdict) turnStateInfo {
 	info.PlanType = normalizePlanType(plan)
-	verdict := judgeDegraded(blob, plan)
 	info.MaxChars = verdict.MaxChars
 	info.Judgement = verdict.Rule
 	if verdict.Judged {
@@ -477,9 +486,30 @@ func decodeBase64Flexible(value string) ([]byte, error) {
 	return base64.URLEncoding.DecodeString(value)
 }
 
+// mintMode says what an observed state is allowed to do to the pool.
+type mintMode int
+
+const (
+	// mintRecordOnly remembers where the state came from, for cross-account
+	// detection, and leaves the pool alone.
+	mintRecordOnly mintMode = iota
+	// mintAuto pools the state unless a newer one already holds its slot:
+	// responses can finish out of order and the pool must not step back.
+	mintAuto
+	// mintManual is an operator's choice and takes the slot even from a newer
+	// state -- the operator picked this one, not whichever is latest.
+	mintManual
+)
+
 // noteTurnStateMintLocked mints a qualified observed blob into the state pool,
 // together with the session it was minted under. Callers hold state.mu.
 func noteTurnStateMintLocked(blob, authIndex, label, model, plan, cookie string) bool {
+	return mintTurnStateLocked(blob, authIndex, label, model, plan, cookie, mintAuto)
+}
+
+// mintTurnStateLocked records an eligible blob's provenance and, unless the
+// mode is mintRecordOnly, pools it. Callers hold state.mu.
+func mintTurnStateLocked(blob, authIndex, label, model, plan, cookie string, mode mintMode) bool {
 	digest := turnStateDigest(blob)
 	if blob == "" || digest == "" || authIndex == "" {
 		return false
@@ -502,7 +532,8 @@ func noteTurnStateMintLocked(blob, authIndex, label, model, plan, cookie string)
 	}
 	key := turnStateLatestKey(origin.authIndex, origin.model)
 	pooled := false
-	if previous, ok := state.turnStateLatest[key]; !ok || !previous.mintedAt.After(origin.mintedAt) {
+	previous, held := state.turnStateLatest[key]
+	if mode == mintManual || (mode == mintAuto && (!held || !previous.mintedAt.After(origin.mintedAt))) {
 		if state.store != nil {
 			if err := state.store.SaveTurnState(origin.persisted()); err != nil {
 				delete(state.turnStates, digest)

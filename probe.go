@@ -477,8 +477,9 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 		return
 	}
 	state.mu.Lock()
-	info := classifyTurnState(decodeTurnState(attempt.blob), attempt.blob, plan)
-	if judgeDegraded(attempt.blob, plan).Eligible {
+	verdict := judgeProbeResponse(attempt.blob, plan, response.Body, state.probeMarkers)
+	info := classifyTurnStateWith(decodeTurnState(attempt.blob), plan, verdict)
+	if verdict.Eligible {
 		// The state and the session that produced it enter the pool together.
 		info.Pooled = noteTurnStateMintLocked(attempt.blob, authIndex, credentialLabelLocked(authIndex), model, plan,
 			applySetCookies(cookie, response.Headers))
@@ -679,4 +680,11 @@ func rememberLiveSessionLocked(attempt *pendingAttempt, session string) {
 		record.Cookie, record.RefreshAt = session, time.Now().UTC()
 	}
 	_ = state.store.SaveSession(record)
+}
+
+// probeJudgesResponses says whether the server config names any markers.
+func probeJudgesResponses() bool {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return len(state.probeMarkers) > 0
 }

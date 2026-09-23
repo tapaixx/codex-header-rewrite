@@ -21,7 +21,11 @@ const (
 	pageSize        = 20
 )
 
-type pluginConfig struct{ DataPath string }
+type pluginConfig struct {
+	DataPath string
+	// ProbeMarkers is probe_degraded_markers: see judgeProbeResponse.
+	ProbeMarkers []string
+}
 
 // poolMaintained reports whether this credential's state pool is live. The
 // field is unset on every rule saved before it existed, and unset means on.

@@ -47,3 +47,77 @@ func TestLengthJudgementStillWorksWhenSwitchedOn(t *testing.T) {
 		}
 	}
 }
+
+// Live states pool themselves only under a rule that judged them.
+func TestLivePoolingFollowsTheJudgement(t *testing.T) {
+	if autoPoolsLive(judgePaused("x", "team")) {
+		t.Fatal("paused, a live state waits for a manual pool")
+	}
+	if !autoPoolsLive(judgeByLength(strings.Repeat("x", 300), "team")) {
+		t.Fatal("under a working rule an eligible live state pools itself")
+	}
+	if autoPoolsLive(judgeByLength(strings.Repeat("x", 400), "team")) {
+		t.Fatal("a degraded state never pools")
+	}
+}
+
+// The probe and the retry ask for low effort; without the field the upstream
+// runs its default, which is medium.
+func TestBackgroundRequestsAskForLowEffort(t *testing.T) {
+	body, err := probeRequestBody("gpt-6-astra")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := requestThinkingLevel(body, "openai-response", "gpt-6-astra"); got != "low" {
+		t.Fatalf("background request effort = %q, want low", got)
+	}
+}
+
+// The response rule reads names, not prose. The marker is a stand-in.
+func TestResponseMarkersMatchNamesNotText(t *testing.T) {
+	markers := []string{"fixture_marker"}
+	cases := []struct {
+		name string
+		body string
+		hit  bool
+	}{
+		{"sse event line", "event: response.fixture_marker_part.added\ndata: {}\n\n", true},
+		{"sse data type", "data: {\"type\":\"response.fixture_marker_text.done\"}\n\n", true},
+		{"nested field name", "data: {\"type\":\"response.completed\",\"response\":{\"fixture_marker\":[]}}\n\n", true},
+		{"crlf framing", "event: x\r\ndata: {\"type\":\"response.Fixture_Marker\"}\r\n\r\n", true},
+		{"whole json body", `{"output":[{"type":"fixture_marker_item"}]}`, true},
+		{"text that mentions it", "data: {\"type\":\"response.output_text.delta\",\"delta\":\"fixture_marker\"}\n\n", false},
+		{"clean", "data: {\"type\":\"response.completed\"}\n\ndata: [DONE]\n\n", false},
+		{"empty", "", false},
+	}
+	for _, tc := range cases {
+		if got := responseHasMarker([]byte(tc.body), markers); got != tc.hit {
+			t.Fatalf("%s: hit=%v, want %v", tc.name, got, tc.hit)
+		}
+	}
+}
+
+// No markers, no response judgement: the probe falls back to the state rule.
+func TestProbeJudgementFallsBackWithoutMarkers(t *testing.T) {
+	body := []byte("data: {\"type\":\"response.fixture_marker\"}\n\n")
+	if v := judgeProbeResponse("blob", "team", body, nil); v.Rule != degradedRulePaused || !v.Eligible {
+		t.Fatalf("without markers the paused rule answers: %+v", v)
+	}
+	if v := judgeProbeResponse("blob", "team", body, []string{"fixture_marker"}); v.Rule != degradedRuleResponse || v.Eligible || !v.Degraded {
+		t.Fatalf("a hit is degraded: %+v", v)
+	}
+	if v := judgeProbeResponse("blob", "team", []byte("data: {}\n\n"), []string{"fixture_marker"}); v.Rule != degradedRuleResponse || !v.Eligible || !v.Judged || v.Degraded {
+		t.Fatalf("a clean response is judged non-degraded: %+v", v)
+	}
+}
+
+// The server config names the markers; the data path still reads as before.
+func TestPluginConfigReadsProbeMarkers(t *testing.T) {
+	cfg := parsePluginConfig([]byte("enabled: true\ndata_path: \"x.db\"\nprobe_degraded_markers: [\"one\", two ,'three']\n"))
+	if cfg.DataPath != "x.db" || strings.Join(cfg.ProbeMarkers, "|") != "one|two|three" {
+		t.Fatalf("cfg=%+v", cfg)
+	}
+	if cfg := parsePluginConfig([]byte("data_path: y.db\n")); len(cfg.ProbeMarkers) != 0 {
+		t.Fatalf("no key, no markers: %+v", cfg)
+	}
+}

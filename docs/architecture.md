@@ -78,7 +78,7 @@ request.intercept_after
 
 复用判定按三条规则：同凭证、同模型、在复用窗口内。窗口是 `headerRule.state_ttl_seconds`，按凭证维护，单位秒，默认 200；读取时走 `turnStateReuseWindowLocked(authIndex)`，字段为 0 的旧规则读成默认值。跨号与跨模型是确定不可复用，注入开关打开时会摘除；过期只标记不摘除，因为窗口未经上游确认。
 
-降智判定集中在 `degraded.go`（`degradedJudge`），目前是 `judgePaused`：不判定，每个上游返回值都入池；拦截 / 重试 / 剔除因为没有判定结果而不触发。原来的长度规则（Team `≤ 332`、个人 `≤ 292`，未声明套餐不入池）保留为 `judgeByLength`，换回去只改这一处。不降智值铸造进「凭证 + 模型 → 最新原始 blob」持久池，写入配置的 bbolt `data_path`，启动时恢复，乱序返回不回退。内存摘要索引仍有 2 小时 TTL 与 512 条上限；它只负责短期来源关联，不决定持久池是否保留。
+降智判定集中在 `degraded.go`（`degradedJudge`），目前是 `judgePaused`：不判定；拦截 / 重试 / 剔除因为没有判定结果而不触发。探针另有 `judgeProbeResponse`：服务器插件配置里有 `probe_degraded_markers` 时，按整段响应的事件名、事件 `type` 与字段名匹配标记，命中即降智；标记只存在于服务器配置，仓库与二进制里都没有。入池分两路：插件自己的请求（探针、重试）拿到的 state 自动入池；正常请求的 state 只有在规则真正判过时才自动入池（`autoPoolsLive`），判定暂停期间只记来源（跨号检测照常），历史行标「需手动入池」，由 `POST /turn-state/pool` 手动入池。原来的长度规则（Team `≤ 332`、个人 `≤ 292`，未声明套餐不入池）保留为 `judgeByLength`，换回去只改这一处。不降智值铸造进「凭证 + 模型 → 最新原始 blob」持久池，写入配置的 bbolt `data_path`，启动时恢复，乱序返回不回退。内存摘要索引仍有 2 小时 TTL 与 512 条上限；它只负责短期来源关联，不决定持久池是否保留。
 
 blob 本身是 Fernet token：`1 字节版本 + 8 字节大端时间戳 + 16 字节 IV + 16n 字节密文 + 32 字节 HMAC`。插件只读前 9 字节与总长度，不持有密钥、不解密密文。
 
@@ -95,6 +95,18 @@ request.intercept_after
 
 池冻结（maintain_state_pool = false）时，响应里的 state 仍会分类并写入历史，但不铸造入池；拦截后重试与自动探针都不运行。
 ```
+
+```text
+management POST /codex-header-rewrite/turn-state/pool {auth_index, id}
+ -> 池冻结 -> 409
+ -> 在该凭证的请求历史里找这条记录（最多 50 条，逐条比对 id）-> 找不到 404
+ -> blob = 记录的响应头 X-Codex-Turn-State；会话 = applySetCookies(记录的 Cookie, 记录的 Set-Cookie)
+ -> 现行判定不合格 -> 422
+ -> mintManual：即使池里那条更新也占位（结果带 replaced_newer）
+ -> UpdateHistory 把这条记录标为 pooled + manual_pool
+```
+
+不向上游发任何请求；Cookie / Set-Cookie 本来就明文记录，所以记录足以还原入池时的会话。
 
 ```text
 response（header-init / response.intercept_after）

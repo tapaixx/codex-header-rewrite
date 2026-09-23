@@ -188,6 +188,17 @@ func (p *localPersistence) History(a string, page, size int) (historyPage, error
 	sortHistoryNewestFirst(records)
 	return historyPageOf(a, page, size, records), nil
 }
+func (p *localPersistence) UpdateHistory(a, id string, update func(*historyRecord)) (bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := range p.state.History[a] {
+		if p.state.History[a][i].ID == id {
+			update(&p.state.History[a][i])
+			return true, p.save()
+		}
+	}
+	return false, nil
+}
 func (p *localPersistence) HistoryBody(a, id string) (bodyRecord, bool, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

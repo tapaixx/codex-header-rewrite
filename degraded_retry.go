@@ -299,9 +299,17 @@ func retryHeaders(material testAuthMaterial, cookie string) http.Header {
 	return headers
 }
 
+// backgroundEffort is the reasoning effort of the plugin's own requests, the
+// probe and the retry. They exist for the response headers, not the answer, so
+// they ask for the least thinking every Codex model accepts: "minimal" is
+// refused by the Codex models, "low" is not. Leaving it out is not neutral --
+// the upstream then applies the model's default, which is medium.
+const backgroundEffort = "low"
+
 func retryPayload(model string) map[string]any {
 	return map[string]any{
 		"model":               model,
+		"reasoning":           map[string]any{"effort": backgroundEffort},
 		"instructions":        "You are Codex, a coding agent.",
 		"input":               []any{map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": retryPrompt}}}},
 		"stream":              true,

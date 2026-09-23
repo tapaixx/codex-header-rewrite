@@ -76,6 +76,9 @@ type persistence interface {
 	ListRules() ([]headerRule, error)
 	AppendHistory(record historyRecord) error
 	History(authIndex string, page, size int) (historyPage, error)
+	// UpdateHistory rewrites one request-history record in place. It reports
+	// false when the record is gone (evicted, cleared, or not written yet).
+	UpdateHistory(authIndex, id string, update func(*historyRecord)) (bool, error)
 	// HistoryBody fetches one record's payloads, which are stored apart from
 	// the record so a page of the list never carries them.
 	HistoryBody(authIndex, id string) (bodyRecord, bool, error)

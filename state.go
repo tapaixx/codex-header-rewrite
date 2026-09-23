@@ -27,6 +27,9 @@ type pluginState struct {
 	// the one a client could still legitimately be echoing.
 	turnStateLatest map[string]turnStateOrigin
 	turnStateWrites uint64
+	// probeMarkers come from the server's plugin config, never from the
+	// repository; see judgeProbeResponse.
+	probeMarkers []string
 }
 
 var state = &pluginState{rules: map[string]headerRule{}, pending: map[string]*pendingRequest{}, credentials: map[string]credentialSnapshot{}, turnStates: map[string]turnStateOrigin{}, turnStateLatest: map[string]turnStateOrigin{}}
@@ -55,6 +58,9 @@ func configurePlugin(raw []byte) error {
 	}
 	state.mu.Lock()
 	defer state.mu.Unlock()
+	// Taken on every (re)configure, including one that keeps the store open,
+	// so editing the server config takes effect without a reload.
+	state.probeMarkers = cfg.ProbeMarkers
 	if state.store != nil && state.dataPath == cfg.DataPath {
 		return nil
 	}
@@ -112,12 +118,24 @@ func parsePluginConfig(raw []byte) pluginConfig {
 			continue
 		}
 		key, value, ok := strings.Cut(line, ":")
-		if !ok || strings.TrimSpace(key) != "data_path" {
+		if !ok {
 			continue
 		}
-		value = strings.Trim(strings.TrimSpace(value), "\"'")
-		if value != "" {
-			cfg.DataPath = value
+		switch strings.TrimSpace(key) {
+		case "data_path":
+			value = strings.Trim(strings.TrimSpace(value), "\"'")
+			if value != "" {
+				cfg.DataPath = value
+			}
+		case "probe_degraded_markers":
+			// One line, comma separated; YAML list brackets and quotes are
+			// tolerated so either spelling of a short list reads the same.
+			value = strings.Trim(strings.TrimSpace(value), "[]")
+			for _, part := range strings.Split(value, ",") {
+				if marker := strings.Trim(strings.TrimSpace(part), "\"'"); marker != "" {
+					cfg.ProbeMarkers = append(cfg.ProbeMarkers, marker)
+				}
+			}
 		}
 	}
 	return cfg
@@ -422,7 +440,14 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 	// A frozen pool takes nothing in. The state is still classified so the
 	// history row says what the upstream sent; it just does not enter the pool.
 	if rule, ok := state.rules[attempt.AuthIndex]; !ok || rule.poolMaintained() {
-		info.Pooled = noteTurnStateMintLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel), attempt.CredentialPlan, session)
+		// A live state pools on its own only under a rule that judged it; while
+		// the judgement is paused it is recorded and left for a manual pool.
+		verdict := judgeDegraded(blob, attempt.CredentialPlan)
+		mode := mintAuto
+		if verdict.Eligible && !autoPoolsLive(verdict) {
+			mode, info.ManualPool = mintRecordOnly, true
+		}
+		info.Pooled = mintTurnStateLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel), attempt.CredentialPlan, session, mode)
 	}
 	attempt.TurnStateMinted = &info
 	// The pooled state went out on this request and the upstream still minted

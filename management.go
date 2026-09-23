@@ -28,6 +28,7 @@ const (
 	apiTestPath            = "/codex-header-rewrite/test"
 	apiTurnStateDecodePath = "/codex-header-rewrite/turn-state/decode"
 	apiTurnStatesPath      = "/codex-header-rewrite/turn-states"
+	apiTurnStatePoolPath   = "/codex-header-rewrite/turn-state/pool"
 	apiQuotaPath           = "/codex-header-rewrite/quota"
 )
 
@@ -57,6 +58,7 @@ func registerManagement() managementRegistration {
 		{Method: http.MethodPost, Path: apiTestPath, Description: "Run a header rewrite test request"},
 		{Method: http.MethodPost, Path: apiTurnStateDecodePath, Description: "Decode an X-Codex-Turn-State envelope"},
 		{Method: http.MethodGet, Path: apiTurnStatesPath, Description: "List the newest turn state per credential and model"},
+		{Method: http.MethodPost, Path: apiTurnStatePoolPath, Description: "Pool the turn state a recorded live response returned"},
 		{Method: http.MethodGet, Path: apiQuotaPath, Description: "The credential's allowance as the upstream last reported it"},
 	}, Resources: []resourceRoute{{Path: resourceIndexPath, Menu: pluginName, Description: "Codex credential header rewrite and history"}}}
 }
@@ -187,6 +189,9 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			"limit": probeHistoryLimit, "enabled": rule.ProbeEnabled,
 			"within_window": withinProbeWindow(rule, time.Now().UTC()),
 			"pool_paused":   !rule.poolMaintained(),
+			// Whether the probe judges its responses; the markers themselves
+			// are server configuration and never leave the server.
+			"response_judgement": probeJudgesResponses(),
 		}
 		if !session.LastLiveAt.IsZero() {
 			payload["last_live_at"] = session.LastLiveAt
@@ -315,6 +320,23 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			"turn_states":          items,
 			"reuse_window_seconds": int64(window.Seconds()),
 		}), nil
+	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiTurnStatePoolPath):
+		var body struct {
+			AuthIndex string `json:"auth_index"`
+			ID        string `json:"id"`
+		}
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return jsonError(http.StatusBadRequest, "invalid JSON body"), nil
+		}
+		result, err := poolFromHistory(body.AuthIndex, body.ID)
+		if err != nil {
+			var failure *manualPoolError
+			if errors.As(err, &failure) {
+				return jsonError(failure.status, failure.message), nil
+			}
+			return jsonError(http.StatusInternalServerError, err.Error()), nil
+		}
+		return jsonResponse(http.StatusOK, result), nil
 	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiTurnStateDecodePath):
 		var body struct {
 			Token string `json:"token"`

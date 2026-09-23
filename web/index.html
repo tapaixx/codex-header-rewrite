@@ -1873,6 +1873,10 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
   margin:0;padding:7px 10px;border-bottom:1px solid var(--line);background:var(--sunk)
 }
 .ts-body{padding:9px 10px}
+.ts-title .pool-act{position:relative;margin-left:auto;min-height:26px;padding:0 9px;font-size:11px;font-weight:500;border-radius:var(--r-sm)}
+/* Dense on screen, but the target fills the card title's height. */
+.ts-title .pool-act::after{content:"";position:absolute;left:50%;top:50%;translate:-50% -50%;width:max(100%,40px);height:max(100%,34px)}
+@media (max-width:820px){.ts-title .pool-act::after{height:max(100%,40px)}}
 /* Fields are grouped under quiet labelled rules: what it is, how long it is,
    what the envelope says. Nothing is dropped -- both lengths still show. */
 .ts-sub{
@@ -2421,7 +2425,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
     </details>
 
     <section class="panel" id="turnStatePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>State 池</h2><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">降智判定<b>当前已暂停</b>（按长度判的规则已经失效）：上游返回的每个 state 都入池。判定逻辑集中在插件的 <code>degraded.go</code>，恢复时换一个实现即可。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">200 秒</span>只标记过期。</span></span></span></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>State 池</h2><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">降智判定<b>当前已暂停</b>（按长度判的规则已经失效）。暂停期间，自动探针拿到的 state 自动入池；<b>正常请求</b>的 state 不自动入池，要在请求详情的「分析」页点「手动入池」。判定逻辑集中在插件的 <code>degraded.go</code>，恢复后正常请求会重新自动入池。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">200 秒</span>只标记过期。</span></span></span></div></div>
         <div class="spacer"></div>
         <label class="switch panel-switch"><input type="checkbox" id="poolMaintain" checked disabled><span>State 池维护<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="State 池维护的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">插件从每个响应里读 <code>X-Codex-Turn-State</code>：合格的入池、过期的标记，池子一直是活的。</span><span class="hint-k">关掉</span><span class="hint-v">池子冻结：不入池、不注入，自动探针和拦截后重试也停下，已有记录原样保留。</span><span class="hint-p">这是池子的总开关，默认开启；「注入 State」只在它开着时生效。</span></span></span></span></label>
         <label class="switch panel-switch"><input type="checkbox" id="poolInject" disabled><span>注入 State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="注入 State 的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">从池里取「该凭证 + 当前模型」的合格 state 写进请求的 <code>X-Codex-Turn-State</code>（池里没有就不写），并摘掉确认来自其他凭证或其他模型的回带值。</span><span class="hint-k">关掉</span><span class="hint-v">完全不碰这个 Header，客户端带什么就原样发什么。</span><span class="hint-p">与「启用改写」无关，规则关着也照样注入；规则<b>启用</b>且手工设置或移除了这个 Header 时，以手工为准。默认关闭。</span></span></span></span></label>
@@ -2438,7 +2442,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
     </section>
 
     <section class="panel" id="probePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-refresh"/></svg><div class="panel-title"><h2>自动 State 探针</h2><div class="panel-caption">按时补池，而不是等降智了才反应<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="探针的说明">!</button><span class="hint-text"><span class="hint-k">做什么</span><span class="hint-v">按间隔检查探针模型，池里没有 state 或已过期的就补发一次最小 <code>hi</code> 请求，拿到不降智的就连同会话一起入池。</span><span class="hint-k">何时不跑</span><span class="hint-v">开关关着、不在生效时段、或者距离上一次<b>真实请求</b>超过下面的活跃判定时间 —— 账号没人用就不该继续烧额度。探针自己的请求不算「真实请求」。</span><span class="hint-p">与「拦截后重试」互斥，两者都在给同一个池补货。每次探针都是一次计费的真实调用。</span></span></span></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-refresh"/></svg><div class="panel-title"><h2>自动 State 探针</h2><div class="panel-caption">按时补池，而不是等降智了才反应<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="探针的说明">!</button><span class="hint-text"><span class="hint-k">做什么</span><span class="hint-v">按间隔检查探针模型，池里没有 state 或已过期的就补发一次最小 <code>hi</code> 请求（思考强度 <code>low</code>），拿到的 state 连同会话<b>自动入池</b>。服务器配置了响应判定标记时，命中标记的响应判为降智，state 不入池。</span><span class="hint-k">何时不跑</span><span class="hint-v">开关关着、不在生效时段、或者距离上一次<b>真实请求</b>超过下面的活跃判定时间 —— 账号没人用就不该继续烧额度。探针自己的请求不算「真实请求」。</span><span class="hint-p">与「拦截后重试」互斥，两者都在给同一个池补货。每次探针都是一次计费的真实调用。</span></span></span></div></div>
         <div class="spacer"></div>
         <label class="switch panel-switch"><input type="checkbox" id="probeEnabled"><span>启用自动探针</span></label>
       </div>
@@ -2492,7 +2496,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
     </section>
 
     <section class="panel" id="degradedPanel">
-      <div class="panel-head"><svg class="i"><use href="#i-alert"/></svg><div class="panel-title"><h2>降智响应处置</h2><div class="panel-caption">上游返回疑似降智 state 时，对这次响应怎么办<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="降智响应处置的说明">!</button><span class="hint-text"><span class="hint-k">拦截</span><span class="hint-v">降智判定当前已暂停，所以这里暂时不会触发；恢复判定后：这次响应<b>不下发</b>给客户端：非流式换成错误对象，流式在第一个数据块换成终止性的 <code>error</code> 事件、其余丢弃，历史标「已拦截」。</span><span class="hint-k">重试</span><span class="hint-v">用<b>当前这个凭证</b>和<b>同一个模型</b>，在后台补发内容只有 <code>hi</code> 的最小请求，只读响应头里的新 state；拿到不降智的就入池，连续几次合并成历史里的一行。</span><span class="hint-p">按凭证保存，与「启用改写」无关，各自独立生效。插件改不了 HTTP 状态码，客户端看到的是 200 里带错误；被拦截和每次重试，上游都已经计了额度。</span></span></span></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-alert"/></svg><div class="panel-title"><h2>降智响应处置</h2><div class="panel-caption">上游返回疑似降智 state 时，对这次响应怎么办<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="降智响应处置的说明">!</button><span class="hint-text"><span class="hint-k">拦截</span><span class="hint-v">降智判定当前已暂停，所以这里暂时不会触发；恢复判定后：这次响应<b>不下发</b>给客户端：非流式换成错误对象，流式在第一个数据块换成终止性的 <code>error</code> 事件、其余丢弃，历史标「已拦截」。</span><span class="hint-k">重试</span><span class="hint-v">用<b>当前这个凭证</b>和<b>同一个模型</b>，在后台补发内容只有 <code>hi</code> 的最小请求（思考强度 <code>low</code>），只读响应头里的新 state；拿到不降智的就入池，连续几次合并成历史里的一行。</span><span class="hint-p">按凭证保存，与「启用改写」无关，各自独立生效。插件改不了 HTTP 状态码，客户端看到的是 200 里带错误；被拦截和每次重试，上游都已经计了额度。</span></span></span></div></div>
         <div class="spacer"></div>
         <label class="switch panel-switch"><input type="checkbox" id="rejectDegraded"><span>拦截降智响应</span></label>
       </div>
@@ -3531,12 +3535,20 @@ function turnStateTags(record) {
   if (record.retry_attempts) tags.push(`<span class="tag flat num" title="一次降智响应触发的重试系列，合并为一行">重试 ${record.retry_attempts} 次</span>`);
   if (record.turn_state_rejected) tags.push('<span class="tag bad" title="上游返回的 state 判定为降智，本次响应未下发给客户端">已拦截 · 未下发</span>');
   if (record.turn_state_invalidated) tags.push('<span class="tag bad" title="注入的是已过期的池 state，上游铸回的仍是降智 state；这条 state 已从池中移除，不会再注入">注入后仍降智 · 已失效</span>');
-  if (record.turn_state_minted?.pooled) {
-    tags.push(record.turn_state_minted.non_degraded === true ? '<span class="tag ok">不降智 · 已入池</span>' : '<span class="tag ok">已入池</span>');
-  } else if (record.turn_state_minted?.non_degraded === false) tags.push('<span class="tag bad">疑似降智 · 未入池</span>');
-  else if (record.turn_state_minted?.judgement === "paused") tags.push('<span class="tag warn" title="判定已暂停时不入池只有一个原因：State 池维护关闭">未入池</span>');
-  else if (record.turn_state_minted) tags.push('<span class="tag warn">套餐未知 · 未入池</span>');
+  const minted = record.turn_state_minted;
+  if (minted?.pooled && minted.manual_pool) tags.push('<span class="tag ok">已手动入池</span>');
+  else if (minted?.pooled) {
+    tags.push(minted.non_degraded === true ? '<span class="tag ok">不降智 · 已入池</span>' : '<span class="tag ok">已入池</span>');
+  } else if (minted?.non_degraded === false) tags.push('<span class="tag bad">疑似降智 · 未入池</span>');
+  else if (minted?.manual_pool) tags.push('<span class="tag warn" title="降智判定暂停期间，正常请求的 state 不自动入池；在详情的分析页手动入池">需手动入池</span>');
+  else if (minted?.judgement === "paused") tags.push('<span class="tag warn" title="State 池维护关闭时收到的 state 不入池">未入池</span>');
+  else if (minted) tags.push('<span class="tag warn">套餐未知 · 未入池</span>');
   return tags.join("");
+}
+// Which rule answered, when it was not the state rule. The probe's response
+// rule is named as such and nothing more: the markers stay on the server.
+function judgedBy(info) {
+  return info.judgement === "response" ? '<span class="muted" style="margin-left:6px">按探针响应判定</span>' : "";
 }
 function turnStateAge(info) {
   if (!info?.issued_at || info.issued_at.startsWith("0001")) return "";
@@ -3572,9 +3584,9 @@ function turnStateRows(label, info, extra = "", blob = "", model = "") {
         <dt>摘要</dt><dd class="mono" translate="no">${esc(info.digest || "-")}</dd>
         ${model ? `<dt>对应模型</dt><dd class="mono" translate="no">${esc(model)}</dd>` : ""}
         ${info.plan_type ? `<dt>套餐</dt><dd>${esc(info.plan_type)}</dd>` : ""}
-        ${info.non_degraded === true ? '<dt>质量判定</dt><dd><span class="tag ok">不降智</span></dd>' : ""}
-        ${info.non_degraded === false ? '<dt>质量判定</dt><dd><span class="tag bad">疑似降智</span></dd>' : ""}
-        ${info.judgement === "paused" ? '<dt>质量判定</dt><dd><span class="tag flat">已暂停</span><span class="muted" style="margin-left:6px">长度规则已失效，暂不判定，全部入池</span></dd>' : ""}
+        ${info.non_degraded === true ? `<dt>质量判定</dt><dd><span class="tag ok">不降智</span>${judgedBy(info)}</dd>` : ""}
+        ${info.non_degraded === false ? `<dt>质量判定</dt><dd><span class="tag bad">疑似降智</span>${judgedBy(info)}</dd>` : ""}
+        ${info.judgement === "paused" ? '<dt>质量判定</dt><dd><span class="tag flat">已暂停</span><span class="muted" style="margin-left:6px">长度规则已失效，暂不判定</span></dd>' : ""}
         ${info.non_degraded !== undefined ? `<dt>State 池</dt><dd>${info.pooled ? '<span class="tag ok">已入池</span>' : '<span class="tag flat">未入池</span>'}</dd>` : ""}
       </dl>
       <div class="ts-sub">长度与阈值</div>
@@ -3612,6 +3624,45 @@ async function decodePendingCards(container) {
     }
   }
 }
+// A live state the paused judgement does not pool on its own waits here for
+// the operator. The plugin rebuilds the pool entry from the stored record --
+// the recorded response state, and the recorded Cookie updated by Set-Cookie --
+// so nothing is sent upstream. Probe rows pool themselves and never get this.
+function manualPoolAction(record, mintedBlob) {
+  const minted = record.turn_state_minted;
+  if (!mintedBlob || !minted || minted.pooled || minted.non_degraded === false || record.origin === "probe") return "";
+  const frozen = store.rule?.maintain_state_pool === false;
+  return ` <button type="button" class="pool-act" data-manual-pool="${esc(record.id)}"${frozen
+    ? ' disabled title="State 池维护已关闭，不能入池"' : ""}>手动入池</button>`;
+}
+async function manualPool(button) {
+  const record = store.history.find((item) => item.id === button.dataset.manualPool);
+  if (!record || !store.selected) return;
+  button.disabled = true;
+  try {
+    const result = await api("/turn-state/pool", { method: "POST", body: { auth_index: store.selected, id: record.id } });
+    record.turn_state_minted = { ...(record.turn_state_minted || {}), pooled: true, manual_pool: true };
+    const tags = turnStateTags(record);
+    const row = $("historyBody").querySelector(`.history-summary[data-id="${CSS.escape(record.id)}"] .history-outcome-wrap`);
+    if (row) row.innerHTML = outcomeTag(record.outcome) + tags;
+    const label = $("drawerBody").querySelector(".history-detail-label span:last-child");
+    if (label && store.selectedRecord === record.id) label.innerHTML = tags;
+    button.remove();
+    toast(result.replaced_newer ? "已手动入池，替换了池里更新的一条 state" : "已手动入池");
+    loadTurnStates().catch(fail);
+  } catch (error) {
+    button.disabled = false;
+    toast(`入池失败：${MANUAL_POOL_ERRORS[error?.message] || error?.message || error}`, true);
+  }
+}
+// The plugin answers in English; the refusals a reader can act on are named.
+const MANUAL_POOL_ERRORS = {
+  "state pool maintenance is off for this credential": "State 池维护已关闭",
+  "history record not found": "这条记录已不在历史里",
+  "the response recorded no X-Codex-Turn-State": "这条记录的响应里没有 X-Codex-Turn-State",
+  "the judgement in force keeps this state out of the pool": "当前的降智判定不让这条 state 入池",
+  "the recorded response state does not match the record": "记录里的 state 与响应头对不上",
+};
 function turnStateDetail(record) {
   const echoBlob = pickHeader(record.before_headers, "x-codex-turn-state") || "";
   const mintedBlob = pickHeader(record.response_headers, "x-codex-turn-state") || "";
@@ -3634,7 +3685,7 @@ function turnStateDetail(record) {
             : ' <span class="tag ok">插件从池注入</span>', injectedBlob, record.model || "")
         : (turnStateRows("客户端回带", record.turn_state_echo, echoExtra, echoBlob, record.turn_state_origin_model || "")
           || absentCard("客户端回带", "本次请求没有携带 X-Codex-Turn-State"))}
-      ${turnStateRows("上游返回", record.turn_state_minted, "", mintedBlob, record.model || "")
+      ${turnStateRows("上游返回", record.turn_state_minted, manualPoolAction(record, mintedBlob), mintedBlob, record.model || "")
         || absentCard("上游返回", "响应没有返回 X-Codex-Turn-State")}
     </div>
     ${session}
@@ -4051,7 +4102,10 @@ function wireDetailTabs(root) {
 // rather than the rendering: a tree reads well and pastes badly, and what a
 // reader wants to paste elsewhere is what was actually stored.
 function wireBodyControls(root) {
-  if (!root) return;
+  // The drawer body outlives the records shown in it; wiring it per record
+  // stacked one listener per open, so one click copied once per record seen.
+  if (!root || root.dataset.bodyWired) return;
+  root.dataset.bodyWired = "true";
   root.addEventListener("click", (event) => {
     const button = event.target.closest?.("[data-body-act]");
     if (!button) return;
@@ -4286,7 +4340,7 @@ async function loadTurnStates() {
     $("turnStateMeta").textContent = items.length + " 条";
     body.replaceChildren();
     if (!items.length) {
-      body.innerHTML = '<div class="empty">还没有不降智 state 入池</div>';
+      body.innerHTML = '<div class="empty">池里还没有 state</div>';
       return;
     }
     // A list, not cards: the pool is homogeneous rows of the same few fields,
@@ -4898,6 +4952,12 @@ function renderProbeStatus(payload) {
   const parts = [];
   parts.push(payload.enabled ? '<span class="tag ok">探针已启用</span>' : '<span class="tag flat">探针未启用</span>');
   if (payload.enabled && payload.pool_paused) parts.push('<span class="tag warn">State 池已暂停维护，探针不运行</span>');
+  // Only whether the server config names markers; never which.
+  if (payload.enabled && !payload.pool_paused) {
+    parts.push(payload.response_judgement
+      ? '<span class="tag ok" title="服务器配置了响应判定标记：命中的响应判为降智，state 不入池">按响应判定</span>'
+      : '<span class="tag flat" title="服务器配置里没有响应判定标记，探针拿到的 state 不做判定直接入池">未判定</span>');
+  }
   if (payload.enabled && !payload.within_window) parts.push('<span class="tag warn">不在生效时段</span>');
   if (payload.running) parts.push('<span class="tag flat">正在运行</span>');
   else if (payload.next_due_at) {
@@ -5309,6 +5369,10 @@ $("retryAttempts").addEventListener("change", () => {
 });
 wireHistoryTabs();
 $("drawerClose").addEventListener("click", closeHistoryDrawer);
+$("drawerBody").addEventListener("click", (event) => {
+  const button = event.target.closest?.("[data-manual-pool]");
+  if (button && !button.disabled) manualPool(button);
+});
 $("drawerBackdrop").addEventListener("click", closeHistoryDrawer);
 document.addEventListener("click", (event) => {
   if (!$("credentialSwitcher").contains(event.target)) closeCredentialMenu();

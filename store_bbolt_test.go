@@ -190,3 +190,30 @@ func TestTheHistoryBucketHonoursItsLimitExactly(t *testing.T) {
 		t.Fatalf("newest is %s", page.Items[0].ID)
 	}
 }
+
+// A record is rewritten in place: same position, same bucket size.
+func TestBoltUpdateHistoryRewritesOneRecord(t *testing.T) {
+	p, err := openPersistence(filepath.Join(t.TempDir(), "update.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	for i, id := range []string{"a#1", "b#1"} {
+		rec := historyRecord{ID: id, AuthIndex: "idx", StartedAt: time.Unix(int64(100+i), 0),
+			TurnStateMinted: &turnStateInfo{Digest: id, ManualPool: true}}
+		if err := p.AppendHistory(rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	found, err := p.UpdateHistory("idx", "a#1", func(rec *historyRecord) { rec.TurnStateMinted.Pooled = true })
+	if err != nil || !found {
+		t.Fatalf("found=%v err=%v", found, err)
+	}
+	if found, _ := p.UpdateHistory("idx", "missing", func(*historyRecord) { t.Fatal("no record, no call") }); found {
+		t.Fatal("a missing record is reported missing")
+	}
+	page, _ := p.History("idx", 1, 10)
+	if page.Total != 2 || page.Items[1].ID != "a#1" || !page.Items[1].TurnStateMinted.Pooled || page.Items[0].TurnStateMinted.Pooled {
+		t.Fatalf("page after update: %+v", page.Items)
+	}
+}

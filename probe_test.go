@@ -473,3 +473,52 @@ func TestPoolChangesReplanTheProbe(t *testing.T) {
 		t.Fatal("a mint must clear the old plan")
 	}
 }
+
+// With markers in the server config, the probe judges its own response: a
+// marker in an event name, event type or field name makes it degraded and
+// keeps its state out of the pool; a clean response pools as non-degraded.
+// The marker here is a stand-in -- the real ones live only in server config.
+func TestProbeJudgesItsResponseByTheConfiguredMarkers(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		body     string
+		degraded bool
+	}{
+		{"marker in the event", "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"model\":\"gpt-6-astra\"}}\n\n" +
+			"event: response.fixture_marker_text.delta\ndata: {\"type\":\"response.fixture_marker_text.delta\",\"delta\":\"x\"}\n\n", true},
+		{"clean stream", "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"model\":\"gpt-6-astra\"}}\n\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resetState(t)
+			resetTurnStates(t)
+			blob := fernetToken(0x80, time.Now(), 1)
+			probeStub(t, blob, nil)
+			inner := probeHTTPDoFunc
+			probeHTTPDoFunc = func(ctx context.Context, transport *http.Transport, req hostHTTPRequest, proxied bool) (hostHTTPResponse, error) {
+				response, err := inner(ctx, transport, req, proxied)
+				response.Body = []byte(tc.body)
+				return response, err
+			}
+			state.mu.Lock()
+			state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+			previous := state.probeMarkers
+			state.probeMarkers = []string{"fixture_marker"}
+			state.mu.Unlock()
+			t.Cleanup(func() { state.mu.Lock(); state.probeMarkers = previous; state.mu.Unlock() })
+
+			probeModel(context.Background(), "idx-a", "gpt-6-astra", probeRuleFixture(), credentialSession{})
+
+			state.mu.Lock()
+			_, pooled := state.turnStateLatest[turnStateLatestKey("idx-a", "gpt-6-astra")]
+			state.mu.Unlock()
+			if pooled == tc.degraded {
+				t.Fatalf("pooled=%v for a degraded=%v response", pooled, tc.degraded)
+			}
+			rows := probeRows(t)
+			info := rows[0].TurnStateMinted
+			if info == nil || info.Judgement != degradedRuleResponse || info.NonDegraded == nil || *info.NonDegraded == tc.degraded || info.Pooled == tc.degraded {
+				t.Fatalf("the row should carry the response verdict: %+v", info)
+			}
+		})
+	}
+}

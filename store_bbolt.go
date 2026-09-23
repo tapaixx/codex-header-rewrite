@@ -268,6 +268,34 @@ func (p *boltPersistence) appendRecord(record historyRecord, child childFunc, li
 	})
 }
 
+func (p *boltPersistence) UpdateHistory(authIndex, id string, update func(*historyRecord)) (bool, error) {
+	found := false
+	err := p.db.Update(func(tx *bolt.Tx) error {
+		b, err := historyChild(tx, authIndex, false)
+		if err != nil || b == nil {
+			return err
+		}
+		// The bucket is keyed by sequence, not by record ID, and bounded at
+		// historyLimit, so a scan is the lookup.
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var rec historyRecord
+			if json.Unmarshal(v, &rec) != nil || rec.ID != id {
+				continue
+			}
+			update(&rec)
+			raw, err := json.Marshal(rec)
+			if err != nil {
+				return err
+			}
+			found = true
+			return b.Put(append([]byte(nil), k...), raw)
+		}
+		return nil
+	})
+	return found, err
+}
+
 func (p *boltPersistence) HistoryBody(authIndex, id string) (bodyRecord, bool, error) {
 	var out bodyRecord
 	found := false
