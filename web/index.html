@@ -2426,7 +2426,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
     </details>
 
     <section class="panel" id="turnStatePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>State 池</h2><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">两条判定，各看各的证据：<b>正常请求</b>看回写——注入了 state 而上游<b>没有</b>回写新 state，就是没降智；上游<b>回写了</b>，说明这一轮降智了，回写的那条不入池、注入的那条还会被剔除；没注入就不判定。<b>自动探针</b>看耗时，见探针卡片。正常请求的 state 一律不自动入池，确认可用后在请求详情的「分析」页点「手动入池」；探针拿到的合格 state 自动入池。判定逻辑集中在插件的 <code>degraded.go</code>。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">200 秒</span>只标记过期。</span></span></span></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>State 池</h2><div class="panel-caption">仅显示当前凭证可复用的 X-Codex-Turn-State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="入池与复用规则">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">两条判定，各看各的证据：<b>正常请求</b>看回写——注入了 state 而上游<b>没有</b>回写新 state，就是没降智；上游<b>回写了</b>，说明这一轮降智了，回写的那条不入池、注入的那条还会被剔除；没注入就不判定。<b>自动探针</b>开了「多重判断降智」时用同一条规则复核，见探针卡片。正常请求的 state 一律不自动入池，确认可用后在请求详情的「分析」页点「手动入池」；探针拿到的 state 自动入池（开了多重判断则要先通过复核）。判定逻辑集中在插件的 <code>degraded.go</code>。</span><span class="hint-k">复用</span><span class="hint-v">每个「凭证 + 模型」保留最新一条；跨号、跨模型都不能复用，超过 <span id="turnStateWindow">200 秒</span>只标记过期。</span></span></span></div></div>
         <div class="spacer"></div>
         <label class="switch panel-switch"><input type="checkbox" id="poolMaintain" checked disabled><span>State 池维护<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="State 池维护的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">插件从每个响应里读 <code>X-Codex-Turn-State</code>：合格的入池、过期的标记，池子一直是活的。</span><span class="hint-k">关掉</span><span class="hint-v">池子冻结：不入池、不注入，自动探针和拦截后重试也停下，已有记录原样保留。</span><span class="hint-p">这是池子的总开关，默认开启；「注入 State」只在它开着时生效。</span></span></span></span></label>
         <label class="switch panel-switch"><input type="checkbox" id="poolInject" disabled><span>注入 State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="注入 State 的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">从池里取「该凭证 + 当前模型」的合格 state 写进请求的 <code>X-Codex-Turn-State</code>（池里没有就不写），并摘掉确认来自其他凭证或其他模型的回带值。</span><span class="hint-k">关掉</span><span class="hint-v">完全不碰这个 Header，客户端带什么就原样发什么。</span><span class="hint-p">与「启用改写」无关，规则关着也照样注入；规则<b>启用</b>且手工设置或移除了这个 Header 时，以手工为准。默认关闭。</span></span></span></span></label>
@@ -2444,7 +2444,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
     </section>
 
     <section class="panel" id="probePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-refresh"/></svg><div class="panel-title"><h2>自动 State 探针</h2><div class="panel-caption">按时补池，而不是等降智了才反应<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="探针的说明">!</button><span class="hint-text"><span class="hint-k">做什么</span><span class="hint-v">按间隔检查探针模型，池里没有 state 或已过期的就补发一次最小 <code>hi</code> 请求（思考强度 <code>low</code>）。<b>按这次请求的耗时判定</b>：<b>10 秒内</b>返回算不降智，state 连同会话自动入池；<b>10–20 秒</b>算可疑，不入池；<b>超过 20 秒</b>算降智，不入池。耗时只算这一次上游调用，预热请求不计。</span><span class="hint-k">何时不跑</span><span class="hint-v">开关关着、不在生效时段、或者距离上一次<b>真实请求</b>超过下面的活跃判定时间 —— 账号没人用就不该继续烧额度。探针自己的请求不算「真实请求」。</span><span class="hint-p">与「拦截后重试」互斥，两者都在给同一个池补货。每次探针都是一次计费的真实调用。</span></span></span></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-refresh"/></svg><div class="panel-title"><h2>自动 State 探针</h2><div class="panel-caption">按时补池，而不是等降智了才反应<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="探针的说明">!</button><span class="hint-text"><span class="hint-k">做什么</span><span class="hint-v">按间隔检查探针模型，池里没有 state 或已过期的就补发一次最小 <code>hi</code> 请求（思考强度 <code>low</code>）。拿到的 state 连同会话自动入池；打开下面的「多重判断降智」后，要先通过一次复核才入池。</span><span class="hint-k">何时不跑</span><span class="hint-v">开关关着、不在生效时段、或者距离上一次<b>真实请求</b>超过下面的活跃判定时间 —— 账号没人用就不该继续烧额度。探针自己的请求不算「真实请求」。</span><span class="hint-p">与「拦截后重试」互斥，两者都在给同一个池补货。每次探针都是一次计费的真实调用。</span></span></span></div></div>
         <div class="spacer"></div>
         <label class="switch panel-switch"><input type="checkbox" id="probeEnabled"><span>启用自动探针</span></label>
       </div>
@@ -2453,6 +2453,10 @@ html[data-theme="dark"]{color-scheme:dark!important}
           <label id="probeModelsLabel">探针模型（开启时必填）</label>
           <div class="chips" id="probeModels" data-kind="model" data-disabled="1" role="group" aria-labelledby="probeModelsLabel"></div>
           <span class="muted">回车或逗号添加，点标签改，✕ 删除；按模型 ID 精确匹配。</span>
+        </div>
+
+        <div class="probe-side" style="flex-basis:100%">
+          <label class="switch"><input type="checkbox" id="probeVerify" disabled><span>多重判断降智<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="多重判断降智的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">探针拿到 state 后，再发一次同样的最小请求：<b>带上这条 state、不带 Cookie</b>。复核响应里<b>没有</b>新 state，说明这条 state 撑住了，才入池；回写了新 state 判为降智，复核请求失败算没判定，都不入池。和正常请求的判定是同一条规则。</span><span class="hint-k">关掉</span><span class="hint-v">探针拿到什么就入池，不做判定。</span><span class="hint-p">每次探针多一次上游调用，也多计一次额度。默认关闭。</span></span></span></span></label>
         </div>
 
         <label class="field-inline" for="probeInterval">间隔<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="间隔的说明">!</button><span class="hint-text"><span class="hint-v">从<b>上一轮结束</b>算起等这么久再跑下一轮，所以相邻两次上游调用的间距就是这个值。</span><span class="hint-p">一轮跑得比间隔久时，下一次自然被跳过；池里都新鲜时任务立刻结束，只花一次查表。没有上限，下限 1 秒。</span></span></span><input id="probeInterval" type="number" inputmode="numeric" min="1" step="1" value="30" autocomplete="off" disabled><span class="field-unit">秒</span></label>
@@ -3549,19 +3553,28 @@ function turnStateTags(record) {
   else if (minted?.pooled) {
     tags.push(minted.non_degraded === true ? '<span class="tag ok">不降智 · 已入池</span>' : '<span class="tag ok">已入池</span>');
   } else if (minted?.non_degraded === false) tags.push('<span class="tag bad">疑似降智 · 未入池</span>');
-  else if (minted?.suspect) tags.push('<span class="tag warn" title="探针响应耗时落在可疑区间，这条 state 不入池">可疑 · 未入池</span>');
+  else if (record.probe_verify_error) tags.push('<span class="tag warn" title="多重判断的复核请求失败，没有判定，这条 state 不入池">复核失败 · 未入池</span>');
+  else if (minted?.suspect) tags.push('<span class="tag warn" title="旧版耗时规则判为可疑，这条 state 未入池">可疑 · 未入池</span>');
   else if (minted?.manual_pool) tags.push('<span class="tag warn" title="本次请求没有注入 state，无法判定；在详情的分析页手动入池">需手动入池</span>');
   else if (minted) tags.push('<span class="tag warn" title="State 池维护关闭时收到的 state 不入池">未入池</span>');
   return tags.join("");
 }
+// Why a state carries no verdict, by the rule that declined to give one.
+const UNJUDGED = {
+  injected: "本次请求没有注入 state，无从判断",
+  verify: "复核请求失败，无从判断",
+  paused: "未开启多重判断，拿到即入池",
+};
 // Which rule answered, and on what. Each path sees different evidence.
 function judgedBy(info) {
-  if (info.judgement === "latency") {
-    return `<span class="muted" style="margin-left:6px">探针耗时 ${(info.latency_ms / 1000).toFixed(1)} 秒</span>`;
+  const note = (text) => `<span class="muted" style="margin-left:6px">${text}</span>`;
+  if (info.judgement === "verify") {
+    return note(info.non_degraded ? "复核请求带上它后，上游没有回写新 state" : "复核请求带上它后，上游回写了新 state");
   }
   if (info.judgement === "injected") {
-    return '<span class="muted" style="margin-left:6px">上游在注入的 state 之上又回写了一个</span>';
+    return note(info.non_degraded ? "注入后上游没有回写新 state" : "上游在注入的 state 之上又回写了一个");
   }
+  if (info.judgement === "latency") return note(`旧版耗时规则 · ${(info.latency_ms / 1000).toFixed(1)} 秒`);
   return "";
 }
 function turnStateAge(info) {
@@ -3600,8 +3613,8 @@ function turnStateRows(label, info, extra = "", blob = "", model = "") {
         ${info.plan_type ? `<dt>套餐</dt><dd>${esc(info.plan_type)}</dd>` : ""}
         ${info.non_degraded === true ? `<dt>质量判定</dt><dd><span class="tag ok">不降智</span>${judgedBy(info)}</dd>` : ""}
         ${info.non_degraded === false ? `<dt>质量判定</dt><dd><span class="tag bad">疑似降智</span>${judgedBy(info)}</dd>` : ""}
-        ${info.suspect ? `<dt>质量判定</dt><dd><span class="tag warn">可疑</span><span class="muted" style="margin-left:6px">探针耗时 ${(info.latency_ms / 1000).toFixed(1)} 秒，落在 ${(POOL_LATENCY.clean / 1000)}–${(POOL_LATENCY.suspect / 1000)} 秒之间</span></dd>` : ""}
-        ${info.non_degraded === undefined && !info.suspect ? '<dt>质量判定</dt><dd><span class="tag flat">未判定</span><span class="muted" style="margin-left:6px">本次请求没有注入 state，无从判断</span></dd>' : ""}
+        ${info.suspect ? `<dt>质量判定</dt><dd><span class="tag warn">可疑</span><span class="muted" style="margin-left:6px">旧版耗时规则 · ${(info.latency_ms / 1000).toFixed(1)} 秒</span></dd>` : ""}
+        ${info.non_degraded === undefined && !info.suspect ? `<dt>质量判定</dt><dd><span class="tag flat">未判定</span><span class="muted" style="margin-left:6px">${UNJUDGED[info.judgement] || "没有可用的判定"}</span></dd>` : ""}
         <dt>State 池</dt><dd>${info.pooled
           ? `<span class="tag ok">已入池</span>${info.manual_pool ? '<span class="muted" style="margin-left:6px">手动</span>' : ""}`
           : '<span class="tag flat">未入池</span>'}</dd>
@@ -4005,8 +4018,17 @@ function probeDetail(record) {
   }
   rows.push(`<dt>Cookie 来源</dt><dd>${esc(COOKIE_MODES[record.probe_cookie_mode] || "未记录")}</dd>`);
   rows.push(`<dt>预热请求</dt><dd>${record.probe_primed
-    ? '有<span class="muted"> · 这次探针共两次上游调用</span>'
+    ? '有<span class="muted"> · 多一次上游调用</span>'
     : '<span class="muted">无</span>'}</dd>`);
+  if (record.probe_verified) {
+    const minted = record.turn_state_minted || {};
+    const outcome = record.probe_verify_error
+      ? `<span class="tag warn">复核失败</span><span class="muted" style="margin-left:6px">${esc(record.probe_verify_error)}</span>`
+      : (minted.non_degraded === false
+        ? '<span class="tag bad">回写了新 state</span><span class="muted" style="margin-left:6px">判为降智</span>'
+        : '<span class="tag ok">没有回写</span><span class="muted" style="margin-left:6px">这条 state 撑住了</span>');
+    rows.push(`<dt>多重判断</dt><dd>${outcome}</dd>`);
+  }
   return `<div class="history-detail-section">
     <div class="history-detail-label"><span>探针</span></div>
     <dl class="ts-grid">${rows.join("")}</dl>
@@ -4964,12 +4986,7 @@ function syncDegradedControls() {
 // A probe list that is empty reads the same whether there was nothing to do,
 // nothing due yet, or the account went quiet -- so the schedule is reported
 // beside the rows rather than left to be inferred from their absence.
-// The probe's latency bands, as the plugin reports them. The defaults match
-// the constants in degraded.go and are replaced by the first probe payload.
-const POOL_LATENCY = { clean: 10000, suspect: 20000 };
 function renderProbeStatus(payload) {
-  if (payload?.latency_clean_ms) POOL_LATENCY.clean = payload.latency_clean_ms;
-  if (payload?.latency_suspect_ms) POOL_LATENCY.suspect = payload.latency_suspect_ms;
   const host = $("probeStatus");
   if (!host) return;
   if (!payload) { host.hidden = true; host.innerHTML = ""; return; }
@@ -5165,6 +5182,7 @@ function collectProbe() {
     probe_window_start_minute: window.start,
     probe_window_end_minute: window.end,
     probe_resolve_exit_ip: !!$("probeResolveIP")?.checked,
+    probe_verify: !!$("probeVerify")?.checked,
   };
 }
 
@@ -5174,6 +5192,7 @@ function fillProbeForm(rule) {
   $("probeInterval").value = String(rule.probe_interval_seconds || 30);
   $("probeCookieTTL").value = String(rule.probe_cookie_ttl_seconds || 1800);
   $("probeResolveIP").checked = rule.probe_resolve_exit_ip !== false;
+  if ($("probeVerify")) $("probeVerify").checked = !!rule.probe_verify;
   const start = rule.probe_window_start_minute || 0;
   const end = rule.probe_window_end_minute || 0;
   $("probeWindowStart").value = start === end ? "" : utcMinuteToLocalTime(start);
@@ -5192,9 +5211,12 @@ function fillProbeForm(rule) {
 function probeRateText() {
   const models = probeModelList().length;
   if (!models) return "";
-  const perRound = probeCookieMode() === "rotating_proxy" ? 2 : 1;
+  const primed = probeCookieMode() === "rotating_proxy";
+  const verified = !!$("probeVerify")?.checked;
+  const perRound = 1 + (primed ? 1 : 0) + (verified ? 1 : 0);
   const perHour = Math.round((3600 / probeInterval()) * models * perRound);
-  const note = perRound === 2 ? "（含预热请求）" : "";
+  const extras = [primed ? "预热请求" : "", verified ? "复核请求" : ""].filter(Boolean);
+  const note = extras.length ? `（含${extras.join("、")}）` : "";
   return `按当前配置最多约 ${perHour.toLocaleString()} 次/小时${note}`;
 }
 
@@ -5214,7 +5236,7 @@ function syncProbeControls() {
   // before the probe may be switched on, so it has to be editable while off.
   // Everything below is editable whenever a rule is loaded.
   const editable = ready && !frozen;
-  for (const id of ["probeInterval", "probeCookieTTL", "probeWindowStart", "probeWindowEnd", "probeWindowClear", "probeResolveIP"]) {
+  for (const id of ["probeInterval", "probeCookieTTL", "probeWindowStart", "probeWindowEnd", "probeWindowClear", "probeResolveIP", "probeVerify"]) {
     if ($(id)) $(id).disabled = !editable;
   }
   $("probeProxyOn").disabled = !editable;
@@ -5353,7 +5375,7 @@ $("probeEnabled")?.addEventListener("change", () => {
   syncProbeControls();
   saveProbeSettings(() => { $("probeEnabled").checked = !$("probeEnabled").checked; });
 });
-for (const id of ["probeInterval", "probeCookieTTL", "probeResolveIP", "probeProxyOn"]) {
+for (const id of ["probeInterval", "probeCookieTTL", "probeResolveIP", "probeProxyOn", "probeVerify"]) {
   $(id)?.addEventListener("change", () => { syncProbeControls(); saveProbeSettings(() => {}); });
 }
 // A phone's time picker fires change on every tick of the wheel; saving each

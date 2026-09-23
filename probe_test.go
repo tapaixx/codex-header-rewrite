@@ -474,61 +474,89 @@ func TestPoolChangesReplanTheProbe(t *testing.T) {
 	}
 }
 
-// The probe is judged on its own round trip: quick enough and the state is
-// pooled, the middle band is suspect, slower still is degraded. Neither of the
-// last two enters the pool, and the row says which it was.
-func TestProbeJudgesItsOwnLatency(t *testing.T) {
+// With multi-check on, the probe sends a second request carrying the state it
+// just got and no cookie, and pools the state only if the upstream writes no
+// new one back. Off, it pools what it gets, unjudged.
+func TestProbeMultiCheck(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		elapsed time.Duration
+		verify  bool
+		second  func(blob string) (hostHTTPResponse, error)
 		pooled  bool
-		suspect bool
-		bad     bool
+		verdict *bool
+		rule    string
+		failed  bool
 	}{
-		{"quick", 3 * time.Second, true, false, false},
-		{"suspect", 15 * time.Second, false, true, false},
-		{"slow", 25 * time.Second, false, false, true},
+		{"off", false, nil, true, nil, degradedRulePaused, false},
+		{"held", true, func(string) (hostHTTPResponse, error) {
+			return hostHTTPResponse{StatusCode: 200, Headers: http.Header{"X-Request-Id": {"r2"}}}, nil
+		}, true, boolPtr(true), degradedRuleVerify, false},
+		{"written back", true, func(string) (hostHTTPResponse, error) {
+			return hostHTTPResponse{StatusCode: 200, Headers: http.Header{turnStateHeader: {fernetToken(0x80, time.Now(), 2)}}}, nil
+		}, false, boolPtr(false), degradedRuleVerify, false},
+		{"check failed", true, func(string) (hostHTTPResponse, error) {
+			return hostHTTPResponse{StatusCode: 502, Headers: http.Header{}}, nil
+		}, false, nil, degradedRuleVerify, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			resetState(t)
 			resetTurnStates(t)
 			blob := fernetToken(0x80, time.Now(), 1)
-			probeStub(t, blob, nil)
-			// The clock moves only around the upstream call, by this much.
-			base := time.Now()
-			calls := 0
-			oldNow := probeNowFunc
-			probeNowFunc = func() time.Time {
-				calls++
-				if calls%2 == 0 {
-					return base.Add(tc.elapsed)
+			sent := probeStub(t, blob, []string{"__cf_bm=fresh; Path=/"})
+			inner := probeHTTPDoFunc
+			var second []hostHTTPRequest
+			probeHTTPDoFunc = func(ctx context.Context, transport *http.Transport, req hostHTTPRequest, proxied bool) (hostHTTPResponse, error) {
+				if req.Headers.Get(turnStateHeader) == "" {
+					return inner(ctx, transport, req, proxied)
 				}
-				return base
+				second = append(second, req)
+				return tc.second(req.Headers.Get(turnStateHeader))
 			}
-			t.Cleanup(func() { probeNowFunc = oldNow })
 			state.mu.Lock()
 			state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
 			state.mu.Unlock()
+			rule := probeRuleFixture()
+			rule.ProbeVerify = tc.verify
 
-			probeModel(context.Background(), "idx-a", "gpt-6-astra", probeRuleFixture(), credentialSession{})
+			probeModel(context.Background(), "idx-a", "gpt-6-astra", rule, credentialSession{Cookie: "carried=1"})
 
+			if len(*sent) != 1 {
+				t.Fatalf("one probe request expected, got %d", len(*sent))
+			}
+			if !tc.verify {
+				if len(second) != 0 {
+					t.Fatal("multi-check off sends no second request")
+				}
+			} else {
+				if len(second) != 1 {
+					t.Fatalf("one check request expected, got %d", len(second))
+				}
+				if got := second[0].Headers.Get(turnStateHeader); got != blob {
+					t.Fatalf("the check must carry the probe's own state, got %q", got)
+				}
+				if second[0].Headers.Get("Cookie") != "" {
+					t.Fatalf("the check goes out without a cookie, sent %q", second[0].Headers.Get("Cookie"))
+				}
+			}
 			state.mu.Lock()
 			_, pooled := state.turnStateLatest[turnStateLatestKey("idx-a", "gpt-6-astra")]
 			state.mu.Unlock()
 			if pooled != tc.pooled {
 				t.Fatalf("pooled=%v, want %v", pooled, tc.pooled)
 			}
-			info := probeRows(t)[0].TurnStateMinted
-			if info == nil || info.Judgement != degradedRuleLatency || info.LatencyMS != tc.elapsed.Milliseconds() {
-				t.Fatalf("the row should carry the latency verdict: %+v", info)
+			row := probeRows(t)[0]
+			info := row.TurnStateMinted
+			if info == nil || info.Judgement != tc.rule || info.Pooled != tc.pooled {
+				t.Fatalf("row verdict: %+v", info)
 			}
-			if info.Pooled != tc.pooled || info.Suspect != tc.suspect {
-				t.Fatalf("pooled=%v suspect=%v: %+v", info.Pooled, info.Suspect, info)
+			if (info.NonDegraded == nil) != (tc.verdict == nil) || (info.NonDegraded != nil && *info.NonDegraded != *tc.verdict) {
+				t.Fatalf("non_degraded=%v, want %v", info.NonDegraded, tc.verdict)
 			}
-			degraded := info.NonDegraded != nil && !*info.NonDegraded
-			if degraded != tc.bad {
-				t.Fatalf("degraded=%v, want %v: %+v", degraded, tc.bad, info)
+			if row.ProbeVerified != tc.verify || (row.ProbeVerifyError != "") != tc.failed {
+				t.Fatalf("verified=%v error=%q", row.ProbeVerified, row.ProbeVerifyError)
 			}
 		})
 	}
 }
+
+func boolPtr(v bool) *bool { return &v }

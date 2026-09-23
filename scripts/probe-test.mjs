@@ -58,6 +58,21 @@ try {
   assert.equal(saved.probe_enabled, true);
   assert.equal(saved.retry_on_degraded, false, 'and saved off, not just unticked');
 
+  // Multi-check is off by default and saves on its own; on, the cost line
+  // counts the check request.
+  assert.equal(await page.locator('#probeVerify').isChecked(), false, 'multi-check defaults off');
+  assert.equal(await page.locator('#probeVerify').isDisabled(), false, 'and is editable');
+  const before = await page.locator('#probeMeter').textContent();
+  await page.evaluate(()=>document.querySelector('#probeVerify').click());
+  await new Promise(r=>setTimeout(r,300));
+  assert.equal(saved.probe_verify, true, 'turning it on saved at once');
+  assert.equal(saved.probe_enabled, true, 'without touching the probe switch');
+  const after = await page.locator('#probeMeter').textContent();
+  assert.ok(after.includes('复核请求') && after !== before, 'the rate counts the check: ' + after);
+  await page.evaluate(()=>document.querySelector('#probeVerify').click());
+  await new Promise(r=>setTimeout(r,300));
+  assert.equal(saved.probe_verify, false, 'and off again');
+
   // ...and the reverse.
   await page.evaluate(()=>document.querySelector('#retryDegraded').click());
   await new Promise(r=>setTimeout(r,300));

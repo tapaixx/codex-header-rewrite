@@ -73,7 +73,7 @@ const rules = {
     reject_degraded_response: true, reject_degraded_models: ['gpt-6-astra'],
     retry_on_degraded: false, retry_attempts: 2,
     retry_proxies: ['socks5://127.0.0.1:1080'],
-    probe_enabled: true,
+    probe_enabled: true, probe_verify: true,
     probe_models: ['gpt-6-astra', 'gpt-5.6-luna'],
     probe_proxies: ['socks5://user:secret@127.0.0.1:1080'],
     probe_cookie_mode: 'rotating_proxy',
@@ -178,16 +178,19 @@ const probeRow = (over) => ({
 });
 const probes = [
   probeRow({ id: 'probe-1#1', request_id: 'probe-1', started_at: at(12), completed_at: at(10),
-    probe_egress: 'socks5://127.0.0.1:1080', probe_primed: true,
-    turn_state_minted: { digest: 'c91a0e77bb42', chars: 332, bytes: 249, version: 128, issued_at: at(11), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'latency', latency_ms: 3240, non_degraded: true, pooled: true } }),
-  // The middle band: quick enough to answer, slow enough to doubt.
+    probe_egress: 'socks5://127.0.0.1:1080', probe_primed: true, probe_verified: true, probe_verify_status: 200,
+    // Multi-check: the second request carried this state and drew none back.
+    turn_state_minted: { digest: 'c91a0e77bb42', chars: 332, bytes: 249, version: 128, issued_at: at(11), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'verify', non_degraded: true, pooled: true } }),
+  // The check request itself failed, so there is no verdict and no pooling.
   probeRow({ id: 'probe-1b#1', request_id: 'probe-1b', started_at: at(48), completed_at: at(33),
-    probe_egress: 'socks5://127.0.0.1:1080', probe_primed: false,
-    turn_state_minted: { digest: '88be41d0c7a2', chars: 332, bytes: 249, version: 128, issued_at: at(34), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'latency', latency_ms: 14800, suspect: true, pooled: false } }),
+    probe_egress: 'socks5://127.0.0.1:1080', probe_primed: false, probe_verified: true, probe_verify_status: 502,
+    probe_verify_error: 'verification returned HTTP 502',
+    turn_state_minted: { digest: '88be41d0c7a2', chars: 332, bytes: 249, version: 128, issued_at: at(34), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'verify', pooled: false } }),
   probeRow({ id: 'probe-2#1', request_id: 'probe-2', started_at: at(75), completed_at: at(73),
     model: 'gpt-5.6-luna', requested_model: 'gpt-5.6-luna', upstream_model: 'gpt-5.6-luna',
     probe_egress: '', probe_primed: false, probe_cookie_mode: 'credential', probe_exit_region: 'LHR',
-    turn_state_minted: { digest: '2f80ab19cc63', chars: 356, bytes: 265, version: 128, issued_at: at(74), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'latency', latency_ms: 24600, non_degraded: false, pooled: false } }),
+    turn_state_minted: { digest: '2f80ab19cc63', chars: 356, bytes: 265, version: 128, issued_at: at(74), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'verify', non_degraded: false, pooled: false },
+    probe_verified: true, probe_verify_status: 200 }),
   probeRow({ id: 'probe-3#1', request_id: 'probe-3', started_at: at(140), completed_at: at(139),
     probe_egress: 'socks5://127.0.0.1:1080', probe_primed: true, outcome: 'failed', status_code: 429,
     upstream_model: '', model_mismatch: null, probe_exit_region: '',
@@ -245,7 +248,7 @@ const stub = `
       return json({ auth_index: authIndex, page: 1, page_size: 10, total: rows.length, total_pages: 1,
         // The schedule follows the rule the preview has saved, as the plugin's does.
         items: rows, limit: 500, enabled: !!F.rules[authIndex]?.probe_enabled, within_window: true,
-        pool_paused: F.rules[authIndex]?.maintain_state_pool === false, latency_clean_ms: 10000, latency_suspect_ms: 20000,
+        pool_paused: F.rules[authIndex]?.maintain_state_pool === false,
         last_live_at: new Date(Date.now() - 42000).toISOString(), live_age_seconds: 42,
         next_due_at: new Date(Date.now() + 18000).toISOString() });
     }

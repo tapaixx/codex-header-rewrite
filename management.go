@@ -189,10 +189,6 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			"limit": probeHistoryLimit, "enabled": rule.ProbeEnabled,
 			"within_window": withinProbeWindow(rule, time.Now().UTC()),
 			"pool_paused":   !rule.poolMaintained(),
-			// The bands the latency rule reads, so the panel names the same
-			// numbers the plugin judges by rather than a copy of them.
-			"latency_clean_ms":   probeCleanLatency.Milliseconds(),
-			"latency_suspect_ms": probeSuspectLatency.Milliseconds(),
 		}
 		if !session.LastLiveAt.IsZero() {
 			payload["last_live_at"] = session.LastLiveAt

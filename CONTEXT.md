@@ -9,7 +9,7 @@ An `X-Codex-Turn-State` blob received from an upstream response, before any qual
 _Avoid_: Minted state
 
 **Non-degraded state**:
-An observed state the rule that applies (`degraded.go`) did not mark as degraded: for a live request the injection rule, for a probe the latency rule. The former wire-length rule (team at most 332 characters, personal at most 292) is kept as `judgeByLength` and no longer runs.
+An observed state the rule that applies (`degraded.go`) did not mark as degraded: for a live request the injection rule, for a probe with multi-check on the same rule applied to its check request. The former wire-length rule (team at most 332 characters, personal at most 292) is kept as `judgeByLength` and no longer runs.
 _Avoid_: Good state, valid state
 
 **Minting**:
@@ -20,13 +20,9 @@ _Avoid_: Observing, receiving
 The live judgement (`judgeInjectedTurn`). A request that went out carrying an injected state and came back with no state in its response headers is non-degraded; one that came back with a state is degraded. Nothing injected means no verdict.
 _Avoid_: Echo rule
 
-**Latency rule**:
-The probe judgement (`judgeProbeLatency`), read from the probe's own upstream round trip: at most 10 seconds is non-degraded and pools, up to 20 seconds is suspect, beyond that is degraded.
-_Avoid_: Timeout rule
-
-**Suspect state**:
-A probe state the latency rule placed in the middle band. Kept out of the pool without being called degraded; carried in history as `suspect`, never beside a non-degraded verdict.
-_Avoid_: Maybe degraded
+**Multi-check**:
+The probe's optional verification (`probe_verify`, `judgeProbeVerification`). After a probe obtains a state it sends one more minimal request carrying that state and no cookie; the state pools only if the upstream writes no new state back. A failed check gives no verdict and does not pool. Off, the probe pools unjudged.
+_Avoid_: Double probe, re-probe
 
 **Manual pool**:
 An operator minting a recorded live state from the history drawer. The plugin rebuilds the entry from the stored record (response state, request Cookie merged with Set-Cookie) without calling the upstream, and it takes the slot even from a newer state.

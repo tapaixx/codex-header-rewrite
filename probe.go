@@ -383,8 +383,10 @@ type probeAttempt struct {
 	// probe's response -- the priming response is only read for Set-Cookie.
 	upstreamModel  string
 	upstreamEffort string
-	// elapsed is the model request's round trip, which is what judges it.
-	elapsed       time.Duration
+	// What the multi-check request did, when it ran.
+	verified      bool
+	verifyStatus  int
+	verifyErr     string
 	modelConflict bool
 	requestEffort string
 }
@@ -440,13 +442,9 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 		return
 	}
 	headers := retryHeaders(material, cookie)
-	// Timed around this call alone: the priming request and reading the
-	// credential are the plugin's own work, and the rule judges the upstream.
-	sentAt := probeNowFunc()
 	response, callErr := probeHTTPDoFunc(ctx, transport, hostHTTPRequest{
 		Method: http.MethodPost, URL: defaultTestURL, Headers: headers, Body: body,
 	}, attempt.egress != "")
-	attempt.elapsed = probeNowFunc().Sub(sentAt)
 
 	attempt.sent = redactHeaders(headers)
 	attempt.received = redactHeaders(response.Headers)
@@ -482,8 +480,11 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 		recordProbe(authIndex, rule, attempt)
 		return
 	}
+	verdict := judgeDegraded(attempt.blob, plan)
+	if rule.ProbeVerify {
+		verdict = verifyProbeState(ctx, transport, authIndex, model, material, &attempt)
+	}
 	state.mu.Lock()
-	verdict := judgeProbeLatency(attempt.elapsed)
 	info := classifyTurnStateWith(decodeTurnState(attempt.blob), plan, verdict)
 	if verdict.Eligible {
 		// The state and the session that produced it enter the pool together.
@@ -587,9 +588,6 @@ func credentialLabelLocked(authIndex string) string {
 	return cred.Name
 }
 
-// probeNowFunc is the clock the latency rule reads; tests replace it.
-var probeNowFunc = func() time.Time { return time.Now() }
-
 // probeWarmupModel is what the priming request asks for. It only exists to
 // collect a Set-Cookie, so it asks for the cheapest thing it can.
 const probeWarmupModel = "gpt-5.6-luna"
@@ -640,6 +638,7 @@ func recordProbe(authIndex string, rule headerRule, attempt probeAttempt) {
 		RequestBody: attempt.request, RequestBytes: attempt.reqBytes,
 		ResponseBody: attempt.response, ResponseBytes: attempt.resBytes,
 		ProbeEgress: attempt.egress, ProbePrimed: attempt.primed,
+		ProbeVerified: attempt.verified, ProbeVerifyStatus: attempt.verifyStatus, ProbeVerifyError: attempt.verifyErr,
 		ProbeCookieMode: probeCookieModeFor(rule),
 		ProbeExitRegion: cloudflareRegion(attempt.received),
 		UpstreamModel:   attempt.upstreamModel, UpstreamEffort: attempt.upstreamEffort,
@@ -689,4 +688,34 @@ func rememberLiveSessionLocked(attempt *pendingAttempt, session string) {
 		record.Cookie, record.RefreshAt = session, time.Now().UTC()
 	}
 	_ = state.store.SaveSession(record)
+}
+
+// verifyProbeState is the multi-check. The same minimal request goes out again
+// over the same connection, now carrying the state the probe just obtained and
+// no cookie -- the state alone is under test, not the session that minted it.
+// The answer is read with the live rule: a state that held draws no new one.
+func verifyProbeState(ctx context.Context, transport *http.Transport, authIndex, model string, material testAuthMaterial, attempt *probeAttempt) degradedVerdict {
+	body, err := probeRequestBody(model)
+	if err != nil {
+		attempt.verifyErr = err.Error()
+		return judgeProbeVerification(false, true)
+	}
+	headers := retryHeaders(material, "")
+	headers.Set(turnStateHeader, attempt.blob)
+	attempt.verified = true
+	response, callErr := probeHTTPDoFunc(ctx, transport, hostHTTPRequest{
+		Method: http.MethodPost, URL: defaultTestURL, Headers: headers, Body: body,
+	}, attempt.egress != "")
+	attempt.verifyStatus = response.StatusCode
+	switch {
+	case callErr != nil:
+		attempt.verifyErr = callErr.Error()
+	case response.StatusCode < 200 || response.StatusCode >= 300:
+		attempt.verifyErr = fmt.Sprintf("verification returned HTTP %d", response.StatusCode)
+	}
+	if attempt.verifyErr != "" {
+		return judgeProbeVerification(false, true)
+	}
+	noteQuota(authIndex, response.Headers)
+	return judgeProbeVerification(headerTurnState(response.Headers) != "", false)
 }

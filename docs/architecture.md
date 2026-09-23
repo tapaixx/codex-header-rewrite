@@ -81,7 +81,7 @@ request.intercept_after
 降智判定集中在 `degraded.go`，三条规则各看各的证据，都不读响应体：
 
 - `judgeInjectedTurn`（正常请求）：注入了 state 且响应头**没有**回写 state → 不降智；**回写了** → 降智，回写的那条不入池、注入的那条剔除；没注入 → 不判定。
-- `judgeProbeLatency`（自动探针）：这次上游调用 `≤ probeCleanLatency`（10 秒）→ 不降智并入池；`≤ probeSuspectLatency`（20 秒）→ 可疑，不入池且不算降智；更慢 → 降智。
+- `judgeProbeVerification`（自动探针，开了 `probe_verify` 时）：探针拿到 state 后再发一次最小请求，带这条 state、不带 Cookie，按上面同一条规则读复核响应；复核失败不判定。`probe_verify` 关着时探针不判定，走 `degradedJudge`。
 - `degradedJudge`（blob 本身）：拦截后重试与手动入池的兜底闸门，目前是 `judgePaused`（一律放行）；长度规则保留为 `judgeByLength`。
 
 入池分两路：探针与重试拿到的 state 自动入池；正常请求的 state 一律只记来源（跨号检测照常），历史行标「需手动入池」，由 `POST /turn-state/pool` 手动入池。原来的长度规则（Team `≤ 332`、个人 `≤ 292`，未声明套餐不入池）保留为 `judgeByLength`，换回去只改这一处。不降智值铸造进「凭证 + 模型 → 最新原始 blob」持久池，写入配置的 bbolt `data_path`，启动时恢复，乱序返回不回退。内存摘要索引仍有 2 小时 TTL 与 512 条上限；它只负责短期来源关联，不决定持久池是否保留。

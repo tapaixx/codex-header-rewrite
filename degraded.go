@@ -1,7 +1,5 @@
 package main
 
-import "time"
-
 // The degradation judgement lives here, and nowhere else: pooling, injection,
 // interception, retry, eviction and the history verdicts all ask this file.
 //
@@ -9,8 +7,9 @@ import "time"
 //
 //   - judgeInjectedTurn  live requests, from whether the upstream wrote a
 //     state back over one the plugin had injected.
-//   - judgeProbeLatency  the automatic probe, from how long its own minimal
-//     request took.
+//   - judgeProbeVerification  the automatic probe with multi-check on: the
+//     same rule, applied to a second request carrying the probe's own state.
+//     With multi-check off the probe pools what it gets, unjudged.
 //   - degradedJudge      the blob itself, which is all the retry and a manual
 //     pool have to go on. Currently judgePaused: no verdict, nothing kept out.
 //     The wire-length rule (team ≤ 332 characters, personal ≤ 292) stopped
@@ -28,12 +27,6 @@ type degradedVerdict struct {
 	// how an unjudged turn and an unknown plan both read in history.
 	Judged   bool
 	Degraded bool
-	// Suspect is the probe rule's middle band: not clean enough to pool, not
-	// slow enough to call degraded. Judged stays false -- there is no verdict,
-	// only a reason to keep the state out of the pool.
-	Suspect bool
-	// Elapsed is how long the request took, when that is what the rule read.
-	Elapsed time.Duration
 	// MaxChars is the length limit the rule applied, when it applied one.
 	MaxChars int
 	// Rule names what answered: "length" or "paused". History shows it so a
@@ -47,17 +40,12 @@ const (
 	// degradedRuleInjected is the live rule, read from whether the upstream
 	// wrote a state back over one the plugin had injected.
 	degradedRuleInjected = "injected"
-	// degradedRuleLatency is the probe rule, read from how long the probe's
-	// own request took.
-	degradedRuleLatency = "latency"
+	// degradedRuleVerify is the probe's multi-check: the injection rule,
+	// applied to a second request the probe sends with its own state.
+	degradedRuleVerify = "verify"
 
 	teamStateMaxChars     = 332
 	personalStateMaxChars = 292
-
-	// probeCleanLatency and probeSuspectLatency divide a probe's round trip
-	// into three: quick enough to trust, slow enough to doubt, slower still.
-	probeCleanLatency   = 10 * time.Second
-	probeSuspectLatency = 20 * time.Second
 )
 
 // degradedJudge is the rule in force. Swap it here to change the judgement.
@@ -105,20 +93,17 @@ func judgeInjectedTurn(injected, returned bool) degradedVerdict {
 	return degradedVerdict{Judged: true, Degraded: returned, Eligible: !returned, Rule: degradedRuleInjected}
 }
 
-// judgeProbeLatency is the rule for the automatic probe, which sends the same
-// minimal request every time and so can be judged on how long it takes: a
-// prompt answer comes from a healthy turn, a slow one does not. The middle
-// band is suspect rather than degraded -- it keeps the state out of the pool
-// without claiming to know.
-func judgeProbeLatency(elapsed time.Duration) degradedVerdict {
-	verdict := degradedVerdict{Rule: degradedRuleLatency, Elapsed: elapsed}
-	switch {
-	case elapsed <= probeCleanLatency:
-		verdict.Judged, verdict.Eligible = true, true
-	case elapsed <= probeSuspectLatency:
-		verdict.Suspect = true
-	default:
-		verdict.Judged, verdict.Degraded = true, true
+// judgeProbeVerification is the probe's rule when multi-check is on. The probe
+// has just obtained a state; it sends one more minimal request carrying that
+// state and no cookie, and reads the answer the way the live rule reads a
+// client's turn: no state written back means the state held, a state written
+// back means it did not. A verification that failed -- no answer, or not a
+// 2xx one -- says nothing, and an unverified state is not pooled.
+func judgeProbeVerification(returned, failed bool) degradedVerdict {
+	if failed {
+		return degradedVerdict{Rule: degradedRuleVerify}
 	}
+	verdict := judgeInjectedTurn(true, returned)
+	verdict.Rule = degradedRuleVerify
 	return verdict
 }

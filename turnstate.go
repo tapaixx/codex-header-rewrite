@@ -60,10 +60,10 @@ type turnStateInfo struct {
 	PlanType    string    `json:"plan_type,omitempty"`
 	MaxChars    int       `json:"max_chars,omitempty"`
 	NonDegraded *bool     `json:"non_degraded,omitempty"`
-	// Suspect is the probe rule's middle band: kept out of the pool without a
-	// verdict. Set instead of NonDegraded, never beside it.
-	Suspect bool `json:"suspect,omitempty"`
-	// LatencyMS is the round trip the judgement read, when it read one.
+	// Suspect and LatencyMS were written by the v0.25.3 latency rule, which is
+	// gone; they stay so rows it wrote still read and a manual pool still
+	// refuses a state it kept out.
+	Suspect   bool  `json:"suspect,omitempty"`
 	LatencyMS int64 `json:"latency_ms,omitempty"`
 	// ManualPool marks a live state no rule vouched for: not degraded, not
 	// vouched for either, so an operator decides. With Pooled it reads
@@ -162,8 +162,6 @@ func classifyTurnState(info turnStateInfo, blob, plan string) turnStateInfo {
 // probe's, on its whole response.
 func classifyTurnStateWith(info turnStateInfo, plan string, verdict degradedVerdict) turnStateInfo {
 	info.PlanType = normalizePlanType(plan)
-	info.Suspect = verdict.Suspect
-	info.LatencyMS = verdict.Elapsed.Milliseconds()
 	info.MaxChars = verdict.MaxChars
 	info.Judgement = verdict.Rule
 	if verdict.Judged {

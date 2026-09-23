@@ -18,7 +18,7 @@ const (
 	// body is kept up to this much and the rest is dropped with its original
 	// size recorded.
 	maxStoredBodyBytes = 256 << 10
-	pageSize        = 20
+	pageSize           = 20
 )
 
 type pluginConfig struct{ DataPath string }
@@ -93,6 +93,11 @@ type headerRule struct {
 	// RetryOnDegraded: both fetch states on the same credential, and running
 	// them together would have two schedules competing for the same pool.
 	ProbeEnabled bool `json:"probe_enabled,omitempty"`
+	// ProbeVerify is the probe's multi-check: after a probe obtains a state it
+	// sends one more minimal request carrying that state and no cookie, and
+	// pools the state only if the upstream writes none back. Off (the
+	// default), the probe pools what it gets without judging it.
+	ProbeVerify bool `json:"probe_verify,omitempty"`
 	// The window the probe may run in, as minutes into a UTC day. Equal values
 	// or both zero mean all day; start greater than end crosses midnight,
 	// which a local-time window routinely becomes once converted.
@@ -221,6 +226,12 @@ type historyRecord struct {
 	// ProbePrimed reports that this probe spent an extra request obtaining a
 	// cookie for its connection, which is the other half of its quota cost.
 	ProbePrimed bool `json:"probe_primed,omitempty"`
+	// ProbeVerified reports that the multi-check request was sent. Its status,
+	// and why it failed when it did, sit beside it; the verdict itself is on
+	// TurnStateMinted like any other.
+	ProbeVerified     bool   `json:"probe_verified,omitempty"`
+	ProbeVerifyStatus int    `json:"probe_verify_status,omitempty"`
+	ProbeVerifyError  string `json:"probe_verify_error,omitempty"`
 	// Bodies travel on the record only between the request path and the store,
 	// which splits them into their own bucket. They are absent from a record
 	// read back by History, because a page of fifty records would otherwise
@@ -269,7 +280,7 @@ type pendingAttempt struct {
 	models    modelObserver
 	// Which pooled state went out on this request, and whether it was already
 	// past the reuse window when it did. Read again when the response arrives.
-	injectedDigest  string
+	injectedDigest string
 	// rejecting is set when the response headers classified as degraded and
 	// the rule asks for such responses to be withheld; rejectedChunks counts
 	// stream chunks seen since, so the first carries the error and the rest

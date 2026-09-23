@@ -3,7 +3,6 @@ package main
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 // useLengthJudgement puts the former length rule in force for one test, for
@@ -85,28 +84,17 @@ func TestInjectedTurnRule(t *testing.T) {
 	}
 }
 
-// The probe rule reads its own round trip, in three bands.
-func TestProbeLatencyRule(t *testing.T) {
-	cases := []struct {
-		elapsed                    time.Duration
-		eligible, judged, degraded bool
-		suspect                    bool
-	}{
-		{time.Second, true, true, false, false},
-		{probeCleanLatency, true, true, false, false},
-		{probeCleanLatency + time.Millisecond, false, false, false, true},
-		{probeSuspectLatency, false, false, false, true},
-		{probeSuspectLatency + time.Millisecond, false, true, true, false},
-		{time.Minute, false, true, true, false},
+// The multi-check reads the probe's second request with the live rule; a
+// failed check says nothing.
+func TestProbeVerificationRule(t *testing.T) {
+	if v := judgeProbeVerification(false, false); !v.Judged || v.Degraded || !v.Eligible || v.Rule != degradedRuleVerify {
+		t.Fatalf("no state written back: %+v", v)
 	}
-	for _, tc := range cases {
-		v := judgeProbeLatency(tc.elapsed)
-		if v.Eligible != tc.eligible || v.Judged != tc.judged || v.Degraded != tc.degraded || v.Suspect != tc.suspect {
-			t.Fatalf("%s: %+v", tc.elapsed, v)
-		}
-		if v.Rule != degradedRuleLatency || v.Elapsed != tc.elapsed {
-			t.Fatalf("%s: rule=%q elapsed=%s", tc.elapsed, v.Rule, v.Elapsed)
-		}
+	if v := judgeProbeVerification(true, false); !v.Judged || !v.Degraded || v.Eligible {
+		t.Fatalf("a state written back: %+v", v)
+	}
+	if v := judgeProbeVerification(false, true); v.Judged || v.Eligible || v.Rule != degradedRuleVerify {
+		t.Fatalf("a failed check: %+v", v)
 	}
 }
 
