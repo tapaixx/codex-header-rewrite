@@ -22,6 +22,7 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - 保存 request / response body（v0.21.0），但**会话内容被遮蔽**：请求体的 `input` / `messages` / `system`、响应体的 `output` / `content` / `tools` / `usage` 一律替换为 `[MASKED N bytes]`，Codex Responses 与 Claude Messages 两种格式都覆盖；只留下模型、instructions、reasoning、turn metadata、错误结构这些解释请求本身的字段。单个 body 最多保留 256 KB，超出截断并记录原始大小。
 - 自定义测试请求：从凭证可用模型中选择模型、发送默认 `hi` 或自定义 JSON、预览改写结果，或向自定义端点发一次真实请求。
 - 模型一致性核对：记录上游实际声明的模型，与发出的模型比对，不一致时标红。
+- 降智判定暂停并独立成模块（v0.25.0）：长度规则已失效，`degraded.go` 里的 `degradedJudge` 现为 `judgePaused`，上游返回的每个 state 都入池，拦截 / 重试 / 剔除不触发；历史详情抽屉新增「分析」标签页并排第一，集中展示 X-Codex-Turn-State 与 Cookie 的结构解析。
 - State 池开关与面板整理（v0.24.0）：「State 池维护」（总开关，默认开，关掉即冻结池子并停下探针与重试）和「注入 State」（默认关）移到 State 池卡片标题栏，与「启用改写」解耦；重试 / 探针代理列表各带「走代理」开关（默认关）；导航栏常驻六盏开关状态灯；邮箱默认脱敏、可用眼睛按钮查看；统一设计 token、圆角与字号刻度，浅色主题全部文字对比度 ≥ 4.5:1。
 - 自动 State 探针（v0.23.0）：按凭证定时补池，与「拦截后重试」互斥；可配生效时段、模型、独立代理池、cookie 来源与间隔；探针历史单独保留 500 条。
 - 回合状态（X-Codex-Turn-State）溯源：state 按「凭证 + 模型」持久化入池（降智判定当前已暂停，判定逻辑独立在 `degraded.go`），发现跨账号回带并可按规则摘除；内置 Fernet 信封解码。
@@ -73,7 +74,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.24.3.so` | `codex-header-rewrite` | `0.24.3` |
+| `codex-header-rewrite-v0.25.0.so` | `codex-header-rewrite` | `0.25.0` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -86,7 +87,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.24.3.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.25.0.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
