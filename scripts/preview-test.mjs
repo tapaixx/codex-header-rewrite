@@ -58,7 +58,7 @@ try {
     // The fixtures reach every workspace, not just the first one.
     await page.evaluate(()=>setWorkspace('history',false));
     await page.waitForSelector('.history-summary');
-    assert.equal(await page.locator('.history-summary').count(), 5, label);
+    assert.equal(await page.locator('.history-summary').count(), 6, label);
     assert.equal(await page.locator('.pool-row').count(), 2, label);
 
     // And the detail opens with its bodies.

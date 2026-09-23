@@ -115,13 +115,19 @@ const record = (over) => ({
 
 const items = [
   record({ id: 'rec-1#1', request_id: 'rec-1', started_at: at(30), completed_at: at(26),
-    turn_state_injected: true, cookie_injected: true,
-    // A live state under the paused judgement: recorded, waiting for a manual pool.
-    turn_state_minted: { digest: 'a13f9c21b4e0', chars: 332, bytes: 249, version: 128, issued_at: at(28), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'paused', manual_pool: true } }),
+    cookie_injected: true,
+    // Nothing was injected, so the live rule judged nothing: the state is
+    // recorded and waits for a manual pool.
+    turn_state_minted: { digest: 'a13f9c21b4e0', chars: 332, bytes: 249, version: 128, issued_at: at(28), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'injected', manual_pool: true } }),
+  // The healthy live turn: a state went out and the upstream wrote none back.
+  record({ id: 'rec-1b#1', request_id: 'rec-1b', started_at: at(60), completed_at: at(55),
+    turn_state_injected: true, turn_state_held: true,
+    response_headers: { 'X-Request-Id': ['req_5c10'] } }),
   record({ id: 'rec-2#1', request_id: 'rec-2', started_at: at(180), completed_at: at(171),
     outcome: 'succeeded', turn_state_rejected: true, turn_state_injected: true,
     response_headers: { 'X-Codex-Turn-State': [degradedState], 'X-Request-Id': ['req_71bd'] },
-    turn_state_minted: { digest: '7c02dd48fa91', chars: 356, bytes: 265, version: 128, issued_at: at(179), fernet_like: true, decodable: true, plan_type: 'team', max_chars: 332, non_degraded: false, pooled: false },
+    turn_state_minted: { digest: '7c02dd48fa91', chars: 356, bytes: 265, version: 128, issued_at: at(179), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'injected', non_degraded: false, pooled: false },
+    turn_state_invalidated: true,
     turn_state_echo: { digest: 'a13f9c21b4e0', chars: 332, bytes: 249, version: 128, issued_at: at(400), fernet_like: true, decodable: true },
     turn_state_origin_index: 'acct-a', turn_state_origin_label: 'alex@example.com', turn_state_origin_model: 'gpt-6-astra',
     turn_state_cross_account: false, turn_state_cross_model: false, turn_state_age_seconds: 400, turn_state_expired: true }),
@@ -173,11 +179,15 @@ const probeRow = (over) => ({
 const probes = [
   probeRow({ id: 'probe-1#1', request_id: 'probe-1', started_at: at(12), completed_at: at(10),
     probe_egress: 'socks5://127.0.0.1:1080', probe_primed: true,
-    turn_state_minted: { digest: 'c91a0e77bb42', chars: 332, bytes: 249, version: 128, issued_at: at(11), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'response', non_degraded: true, pooled: true } }),
+    turn_state_minted: { digest: 'c91a0e77bb42', chars: 332, bytes: 249, version: 128, issued_at: at(11), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'latency', latency_ms: 3240, non_degraded: true, pooled: true } }),
+  // The middle band: quick enough to answer, slow enough to doubt.
+  probeRow({ id: 'probe-1b#1', request_id: 'probe-1b', started_at: at(48), completed_at: at(33),
+    probe_egress: 'socks5://127.0.0.1:1080', probe_primed: false,
+    turn_state_minted: { digest: '88be41d0c7a2', chars: 332, bytes: 249, version: 128, issued_at: at(34), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'latency', latency_ms: 14800, suspect: true, pooled: false } }),
   probeRow({ id: 'probe-2#1', request_id: 'probe-2', started_at: at(75), completed_at: at(73),
     model: 'gpt-5.6-luna', requested_model: 'gpt-5.6-luna', upstream_model: 'gpt-5.6-luna',
     probe_egress: '', probe_primed: false, probe_cookie_mode: 'credential', probe_exit_region: 'LHR',
-    turn_state_minted: { digest: '2f80ab19cc63', chars: 356, bytes: 265, version: 128, issued_at: at(74), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'response', non_degraded: false, pooled: false } }),
+    turn_state_minted: { digest: '2f80ab19cc63', chars: 356, bytes: 265, version: 128, issued_at: at(74), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'latency', latency_ms: 24600, non_degraded: false, pooled: false } }),
   probeRow({ id: 'probe-3#1', request_id: 'probe-3', started_at: at(140), completed_at: at(139),
     probe_egress: 'socks5://127.0.0.1:1080', probe_primed: true, outcome: 'failed', status_code: 429,
     upstream_model: '', model_mismatch: null, probe_exit_region: '',
@@ -235,7 +245,7 @@ const stub = `
       return json({ auth_index: authIndex, page: 1, page_size: 10, total: rows.length, total_pages: 1,
         // The schedule follows the rule the preview has saved, as the plugin's does.
         items: rows, limit: 500, enabled: !!F.rules[authIndex]?.probe_enabled, within_window: true,
-        pool_paused: F.rules[authIndex]?.maintain_state_pool === false, response_judgement: true,
+        pool_paused: F.rules[authIndex]?.maintain_state_pool === false, latency_clean_ms: 10000, latency_suspect_ms: 20000,
         last_live_at: new Date(Date.now() - 42000).toISOString(), live_age_seconds: 42,
         next_due_at: new Date(Date.now() + 18000).toISOString() });
     }

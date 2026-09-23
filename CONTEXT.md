@@ -9,20 +9,24 @@ An `X-Codex-Turn-State` blob received from an upstream response, before any qual
 _Avoid_: Minted state
 
 **Non-degraded state**:
-An observed state the judgement in force (`degraded.go`) did not mark as degraded. The judgement is currently paused, so every observed state counts as non-degraded; the former wire-length rule (team at most 332 characters, personal at most 292, no plan claim means unclassified) is kept as `judgeByLength`.
+An observed state the rule that applies (`degraded.go`) did not mark as degraded: for a live request the injection rule, for a probe the latency rule. The former wire-length rule (team at most 332 characters, personal at most 292) is kept as `judgeByLength` and no longer runs.
 _Avoid_: Good state, valid state
 
 **Minting**:
-Adding a non-degraded state to the state pool, replacing the previous entry for the same credential and model when it is newer. States from the plugin's own requests (probe, retry) are minted automatically. A live request's state is minted automatically only while a rule actually judges it (`autoPoolsLive`); while the judgement is paused it is recorded and waits for a manual pool.
+Adding a non-degraded state to the state pool, replacing the previous entry for the same credential and model when it is newer. States from the plugin's own requests (probe, retry) are minted automatically. A live request's state is never minted automatically: the injection rule either calls it degraded or judges nothing, so it is recorded and waits for a manual pool.
 _Avoid_: Observing, receiving
 
-**Response marker**:
-A string named in the server's plugin config (`probe_degraded_markers`). A probe response whose event names, event types or field names contain one is degraded. Markers are server configuration only and never appear in the repository, the binary, the panel or the management API.
-_Avoid_: Signature, fingerprint
+**Injection rule**:
+The live judgement (`judgeInjectedTurn`). A request that went out carrying an injected state and came back with no state in its response headers is non-degraded; one that came back with a state is degraded. Nothing injected means no verdict.
+_Avoid_: Echo rule
 
-**Cookie injection**:
-Merging the session pooled with a state into an outbound request's Cookie header, pooled values winning on a name clash. A switch of its own (`inject_cookie`), independent of state injection, off by default, and inert while the pool is frozen.
-_Avoid_: Session replay
+**Latency rule**:
+The probe judgement (`judgeProbeLatency`), read from the probe's own upstream round trip: at most 10 seconds is non-degraded and pools, up to 20 seconds is suspect, beyond that is degraded.
+_Avoid_: Timeout rule
+
+**Suspect state**:
+A probe state the latency rule placed in the middle band. Kept out of the pool without being called degraded; carried in history as `suspect`, never beside a non-degraded verdict.
+_Avoid_: Maybe degraded
 
 **Manual pool**:
 An operator minting a recorded live state from the history drawer. The plugin rebuilds the entry from the stored record (response state, request Cookie merged with Set-Cookie) without calling the upstream, and it takes the slot even from a newer state.

@@ -269,8 +269,6 @@ func TestNonStreamingResponseBodyIsReadForTheModelOnly(t *testing.T) {
 // A turn chain across a credential switch: the upstream mints the blob under
 // idx-a, then the next request goes out under idx-b still echoing it.
 func TestForeignTurnStateEchoIsFlaggedAndOptionallyStripped(t *testing.T) {
-	// These exercise the length rule; it is switched on for the test.
-	useLengthJudgement(t)
 	stubCredentialPlan(t, "team")
 	for _, strip := range []bool{false, true} {
 		p := resetState(t)
@@ -323,8 +321,10 @@ func TestForeignTurnStateEchoIsFlaggedAndOptionallyStripped(t *testing.T) {
 			t.Fatalf("minted envelope not decoded: %#v", minted.Items[0].TurnStateMinted)
 		}
 		quality := minted.Items[0].TurnStateMinted
-		if !quality.Pooled || quality.NonDegraded == nil || !*quality.NonDegraded || quality.PlanType != "team" || quality.MaxChars != teamStateMaxChars {
-			t.Fatalf("non-degraded state was not minted into the pool: %#v", quality)
+		// Nothing was injected on that request, so the live rule has nothing to
+		// read: the state is recorded and waits for a manual pool.
+		if quality.Pooled || !quality.ManualPool || quality.NonDegraded != nil || quality.PlanType != "team" {
+			t.Fatalf("an unjudged live state should wait for a hand: %#v", quality)
 		}
 
 		echoed, _ := p.History("idx-b", 1, pageSize)
@@ -540,8 +540,6 @@ func TestDisabledRulePinsNothing(t *testing.T) {
 // neither hands anything out nor takes anything in, though history still
 // records what the upstream sent.
 func TestFrozenPoolNeitherInjectsNorMints(t *testing.T) {
-	// These exercise the length rule; it is switched on for the test.
-	useLengthJudgement(t)
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -556,7 +554,7 @@ func TestFrozenPoolNeitherInjectsNorMints(t *testing.T) {
 	attempt := state.pending["frozen"].current
 	_, pooled := lookupTurnStateOriginLocked(fresh)
 	state.mu.Unlock()
-	if attempt.TurnStateMinted == nil || attempt.TurnStateMinted.NonDegraded == nil || !*attempt.TurnStateMinted.NonDegraded {
+	if attempt.TurnStateMinted == nil || !attempt.TurnStateMinted.FernetLike || attempt.TurnStateMinted.PlanType != "team" {
 		t.Fatalf("the response state must still be classified for history: %+v", attempt.TurnStateMinted)
 	}
 	if attempt.TurnStateMinted.Pooled || pooled {
@@ -691,8 +689,6 @@ func lastAttempt(t *testing.T) historyRecord {
 // carrying the chain. It leaves the pool -- memory and store -- and the
 // attempt says so, so the next request is not handed the same dead state.
 func TestExpiredInjectedStateIsInvalidatedWhenTheResponseIsDegraded(t *testing.T) {
-	// These exercise the length rule; it is switched on for the test.
-	useLengthJudgement(t)
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -723,8 +719,6 @@ func TestExpiredInjectedStateIsInvalidatedWhenTheResponseIsDegraded(t *testing.T
 // Age is not part of it: a state inside the window that went out and came
 // back degraded is just as dead as an expired one, and leaves the pool.
 func TestFreshInjectedStateIsEvictedByADegradedResponse(t *testing.T) {
-	// These exercise the length rule; it is switched on for the test.
-	useLengthJudgement(t)
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -740,24 +734,49 @@ func TestFreshInjectedStateIsEvictedByADegradedResponse(t *testing.T) {
 	}
 }
 
-// An expired state that came back non-degraded is simply superseded by the new
-// mint, which is the ordinary path; nothing is invalidated.
-func TestExpiredInjectedStateIsSupersededByAGoodResponse(t *testing.T) {
-	// Live states pool themselves only under a rule that judges them.
-	useLengthJudgement(t)
+// The live rule reads the exchange, not the state: a turn that went out with
+// an injected state and came back with one of its own is degraded however
+// ordinary that state looks, and the injected one leaves the pool.
+func TestInjectedTurnThatComesBackWithAStateIsDegraded(t *testing.T) {
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
-	pooledAt(t, time.Now().Add(-2*time.Hour))
-	injectTestRequest(t, "renew", nil)
-	good := fernetToken(0x80, time.Now(), 1)
-	observeResponse(responseInterceptRequest{RequestID: "renew", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {good}}})
-	completeRequest(requestCompletion{RequestID: "renew", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
-	if origin, ok := pooledFor(t); !ok || origin.blob != good {
-		t.Fatal("the fresh mint should have replaced the expired state")
+	injected := poolFixture(t, headerRule{AuthIndex: "idx-a", InjectTurnState: true})
+	if got := injectTestRequest(t, "renew", nil).Headers.Get(turnStateHeader); got != injected {
+		t.Fatalf("the pooled state should have gone out, got %q", got)
 	}
-	if got := lastAttempt(t); got.TurnStateInvalidated {
-		t.Fatalf("attempt wrongly flagged: %#v", got)
+	fresh := fernetToken(0x80, time.Now(), 1)
+	observeResponse(responseInterceptRequest{RequestID: "renew", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {fresh}}})
+	completeRequest(requestCompletion{RequestID: "renew", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+	if _, pooled := pooledFor(t); pooled {
+		t.Fatal("the injected state is evicted and the returned one is not pooled")
+	}
+	got := lastAttempt(t)
+	info := got.TurnStateMinted
+	if info == nil || info.Judgement != degradedRuleInjected || info.NonDegraded == nil || *info.NonDegraded || info.Pooled || info.ManualPool {
+		t.Fatalf("the returned state should read as degraded: %+v", info)
+	}
+	if !got.TurnStateInvalidated || got.TurnStateHeld {
+		t.Fatalf("the injected state should be recorded as invalidated: %#v", got)
+	}
+}
+
+// The healthy live turn: a state went out, the upstream wrote none back. There
+// is nothing to pool and nothing to evict, and the row says the turn held.
+func TestInjectedTurnThatComesBackSilentIsHealthy(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	injected := poolFixture(t, headerRule{AuthIndex: "idx-a", InjectTurnState: true})
+	injectTestRequest(t, "quiet", nil)
+	observeResponse(responseInterceptRequest{RequestID: "quiet", StatusCode: 200, ResponseHeaders: http.Header{"X-Request-Id": {"req_1"}}})
+	completeRequest(requestCompletion{RequestID: "quiet", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
+	if origin, pooled := pooledFor(t); !pooled || origin.blob != injected {
+		t.Fatal("the injected state stays in the pool")
+	}
+	got := lastAttempt(t)
+	if !got.TurnStateHeld || got.TurnStateMinted != nil || got.TurnStateInvalidated || got.TurnStateRejected {
+		t.Fatalf("a silent response is the healthy case: %#v", got)
 	}
 }
 
@@ -768,7 +787,10 @@ func rejectFixture(t *testing.T, reject bool) {
 	resetTurnStates(t)
 	state.mu.Lock()
 	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
-	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, RejectDegradedResponse: reject}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true, RejectDegradedResponse: reject}
+	// Under the live rule a response is degraded when it writes a state back
+	// over one the plugin injected, so the request goes out carrying one.
+	noteTurnStateMintLocked(fernetToken(0x80, time.Now(), 1), "idx-a", "A", "gpt-5.6-luna", "team", "")
 	state.mu.Unlock()
 	if _, err := interceptAfter(requestInterceptRequest{RequestID: "r", Model: "gpt-5.6-luna", Metadata: map[string]any{"selected_auth_index": "idx-a", "selected_auth_id": "auth-a"}}); err != nil {
 		t.Fatal(err)
@@ -778,8 +800,6 @@ func rejectFixture(t *testing.T, reject bool) {
 // With the flag on, a non-stream response whose minted state is degraded is
 // replaced by an error object and marked, and the attempt records it.
 func TestDegradedNonStreamResponseIsWithheldWhenTheRuleAsks(t *testing.T) {
-	// These exercise the length rule; it is switched on for the test.
-	useLengthJudgement(t)
 	rejectFixture(t, true)
 	degraded := fernetToken(0x80, time.Now(), 40)
 	out := observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {degraded}}, Body: []byte(`{"id":"resp"}`)})
@@ -795,8 +815,6 @@ func TestDegradedNonStreamResponseIsWithheldWhenTheRuleAsks(t *testing.T) {
 // On a stream the decision is taken on the header chunk: the first payload
 // chunk becomes a terminal error event and every later chunk is dropped.
 func TestDegradedStreamIsCutAtTheFirstChunk(t *testing.T) {
-	// These exercise the length rule; it is switched on for the test.
-	useLengthJudgement(t)
 	rejectFixture(t, true)
 	degraded := fernetToken(0x80, time.Now(), 40)
 	head := observeStreamHeaders(streamChunkInterceptRequest{RequestID: "r", ChunkIndex: streamChunkHeaderInitIndex, ResponseHeaders: http.Header{turnStateHeader: {degraded}}})
@@ -814,8 +832,6 @@ func TestDegradedStreamIsCutAtTheFirstChunk(t *testing.T) {
 }
 
 func TestDegradedModelScopeForBothResponsePaths(t *testing.T) {
-	// These exercise the length rule; it is switched on for the test.
-	useLengthJudgement(t)
 	for _, stream := range []bool{false, true} {
 		for _, tc := range []struct {
 			name   string
@@ -876,17 +892,19 @@ func TestModelScopePersistsAndEmptyMeansAll(t *testing.T) {
 	}
 }
 
-// The flag off, or a state that is not degraded, leaves the response alone.
+// The flag off, or a turn the rule does not call degraded, leaves the
+// response alone.
 func TestResponsesPassThroughWithoutTheFlagOrWithoutDegradation(t *testing.T) {
 	rejectFixture(t, false)
-	degraded := fernetToken(0x80, time.Now(), 40)
-	if out := observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {degraded}}}); len(out.Body) != 0 || len(out.Headers) != 0 {
+	returned := fernetToken(0x80, time.Now(), 40)
+	if out := observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {returned}}}); len(out.Body) != 0 || len(out.Headers) != 0 {
 		t.Fatalf("flag off must pass through: %#v", out)
 	}
+	// Flag on, but the upstream wrote no state back over the injected one,
+	// which is the healthy turn.
 	rejectFixture(t, true)
-	good := fernetToken(0x80, time.Now(), 1)
-	if out := observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {good}}}); len(out.Body) != 0 || len(out.Headers) != 0 {
-		t.Fatalf("a non-degraded state must pass through: %#v", out)
+	if out := observeResponse(responseInterceptRequest{RequestID: "r", StatusCode: 200, ResponseHeaders: http.Header{"X-Request-Id": {"req_1"}}}); len(out.Body) != 0 || len(out.Headers) != 0 {
+		t.Fatalf("a healthy turn must pass through: %#v", out)
 	}
 	if chunk := observeStreamHeaders(streamChunkInterceptRequest{RequestID: "r", ChunkIndex: 0, Body: []byte("data: x\n\n")}); chunk.DropChunk || len(chunk.Body) != 0 {
 		t.Fatalf("chunks of an accepted stream must pass through: %#v", chunk)
@@ -957,8 +975,6 @@ func TestLegacyGuardKeyBecomesTheInjectionSwitch(t *testing.T) {
 // by the minting response's Set-Cookie, so a response that rotates the session
 // pools the state under the new one.
 func TestPooledSessionFollowsTheRotatingResponse(t *testing.T) {
-	// Live states pool themselves only under a rule that judges them.
-	useLengthJudgement(t)
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -974,13 +990,17 @@ func TestPooledSessionFollowsTheRotatingResponse(t *testing.T) {
 	}})
 	completeRequest(requestCompletion{RequestID: "r", Outcome: "succeeded", StatusCode: 200, CompletedAt: time.Now()})
 
-	origin, ok := pooledFor(t)
+	// Nothing was injected, so the state waits for a manual pool; the session
+	// is recorded with it either way and is what a manual pool would take.
+	state.mu.Lock()
+	origin, ok := lookupTurnStateOriginLocked(blob)
+	state.mu.Unlock()
 	if !ok {
-		t.Fatal("the state should have been pooled")
+		t.Fatal("the state should have been recorded")
 	}
 	const want = "session=rotated; oai-did=device; issued=fresh"
 	if origin.cookie != want {
-		t.Fatalf("pooled session=%q want %q", origin.cookie, want)
+		t.Fatalf("recorded session=%q want %q", origin.cookie, want)
 	}
 }
 
@@ -988,7 +1008,7 @@ func TestPooledSessionFollowsTheRotatingResponse(t *testing.T) {
 // state is recorded -- its provenance still feeds cross-account detection --
 // but it does not pool itself, and the history row says it waits for a hand.
 // Nothing is intercepted or evicted either, since there is no verdict.
-func TestPausedJudgementHoldsLiveStatesForAManualPool(t *testing.T) {
+func TestLiveStateWithoutInjectionWaitsForAManualPool(t *testing.T) {
 	stubCredentialPlan(t, "team")
 	resetState(t)
 	resetTurnStates(t)
@@ -1013,7 +1033,7 @@ func TestPausedJudgementHoldsLiveStatesForAManualPool(t *testing.T) {
 	if attempt.TurnStateRejected || attempt.TurnStateInvalidated {
 		t.Fatalf("nothing is withheld or evicted without a verdict: %+v", attempt.historyRecord)
 	}
-	if info := attempt.TurnStateMinted; info == nil || info.Pooled || !info.ManualPool || info.NonDegraded != nil || info.Judgement != degradedRulePaused {
+	if info := attempt.TurnStateMinted; info == nil || info.Pooled || !info.ManualPool || info.NonDegraded != nil || info.Judgement != degradedRuleInjected {
 		t.Fatalf("history should say the state waits for a manual pool, with no verdict: %+v", info)
 	}
 	state.mu.Lock()

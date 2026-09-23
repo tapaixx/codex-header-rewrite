@@ -383,8 +383,10 @@ type probeAttempt struct {
 	// probe's response -- the priming response is only read for Set-Cookie.
 	upstreamModel  string
 	upstreamEffort string
-	modelConflict  bool
-	requestEffort  string
+	// elapsed is the model request's round trip, which is what judges it.
+	elapsed       time.Duration
+	modelConflict bool
+	requestEffort string
 }
 
 // probeModel runs one model's probe: at most two requests over one transport,
@@ -438,9 +440,13 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 		return
 	}
 	headers := retryHeaders(material, cookie)
+	// Timed around this call alone: the priming request and reading the
+	// credential are the plugin's own work, and the rule judges the upstream.
+	sentAt := probeNowFunc()
 	response, callErr := probeHTTPDoFunc(ctx, transport, hostHTTPRequest{
 		Method: http.MethodPost, URL: defaultTestURL, Headers: headers, Body: body,
 	}, attempt.egress != "")
+	attempt.elapsed = probeNowFunc().Sub(sentAt)
 
 	attempt.sent = redactHeaders(headers)
 	attempt.received = redactHeaders(response.Headers)
@@ -477,7 +483,7 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 		return
 	}
 	state.mu.Lock()
-	verdict := judgeProbeResponse(attempt.blob, plan, response.Body, state.probeMarkers)
+	verdict := judgeProbeLatency(attempt.elapsed)
 	info := classifyTurnStateWith(decodeTurnState(attempt.blob), plan, verdict)
 	if verdict.Eligible {
 		// The state and the session that produced it enter the pool together.
@@ -581,6 +587,9 @@ func credentialLabelLocked(authIndex string) string {
 	return cred.Name
 }
 
+// probeNowFunc is the clock the latency rule reads; tests replace it.
+var probeNowFunc = func() time.Time { return time.Now() }
+
 // probeWarmupModel is what the priming request asks for. It only exists to
 // collect a Set-Cookie, so it asks for the cheapest thing it can.
 const probeWarmupModel = "gpt-5.6-luna"
@@ -633,7 +642,7 @@ func recordProbe(authIndex string, rule headerRule, attempt probeAttempt) {
 		ProbeEgress: attempt.egress, ProbePrimed: attempt.primed,
 		ProbeCookieMode: probeCookieModeFor(rule),
 		ProbeExitRegion: cloudflareRegion(attempt.received),
-		UpstreamModel: attempt.upstreamModel, UpstreamEffort: attempt.upstreamEffort,
+		UpstreamModel:   attempt.upstreamModel, UpstreamEffort: attempt.upstreamEffort,
 		ModelConflict: attempt.modelConflict, RequestEffort: attempt.requestEffort,
 	}
 	record.ModelMismatch = modelMismatch(attempt.model, attempt.upstreamModel)
@@ -680,11 +689,4 @@ func rememberLiveSessionLocked(attempt *pendingAttempt, session string) {
 		record.Cookie, record.RefreshAt = session, time.Now().UTC()
 	}
 	_ = state.store.SaveSession(record)
-}
-
-// probeJudgesResponses says whether the server config names any markers.
-func probeJudgesResponses() bool {
-	state.mu.Lock()
-	defer state.mu.Unlock()
-	return len(state.probeMarkers) > 0
 }

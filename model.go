@@ -21,11 +21,7 @@ const (
 	pageSize        = 20
 )
 
-type pluginConfig struct {
-	DataPath string
-	// ProbeMarkers is probe_degraded_markers: see judgeProbeResponse.
-	ProbeMarkers []string
-}
+type pluginConfig struct{ DataPath string }
 
 // poolMaintained reports whether this credential's state pool is live. The
 // field is unset on every rule saved before it existed, and unset means on.
@@ -196,6 +192,10 @@ type historyRecord struct {
 	// TurnStateInjected reports that the plugin supplied the header from the
 	// pool rather than passing through whatever the client sent.
 	TurnStateInjected bool `json:"turn_state_injected,omitempty"`
+	// TurnStateHeld is the healthy live verdict under the injection rule: a
+	// state went out and the upstream returned none, so the turn is still
+	// carrying the one it was given. There is no minted state to hang it on.
+	TurnStateHeld bool `json:"turn_state_held,omitempty"`
 	// CookieInjected reports that the pooled session was merged into the
 	// request's Cookie header.
 	CookieInjected bool `json:"cookie_injected,omitempty"`

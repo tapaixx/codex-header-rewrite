@@ -474,50 +474,60 @@ func TestPoolChangesReplanTheProbe(t *testing.T) {
 	}
 }
 
-// With markers in the server config, the probe judges its own response: a
-// marker in an event name, event type or field name makes it degraded and
-// keeps its state out of the pool; a clean response pools as non-degraded.
-// The marker here is a stand-in -- the real ones live only in server config.
-func TestProbeJudgesItsResponseByTheConfiguredMarkers(t *testing.T) {
+// The probe is judged on its own round trip: quick enough and the state is
+// pooled, the middle band is suspect, slower still is degraded. Neither of the
+// last two enters the pool, and the row says which it was.
+func TestProbeJudgesItsOwnLatency(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		body     string
-		degraded bool
+		name    string
+		elapsed time.Duration
+		pooled  bool
+		suspect bool
+		bad     bool
 	}{
-		{"marker in the event", "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"model\":\"gpt-6-astra\"}}\n\n" +
-			"event: response.fixture_marker_text.delta\ndata: {\"type\":\"response.fixture_marker_text.delta\",\"delta\":\"x\"}\n\n", true},
-		{"clean stream", "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"model\":\"gpt-6-astra\"}}\n\n", false},
+		{"quick", 3 * time.Second, true, false, false},
+		{"suspect", 15 * time.Second, false, true, false},
+		{"slow", 25 * time.Second, false, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			resetState(t)
 			resetTurnStates(t)
 			blob := fernetToken(0x80, time.Now(), 1)
 			probeStub(t, blob, nil)
-			inner := probeHTTPDoFunc
-			probeHTTPDoFunc = func(ctx context.Context, transport *http.Transport, req hostHTTPRequest, proxied bool) (hostHTTPResponse, error) {
-				response, err := inner(ctx, transport, req, proxied)
-				response.Body = []byte(tc.body)
-				return response, err
+			// The clock moves only around the upstream call, by this much.
+			base := time.Now()
+			calls := 0
+			oldNow := probeNowFunc
+			probeNowFunc = func() time.Time {
+				calls++
+				if calls%2 == 0 {
+					return base.Add(tc.elapsed)
+				}
+				return base
 			}
+			t.Cleanup(func() { probeNowFunc = oldNow })
 			state.mu.Lock()
 			state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
-			previous := state.probeMarkers
-			state.probeMarkers = []string{"fixture_marker"}
 			state.mu.Unlock()
-			t.Cleanup(func() { state.mu.Lock(); state.probeMarkers = previous; state.mu.Unlock() })
 
 			probeModel(context.Background(), "idx-a", "gpt-6-astra", probeRuleFixture(), credentialSession{})
 
 			state.mu.Lock()
 			_, pooled := state.turnStateLatest[turnStateLatestKey("idx-a", "gpt-6-astra")]
 			state.mu.Unlock()
-			if pooled == tc.degraded {
-				t.Fatalf("pooled=%v for a degraded=%v response", pooled, tc.degraded)
+			if pooled != tc.pooled {
+				t.Fatalf("pooled=%v, want %v", pooled, tc.pooled)
 			}
-			rows := probeRows(t)
-			info := rows[0].TurnStateMinted
-			if info == nil || info.Judgement != degradedRuleResponse || info.NonDegraded == nil || *info.NonDegraded == tc.degraded || info.Pooled == tc.degraded {
-				t.Fatalf("the row should carry the response verdict: %+v", info)
+			info := probeRows(t)[0].TurnStateMinted
+			if info == nil || info.Judgement != degradedRuleLatency || info.LatencyMS != tc.elapsed.Milliseconds() {
+				t.Fatalf("the row should carry the latency verdict: %+v", info)
+			}
+			if info.Pooled != tc.pooled || info.Suspect != tc.suspect {
+				t.Fatalf("pooled=%v suspect=%v: %+v", info.Pooled, info.Suspect, info)
+			}
+			degraded := info.NonDegraded != nil && !*info.NonDegraded
+			if degraded != tc.bad {
+				t.Fatalf("degraded=%v, want %v: %+v", degraded, tc.bad, info)
 			}
 		})
 	}

@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// A live response's state is pooled by hand while the judgement is paused
-// (see autoPoolsLive). The operator picks the row in the history drawer; the
+// A live response's state never pools itself: the live rule either judges it
+// degraded or judges nothing. The operator picks the row in the drawer; the
 // plugin rebuilds what the live path would have pooled from the stored record
 // alone: the blob from the recorded response headers, the session from the
 // recorded Cookie updated by the recorded Set-Cookie -- the same merge the
@@ -76,8 +76,10 @@ func poolFromHistory(authIndex, id string) (manualPoolResult, error) {
 	if record.TurnStateMinted != nil && record.TurnStateMinted.PlanType != "" {
 		plan = record.TurnStateMinted.PlanType
 	}
-	verdict := judgeDegraded(blob, plan)
-	if !verdict.Eligible {
+	if minted := record.TurnStateMinted; minted != nil && ((minted.NonDegraded != nil && !*minted.NonDegraded) || minted.Suspect) {
+		return manualPoolResult{}, manualPoolFailure(http.StatusUnprocessableEntity, "this state was judged degraded when it arrived")
+	}
+	if verdict := judgeDegraded(blob, plan); !verdict.Eligible {
 		return manualPoolResult{}, manualPoolFailure(http.StatusUnprocessableEntity, "the judgement in force keeps this state out of the pool")
 	}
 	label := record.CredentialLabel

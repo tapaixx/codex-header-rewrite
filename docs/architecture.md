@@ -78,7 +78,13 @@ request.intercept_after
 
 复用判定按三条规则：同凭证、同模型、在复用窗口内。窗口是 `headerRule.state_ttl_seconds`，按凭证维护，单位秒，默认 200；读取时走 `turnStateReuseWindowLocked(authIndex)`，字段为 0 的旧规则读成默认值。跨号与跨模型是确定不可复用，注入开关打开时会摘除；过期只标记不摘除，因为窗口未经上游确认。
 
-降智判定集中在 `degraded.go`（`degradedJudge`），目前是 `judgePaused`：不判定；拦截 / 重试 / 剔除因为没有判定结果而不触发。探针另有 `judgeProbeResponse`：服务器插件配置里有 `probe_degraded_markers` 时，按整段响应的事件名、事件 `type` 与字段名匹配标记，命中即降智；标记只存在于服务器配置，仓库与二进制里都没有。入池分两路：插件自己的请求（探针、重试）拿到的 state 自动入池；正常请求的 state 只有在规则真正判过时才自动入池（`autoPoolsLive`），判定暂停期间只记来源（跨号检测照常），历史行标「需手动入池」，由 `POST /turn-state/pool` 手动入池。原来的长度规则（Team `≤ 332`、个人 `≤ 292`，未声明套餐不入池）保留为 `judgeByLength`，换回去只改这一处。不降智值铸造进「凭证 + 模型 → 最新原始 blob」持久池，写入配置的 bbolt `data_path`，启动时恢复，乱序返回不回退。内存摘要索引仍有 2 小时 TTL 与 512 条上限；它只负责短期来源关联，不决定持久池是否保留。
+降智判定集中在 `degraded.go`，三条规则各看各的证据，都不读响应体：
+
+- `judgeInjectedTurn`（正常请求）：注入了 state 且响应头**没有**回写 state → 不降智；**回写了** → 降智，回写的那条不入池、注入的那条剔除；没注入 → 不判定。
+- `judgeProbeLatency`（自动探针）：这次上游调用 `≤ probeCleanLatency`（10 秒）→ 不降智并入池；`≤ probeSuspectLatency`（20 秒）→ 可疑，不入池且不算降智；更慢 → 降智。
+- `degradedJudge`（blob 本身）：拦截后重试与手动入池的兜底闸门，目前是 `judgePaused`（一律放行）；长度规则保留为 `judgeByLength`。
+
+入池分两路：探针与重试拿到的 state 自动入池；正常请求的 state 一律只记来源（跨号检测照常），历史行标「需手动入池」，由 `POST /turn-state/pool` 手动入池。原来的长度规则（Team `≤ 332`、个人 `≤ 292`，未声明套餐不入池）保留为 `judgeByLength`，换回去只改这一处。不降智值铸造进「凭证 + 模型 → 最新原始 blob」持久池，写入配置的 bbolt `data_path`，启动时恢复，乱序返回不回退。内存摘要索引仍有 2 小时 TTL 与 512 条上限；它只负责短期来源关联，不决定持久池是否保留。
 
 blob 本身是 Fernet token：`1 字节版本 + 8 字节大端时间戳 + 16 字节 IV + 16n 字节密文 + 32 字节 HMAC`。插件只读前 9 字节与总长度，不持有密钥、不解密密文。
 

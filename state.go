@@ -27,9 +27,6 @@ type pluginState struct {
 	// the one a client could still legitimately be echoing.
 	turnStateLatest map[string]turnStateOrigin
 	turnStateWrites uint64
-	// probeMarkers come from the server's plugin config, never from the
-	// repository; see judgeProbeResponse.
-	probeMarkers []string
 }
 
 var state = &pluginState{rules: map[string]headerRule{}, pending: map[string]*pendingRequest{}, credentials: map[string]credentialSnapshot{}, turnStates: map[string]turnStateOrigin{}, turnStateLatest: map[string]turnStateOrigin{}}
@@ -58,9 +55,6 @@ func configurePlugin(raw []byte) error {
 	}
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	// Taken on every (re)configure, including one that keeps the store open,
-	// so editing the server config takes effect without a reload.
-	state.probeMarkers = cfg.ProbeMarkers
 	if state.store != nil && state.dataPath == cfg.DataPath {
 		return nil
 	}
@@ -112,47 +106,18 @@ func configurePlugin(raw []byte) error {
 
 func parsePluginConfig(raw []byte) pluginConfig {
 	cfg := pluginConfig{DataPath: defaultDataPath}
-	// The host re-encodes the block with a YAML library, so a list written in
-	// its management form arrives as a block sequence under the key; a single
-	// comma-separated string arrives as a scalar. Both read the same.
-	inMarkerList := false
 	for _, line := range strings.Split(string(raw), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		if item, isItem := strings.CutPrefix(line, "- "); isItem || line == "-" {
-			if inMarkerList {
-				if marker := strings.Trim(strings.TrimSpace(item), "\"'"); marker != "" {
-					cfg.ProbeMarkers = append(cfg.ProbeMarkers, marker)
-				}
-			}
-			continue
-		}
-		inMarkerList = false
 		key, value, ok := strings.Cut(line, ":")
-		if !ok {
+		if !ok || strings.TrimSpace(key) != "data_path" {
 			continue
 		}
-		switch strings.TrimSpace(key) {
-		case "data_path":
-			value = strings.Trim(strings.TrimSpace(value), "\"'")
-			if value != "" {
-				cfg.DataPath = value
-			}
-		case "probe_degraded_markers":
-			// One line, comma separated; YAML list brackets and quotes are
-			// tolerated so either spelling of a short list reads the same.
-			if strings.TrimSpace(value) == "" {
-				inMarkerList = true
-				continue
-			}
-			value = strings.Trim(strings.Trim(strings.TrimSpace(value), "\"'"), "[]")
-			for _, part := range strings.Split(value, ",") {
-				if marker := strings.Trim(strings.TrimSpace(part), "\"'"); marker != "" {
-					cfg.ProbeMarkers = append(cfg.ProbeMarkers, marker)
-				}
-			}
+		value = strings.Trim(strings.TrimSpace(value), "\"'")
+		if value != "" {
+			cfg.DataPath = value
 		}
 	}
 	return cfg
@@ -442,7 +407,7 @@ func rejectionMessage(info *turnStateInfo) string {
 	if info != nil && info.MaxChars > 0 {
 		return fmt.Sprintf("codex-header-rewrite withheld this response: the upstream X-Codex-Turn-State classifies as degraded (%d characters, limit %d for this plan). Retry the request.", info.Chars, info.MaxChars)
 	}
-	return "codex-header-rewrite withheld this response: the upstream X-Codex-Turn-State classifies as degraded. Retry the request."
+	return "codex-header-rewrite withheld this response: the upstream returned a new X-Codex-Turn-State over the one this request carried, which means the turn was degraded. Retry the request."
 }
 
 // rejectionBody is the non-stream replacement: an error object in the shape
@@ -467,37 +432,40 @@ func rejectionEvent(info *turnStateInfo) []byte {
 // the pool only when qualified, and attaches the result to history.
 func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Header) {
 	blob := headerTurnState(responseHeaders)
+	// The session this state belongs to: what the request presented, updated by
+	// what this very response set. A response that rotates the session mints a
+	// state under the new one, not the old one. Both this and the allowance are
+	// read from every response -- under the injection rule a healthy turn
+	// returns no state at all, and those responses still carry both.
+	session := applySetCookies(attempt.clientCookie, responseHeaders)
+	rememberLiveSessionLocked(attempt, session)
+	noteQuotaLocked(attempt.AuthIndex, responseHeaders)
+	verdict := judgeInjectedTurn(attempt.TurnStateInjected, blob != "")
 	if blob == "" {
+		// Nothing was minted, and under the injection rule that silence is the
+		// verdict: the turn kept the state it went out with.
+		attempt.TurnStateHeld = verdict.Judged && !verdict.Degraded
 		return
 	}
-	info := classifyTurnState(decodeTurnState(blob), blob, attempt.CredentialPlan)
+	info := classifyTurnStateWith(decodeTurnState(blob), attempt.CredentialPlan, verdict)
 	label := attempt.CredentialLabel
 	if label == "" {
 		label = attempt.CredentialName
 	}
-	// The session this state belongs to: what the request presented, updated by
-	// what this very response set. A response that rotates the session mints a
-	// state under the new one, not the old one.
-	session := applySetCookies(attempt.clientCookie, responseHeaders)
-	rememberLiveSessionLocked(attempt, session)
-	noteQuotaLocked(attempt.AuthIndex, responseHeaders)
 	// A frozen pool takes nothing in. The state is still classified so the
 	// history row says what the upstream sent; it just does not enter the pool.
 	if rule, ok := state.rules[attempt.AuthIndex]; !ok || rule.poolMaintained() {
-		// A live state pools on its own only under a rule that judged it; while
-		// the judgement is paused it is recorded and left for a manual pool.
-		verdict := judgeDegraded(blob, attempt.CredentialPlan)
-		mode := mintAuto
-		if verdict.Eligible && !autoPoolsLive(verdict) {
-			mode, info.ManualPool = mintRecordOnly, true
-		}
-		info.Pooled = mintTurnStateLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel), attempt.CredentialPlan, session, mode)
+		// A live state never pools itself. Either the rule judged it degraded,
+		// or it judged nothing at all and an operator decides. Where it came
+		// from is recorded either way, so a later echo can still be traced.
+		info.ManualPool = !verdict.Degraded
+		info.Pooled = mintTurnStateLocked(blob, attempt.AuthIndex, label, sentModel(attempt.Model, attempt.RequestedModel), attempt.CredentialPlan, session, mintRecordOnly)
 	}
 	attempt.TurnStateMinted = &info
-	// The pooled state went out on this request and the upstream still minted
-	// a degraded one: that state has stopped carrying the chain, and left in
-	// the pool it would go out again on the next request. Age does not enter
-	// into it -- the reuse window only says when a state is due for renewal.
+	// The pooled state went out on this request and the upstream minted one
+	// anyway: that state has stopped carrying the chain, and left in the pool
+	// it would go out again on the next request. Age does not enter into it --
+	// the reuse window only says when a state is due for renewal.
 	if attempt.injectedDigest != "" && info.NonDegraded != nil && !*info.NonDegraded {
 		attempt.TurnStateInvalidated = invalidateTurnStateLocked(attempt.AuthIndex, sentModel(attempt.Model, attempt.RequestedModel), attempt.injectedDigest)
 	}

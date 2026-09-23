@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // useLengthJudgement puts the former length rule in force for one test, for
@@ -15,7 +16,8 @@ func useLengthJudgement(t *testing.T) {
 	t.Cleanup(func() { degradedJudge = previous })
 }
 
-// Paused, the judgement pools everything and judges nothing.
+// The blob-level rule is paused: it pools everything and judges nothing. It
+// is what the retry and a manual pool fall back on.
 func TestPausedJudgementPoolsEverythingAndJudgesNothing(t *testing.T) {
 	for _, blob := range []string{"short", strings.Repeat("x", 400)} {
 		for _, plan := range []string{"team", "pro", ""} {
@@ -48,19 +50,6 @@ func TestLengthJudgementStillWorksWhenSwitchedOn(t *testing.T) {
 	}
 }
 
-// Live states pool themselves only under a rule that judged them.
-func TestLivePoolingFollowsTheJudgement(t *testing.T) {
-	if autoPoolsLive(judgePaused("x", "team")) {
-		t.Fatal("paused, a live state waits for a manual pool")
-	}
-	if !autoPoolsLive(judgeByLength(strings.Repeat("x", 300), "team")) {
-		t.Fatal("under a working rule an eligible live state pools itself")
-	}
-	if autoPoolsLive(judgeByLength(strings.Repeat("x", 400), "team")) {
-		t.Fatal("a degraded state never pools")
-	}
-}
-
 // The probe and the retry ask for low effort; without the field the upstream
 // runs its default, which is medium.
 func TestBackgroundRequestsAskForLowEffort(t *testing.T) {
@@ -73,74 +62,64 @@ func TestBackgroundRequestsAskForLowEffort(t *testing.T) {
 	}
 }
 
-// The response rule reads names, not prose. The marker is a stand-in.
-func TestResponseMarkersMatchNamesNotText(t *testing.T) {
-	markers := []string{"fixture_marker"}
+// The live rule reads the exchange, not the blob: a turn that went out
+// carrying an injected state and came back without one is the healthy one.
+func TestInjectedTurnRule(t *testing.T) {
 	cases := []struct {
-		name string
-		body string
-		hit  bool
+		injected, returned bool
+		judged, degraded   bool
 	}{
-		{"sse event line", "event: response.fixture_marker_part.added\ndata: {}\n\n", true},
-		{"sse data type", "data: {\"type\":\"response.fixture_marker_text.done\"}\n\n", true},
-		{"nested field name", "data: {\"type\":\"response.completed\",\"response\":{\"fixture_marker\":[]}}\n\n", true},
-		{"crlf framing", "event: x\r\ndata: {\"type\":\"response.Fixture_Marker\"}\r\n\r\n", true},
-		{"whole json body", `{"output":[{"type":"fixture_marker_item"}]}`, true},
-		{"text that mentions it", "data: {\"type\":\"response.output_text.delta\",\"delta\":\"fixture_marker\"}\n\n", false},
-		{"clean", "data: {\"type\":\"response.completed\"}\n\ndata: [DONE]\n\n", false},
-		{"empty", "", false},
+		{true, false, true, false},  // injected, upstream wrote none: healthy
+		{true, true, true, true},    // injected, upstream wrote one: degraded
+		{false, true, false, false}, // nothing injected: nothing to read
+		{false, false, false, false},
 	}
 	for _, tc := range cases {
-		if got := responseHasMarker([]byte(tc.body), markers); got != tc.hit {
-			t.Fatalf("%s: hit=%v, want %v", tc.name, got, tc.hit)
+		v := judgeInjectedTurn(tc.injected, tc.returned)
+		if v.Judged != tc.judged || v.Degraded != tc.degraded || v.Rule != degradedRuleInjected {
+			t.Fatalf("injected=%v returned=%v: %+v", tc.injected, tc.returned, v)
+		}
+		if v.Eligible == tc.degraded && tc.judged {
+			t.Fatalf("a degraded turn is not poolable: %+v", v)
 		}
 	}
 }
 
-// No markers, no response judgement: the probe falls back to the state rule.
-func TestProbeJudgementFallsBackWithoutMarkers(t *testing.T) {
-	body := []byte("data: {\"type\":\"response.fixture_marker\"}\n\n")
-	if v := judgeProbeResponse("blob", "team", body, nil); v.Rule != degradedRulePaused || !v.Eligible {
-		t.Fatalf("without markers the paused rule answers: %+v", v)
+// The probe rule reads its own round trip, in three bands.
+func TestProbeLatencyRule(t *testing.T) {
+	cases := []struct {
+		elapsed                    time.Duration
+		eligible, judged, degraded bool
+		suspect                    bool
+	}{
+		{time.Second, true, true, false, false},
+		{probeCleanLatency, true, true, false, false},
+		{probeCleanLatency + time.Millisecond, false, false, false, true},
+		{probeSuspectLatency, false, false, false, true},
+		{probeSuspectLatency + time.Millisecond, false, true, true, false},
+		{time.Minute, false, true, true, false},
 	}
-	if v := judgeProbeResponse("blob", "team", body, []string{"fixture_marker"}); v.Rule != degradedRuleResponse || v.Eligible || !v.Degraded {
-		t.Fatalf("a hit is degraded: %+v", v)
-	}
-	if v := judgeProbeResponse("blob", "team", []byte("data: {}\n\n"), []string{"fixture_marker"}); v.Rule != degradedRuleResponse || !v.Eligible || !v.Judged || v.Degraded {
-		t.Fatalf("a clean response is judged non-degraded: %+v", v)
-	}
-}
-
-// The server config names the markers; the data path still reads as before.
-func TestPluginConfigReadsProbeMarkers(t *testing.T) {
-	cfg := parsePluginConfig([]byte("enabled: true\ndata_path: \"x.db\"\nprobe_degraded_markers: [\"one\", two ,'three']\n"))
-	if cfg.DataPath != "x.db" || strings.Join(cfg.ProbeMarkers, "|") != "one|two|three" {
-		t.Fatalf("cfg=%+v", cfg)
-	}
-	if cfg := parsePluginConfig([]byte("data_path: y.db\n")); len(cfg.ProbeMarkers) != 0 {
-		t.Fatalf("no key, no markers: %+v", cfg)
-	}
-}
-
-// The management form may save the markers as a list; the host re-encodes it
-// as a block sequence, which reads the same as the comma form.
-func TestPluginConfigReadsABlockListOfMarkers(t *testing.T) {
-	cfg := parsePluginConfig([]byte("enabled: true\nprobe_degraded_markers:\n    - one\n    - \"two\"\ndata_path: z.db\npriority: 100\n"))
-	if cfg.DataPath != "z.db" || strings.Join(cfg.ProbeMarkers, "|") != "one|two" {
-		t.Fatalf("cfg=%+v", cfg)
-	}
-	if cfg := parsePluginConfig([]byte("probe_degraded_markers: \"\"\n")); len(cfg.ProbeMarkers) != 0 {
-		t.Fatalf("an empty value names nothing: %+v", cfg)
+	for _, tc := range cases {
+		v := judgeProbeLatency(tc.elapsed)
+		if v.Eligible != tc.eligible || v.Judged != tc.judged || v.Degraded != tc.degraded || v.Suspect != tc.suspect {
+			t.Fatalf("%s: %+v", tc.elapsed, v)
+		}
+		if v.Rule != degradedRuleLatency || v.Elapsed != tc.elapsed {
+			t.Fatalf("%s: rule=%q elapsed=%s", tc.elapsed, v.Rule, v.Elapsed)
+		}
 	}
 }
 
-// The markers are an item in the host's plugin config form, beside data_path.
-func TestRegistrationDeclaresTheMarkerField(t *testing.T) {
+// data_path is the only field the plugin takes from the server config.
+func TestRegistrationDeclaresItsConfigFields(t *testing.T) {
 	names := []string{}
 	for _, field := range pluginRegistration().Metadata.ConfigFields {
 		names = append(names, field.Name+":"+field.Type)
 	}
-	if strings.Join(names, ",") != "data_path:string,probe_degraded_markers:string" {
+	if strings.Join(names, ",") != "data_path:string" {
 		t.Fatalf("config fields = %v", names)
+	}
+	if cfg := parsePluginConfig([]byte("enabled: true\ndata_path: \"x.db\"\n")); cfg.DataPath != "x.db" {
+		t.Fatalf("cfg=%+v", cfg)
 	}
 }

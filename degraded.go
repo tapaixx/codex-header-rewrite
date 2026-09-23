@@ -1,20 +1,22 @@
 package main
 
-import (
-	"bytes"
-	"encoding/json"
-	"strings"
-)
+import "time"
 
-// The degradation judgement is the one place that decides whether an observed
-// X-Codex-Turn-State is degraded. Everything else -- pooling, injection,
-// interception, retry, eviction, the history verdicts -- asks here and never
-// looks at the blob itself, so changing the rule means changing this file.
+// The degradation judgement lives here, and nowhere else: pooling, injection,
+// interception, retry, eviction and the history verdicts all ask this file.
 //
-// The rule in force is degradedJudge. The wire-length rule that used to run
-// (team ≤ 332 characters, personal ≤ 292) stopped matching what the upstream
-// does and is kept only as judgeByLength; judgePaused is what runs now: no
-// verdict, every state eligible for the pool, nothing intercepted or evicted.
+// Three rules, because the three paths see different evidence:
+//
+//   - judgeInjectedTurn  live requests, from whether the upstream wrote a
+//     state back over one the plugin had injected.
+//   - judgeProbeLatency  the automatic probe, from how long its own minimal
+//     request took.
+//   - degradedJudge      the blob itself, which is all the retry and a manual
+//     pool have to go on. Currently judgePaused: no verdict, nothing kept out.
+//     The wire-length rule (team ≤ 332 characters, personal ≤ 292) stopped
+//     matching the upstream and is kept as judgeByLength.
+//
+// None of them reads the response body.
 
 // degradedVerdict is the answer about one observed state.
 type degradedVerdict struct {
@@ -23,9 +25,15 @@ type degradedVerdict struct {
 	// while a judgement is required (no plan claim under the length rule).
 	Eligible bool
 	// Judged is whether a rule actually produced Degraded. Nil verdicts are
-	// how the paused rule and an unknown plan both read in history.
+	// how an unjudged turn and an unknown plan both read in history.
 	Judged   bool
 	Degraded bool
+	// Suspect is the probe rule's middle band: not clean enough to pool, not
+	// slow enough to call degraded. Judged stays false -- there is no verdict,
+	// only a reason to keep the state out of the pool.
+	Suspect bool
+	// Elapsed is how long the request took, when that is what the rule read.
+	Elapsed time.Duration
 	// MaxChars is the length limit the rule applied, when it applied one.
 	MaxChars int
 	// Rule names what answered: "length" or "paused". History shows it so a
@@ -36,25 +44,24 @@ type degradedVerdict struct {
 const (
 	degradedRuleLength = "length"
 	degradedRulePaused = "paused"
-	// degradedRuleResponse is the probe's own judgement, made on its response.
-	degradedRuleResponse = "response"
+	// degradedRuleInjected is the live rule, read from whether the upstream
+	// wrote a state back over one the plugin had injected.
+	degradedRuleInjected = "injected"
+	// degradedRuleLatency is the probe rule, read from how long the probe's
+	// own request took.
+	degradedRuleLatency = "latency"
 
 	teamStateMaxChars     = 332
 	personalStateMaxChars = 292
+
+	// probeCleanLatency and probeSuspectLatency divide a probe's round trip
+	// into three: quick enough to trust, slow enough to doubt, slower still.
+	probeCleanLatency   = 10 * time.Second
+	probeSuspectLatency = 20 * time.Second
 )
 
 // degradedJudge is the rule in force. Swap it here to change the judgement.
 var degradedJudge = judgePaused
-
-// autoPoolsLive says whether a state that a client's own request brought back
-// may enter the pool without an operator. Only a rule that actually judged the
-// state can vouch for it, so while the judgement is paused a live state is
-// recorded -- its provenance still feeds cross-account detection -- and waits
-// in history for a manual pool. The plugin's own requests (the probe, the
-// retry) are minimal calls and keep pooling on their own under any rule.
-// With a working rule back in degradedJudge this is true for every eligible
-// state and live pooling is automatic again.
-func autoPoolsLive(v degradedVerdict) bool { return v.Eligible && v.Judged }
 
 func judgeDegraded(blob, plan string) degradedVerdict { return degradedJudge(blob, plan) }
 
@@ -84,110 +91,34 @@ func judgeByLength(blob, plan string) degradedVerdict {
 	return verdict
 }
 
-// judgeProbeResponse is the probe's judgement. A probe reads its response to
-// the end before it pools anything, so unlike a live request -- whose state
-// arrives with the headers, before any of the body -- it can be judged on the
-// body. The markers are server configuration (probe_degraded_markers in the
-// plugin's config block): they are not in this repository and not in the
-// released binary. With none configured the probe falls back to degradedJudge.
-//
-// A response is degraded when one of its event names, event types or field
-// names contains a marker. Text the model wrote is not searched, so an answer
-// that merely mentions a marker does not count. A state rule that is back in
-// degradedJudge keeps its say: its verdict stands when no marker is found.
-func judgeProbeResponse(blob, plan string, body []byte, markers []string) degradedVerdict {
-	base := judgeDegraded(blob, plan)
-	if len(markers) == 0 {
-		return base
+// judgeInjectedTurn is the rule for live requests, and it reads the exchange
+// rather than the blob. A turn already carrying a state the plugin injected
+// has no reason to be handed another: the upstream writes one back when it has
+// dropped that chain, which is the degraded case. So an injected turn that
+// comes back with no state in its headers is the healthy one, and an injected
+// turn that comes back with a state is not. With nothing injected the exchange
+// says nothing either way, and the state waits for a manual pool.
+func judgeInjectedTurn(injected, returned bool) degradedVerdict {
+	if !injected {
+		return degradedVerdict{Rule: degradedRuleInjected}
 	}
-	if responseHasMarker(body, markers) {
-		return degradedVerdict{Judged: true, Degraded: true, Rule: degradedRuleResponse}
-	}
-	if base.Judged || !base.Eligible {
-		return base
-	}
-	return degradedVerdict{Eligible: true, Judged: true, Rule: degradedRuleResponse}
+	return degradedVerdict{Judged: true, Degraded: returned, Eligible: !returned, Rule: degradedRuleInjected}
 }
 
-// responseHasMarker reads a whole JSON body or an SSE stream. Frames are split
-// the way the model observer splits them; a frame whose data lines do not join
-// into one JSON document is read line by line.
-func responseHasMarker(body []byte, markers []string) bool {
-	text := bytes.ReplaceAll(body, []byte("\r\n"), []byte("\n"))
-	trimmed := bytes.TrimSpace(text)
-	if len(trimmed) == 0 {
-		return false
+// judgeProbeLatency is the rule for the automatic probe, which sends the same
+// minimal request every time and so can be judged on how long it takes: a
+// prompt answer comes from a healthy turn, a slow one does not. The middle
+// band is suspect rather than degraded -- it keeps the state out of the pool
+// without claiming to know.
+func judgeProbeLatency(elapsed time.Duration) degradedVerdict {
+	verdict := degradedVerdict{Rule: degradedRuleLatency, Elapsed: elapsed}
+	switch {
+	case elapsed <= probeCleanLatency:
+		verdict.Judged, verdict.Eligible = true, true
+	case elapsed <= probeSuspectLatency:
+		verdict.Suspect = true
+	default:
+		verdict.Judged, verdict.Degraded = true, true
 	}
-	if trimmed[0] == '{' || trimmed[0] == '[' {
-		return payloadHasMarker(trimmed, markers)
-	}
-	for _, frame := range bytes.Split(text, []byte("\n\n")) {
-		var data [][]byte
-		for _, line := range bytes.Split(frame, []byte("\n")) {
-			if value, ok := bytes.CutPrefix(line, []byte("event:")); ok {
-				if containsMarker(string(bytes.TrimSpace(value)), markers) {
-					return true
-				}
-			} else if value, ok := bytes.CutPrefix(line, []byte("data:")); ok {
-				data = append(data, bytes.TrimSpace(value))
-			}
-		}
-		if len(data) == 0 {
-			continue
-		}
-		if joined := bytes.Join(data, []byte("\n")); json.Valid(joined) {
-			if payloadHasMarker(joined, markers) {
-				return true
-			}
-			continue
-		}
-		for _, line := range data {
-			if payloadHasMarker(line, markers) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func payloadHasMarker(payload []byte, markers []string) bool {
-	var value any
-	if json.Unmarshal(payload, &value) != nil {
-		return false
-	}
-	return valueHasMarker(value, markers)
-}
-
-func valueHasMarker(value any, markers []string) bool {
-	switch v := value.(type) {
-	case map[string]any:
-		for key, child := range v {
-			if containsMarker(key, markers) {
-				return true
-			}
-			if text, ok := child.(string); ok && key == "type" && containsMarker(text, markers) {
-				return true
-			}
-			if valueHasMarker(child, markers) {
-				return true
-			}
-		}
-	case []any:
-		for _, child := range v {
-			if valueHasMarker(child, markers) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func containsMarker(text string, markers []string) bool {
-	text = strings.ToLower(text)
-	for _, marker := range markers {
-		if marker = strings.ToLower(marker); marker != "" && strings.Contains(text, marker) {
-			return true
-		}
-	}
-	return false
+	return verdict
 }

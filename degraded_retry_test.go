@@ -287,7 +287,10 @@ func TestWithheldResponseWaitsForTheRetrySeries(t *testing.T) {
 
 	state.mu.Lock()
 	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
-	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, RejectDegradedResponse: true, RetryOnDegraded: true, RetryAttempts: 1}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true, RejectDegradedResponse: true, RetryOnDegraded: true, RetryAttempts: 1}
+	// The live rule reads a state the upstream wrote back over an injected
+	// one, so the request has to go out carrying a pooled state.
+	noteTurnStateMintLocked(fernetToken(0x80, time.Now(), 1), "idx-a", "A", "gpt-5.6-luna", "team", "")
 	state.mu.Unlock()
 	if _, err := interceptAfter(requestInterceptRequest{RequestID: "r", Model: "gpt-5.6-luna", Metadata: map[string]any{"selected_auth_index": "idx-a", "selected_auth_id": "auth-a"}}); err != nil {
 		t.Fatal(err)
@@ -336,7 +339,10 @@ func TestRetryCarriesTheInterceptedCookie(t *testing.T) {
 	sent := retryStub(t, "team", []string{good})
 	state.mu.Lock()
 	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
-	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, RejectDegradedResponse: true, RetryOnDegraded: true, RetryAttempts: 1}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true, RejectDegradedResponse: true, RetryOnDegraded: true, RetryAttempts: 1}
+	// The live rule reads a state the upstream wrote back over an injected
+	// one, so the request has to go out carrying a pooled state.
+	noteTurnStateMintLocked(fernetToken(0x80, time.Now(), 1), "idx-a", "A", "gpt-5.6-luna", "team", "")
 	state.mu.Unlock()
 
 	const cookie = "__Secure-next-auth.session-token=session-value; oai-did=device-value"
@@ -460,7 +466,10 @@ func TestRetrySendsTheCookieTheResponseRotated(t *testing.T) {
 	sent := retryStub(t, "team", []string{fernetToken(0x80, time.Now(), 1)})
 	state.mu.Lock()
 	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
-	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, RejectDegradedResponse: true, RetryOnDegraded: true, RetryAttempts: 1}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", Enabled: true, InjectTurnState: true, RejectDegradedResponse: true, RetryOnDegraded: true, RetryAttempts: 1}
+	// The live rule reads a state the upstream wrote back over an injected
+	// one, so the request has to go out carrying a pooled state.
+	noteTurnStateMintLocked(fernetToken(0x80, time.Now(), 1), "idx-a", "A", "gpt-5.6-luna", "team", "")
 	state.mu.Unlock()
 
 	if _, err := interceptAfter(requestInterceptRequest{RequestID: "r", Model: "gpt-5.6-luna",
