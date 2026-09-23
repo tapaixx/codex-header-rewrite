@@ -171,11 +171,26 @@ func saveRule(rule headerRule) (headerRule, error) {
 	}
 	normalized.UpdatedAt = time.Now().UTC()
 	state.mu.Lock()
+	previous, existed := state.rules[normalized.AuthIndex]
+	state.mu.Unlock()
+	// The auth file is edited first, outside the lock -- it is a host call --
+	// and a failure refuses the whole change, so the switch never claims a
+	// forwarding the file does not carry.
+	before, after := cookieForwardingWanted(previous, existed), cookieForwardingWanted(normalized, true)
+	if before != after {
+		if err := setCookieForwarding(normalized.AuthIndex, after); err != nil {
+			return rule, fmt.Errorf("cookie forwarding: %w", err)
+		}
+	}
+	state.mu.Lock()
 	defer state.mu.Unlock()
 	if state.store == nil {
 		return rule, fmt.Errorf("persistence is not initialized")
 	}
 	if err := state.store.SaveRule(normalized); err != nil {
+		if before != after {
+			_ = setCookieForwarding(normalized.AuthIndex, before)
+		}
 		return rule, err
 	}
 	state.rules[normalized.AuthIndex] = normalized
@@ -183,6 +198,14 @@ func saveRule(rule headerRule) (headerRule, error) {
 	return normalized, nil
 }
 func deleteRule(authIndex string) error {
+	state.mu.Lock()
+	previous, existed := state.rules[authIndex]
+	state.mu.Unlock()
+	if cookieForwardingWanted(previous, existed) {
+		if err := setCookieForwarding(authIndex, false); err != nil {
+			return fmt.Errorf("cookie forwarding: %w", err)
+		}
+	}
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	if state.store == nil {

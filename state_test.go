@@ -1230,3 +1230,54 @@ func TestCookieInjectionStandsDown(t *testing.T) {
 		})
 	}
 }
+
+// Cookie injection edits the credential's auth file so CPA forwards the
+// Cookie: on adds the entry, off removes it, freezing the pool counts as off,
+// and a failed edit refuses the whole change.
+func TestCookieInjectionManagesTheAuthFileEntry(t *testing.T) {
+	resetState(t)
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.mu.Unlock()
+	oldGet, oldSave := hostAuthGetFileFunc, hostAuthSaveFunc
+	t.Cleanup(func() { hostAuthGetFileFunc, hostAuthSaveFunc = oldGet, oldSave })
+	file := json.RawMessage(`{"type":"codex","refresh_token":"r"}`)
+	hostAuthGetFileFunc = func(string) (hostAuthFile, error) { return hostAuthFile{Name: "a.json", JSON: file}, nil }
+	saves := 0
+	hostAuthSaveFunc = func(f hostAuthFile) error { saves++; file = f.JSON; return nil }
+	forwarding := func() bool { return strings.Contains(string(file), `"$Cookie"`) }
+
+	if _, err := saveRule(headerRule{AuthIndex: "idx-a", InjectCookie: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !forwarding() || saves != 1 {
+		t.Fatalf("on adds the entry: %s", file)
+	}
+	if _, err := saveRule(headerRule{AuthIndex: "idx-a", InjectCookie: true, Enabled: true}); err != nil || saves != 1 {
+		t.Fatalf("an unrelated change leaves the file alone: saves=%d err=%v", saves, err)
+	}
+	off := false
+	if _, err := saveRule(headerRule{AuthIndex: "idx-a", InjectCookie: true, MaintainStatePool: &off}); err != nil || forwarding() {
+		t.Fatalf("a frozen pool injects nothing, so nothing is forwarded: %s err=%v", file, err)
+	}
+	if _, err := saveRule(headerRule{AuthIndex: "idx-a", InjectCookie: true}); err != nil || !forwarding() {
+		t.Fatalf("thawed, it is back: %s", file)
+	}
+
+	// A failed edit refuses the change: the rule keeps what it had.
+	hostAuthSaveFunc = func(hostAuthFile) error { return errors.New("disk full") }
+	if _, err := saveRule(headerRule{AuthIndex: "idx-a"}); err == nil || !strings.Contains(err.Error(), "cookie forwarding") {
+		t.Fatalf("the failure must surface: %v", err)
+	}
+	state.mu.Lock()
+	kept := state.rules["idx-a"].InjectCookie
+	state.mu.Unlock()
+	if !kept {
+		t.Fatal("the switch must not claim a change the file did not take")
+	}
+	hostAuthSaveFunc = func(f hostAuthFile) error { saves++; file = f.JSON; return nil }
+
+	if err := deleteRule("idx-a"); err != nil || forwarding() {
+		t.Fatalf("deleting the rule removes the entry: %s err=%v", file, err)
+	}
+}

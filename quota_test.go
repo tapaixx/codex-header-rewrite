@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -33,5 +35,55 @@ func TestQuotaFromHeaders(t *testing.T) {
 	}
 	if _, ok := quotaFromHeaders(http.Header{"X-Codex-Secondary-Used-Percent": {"3"}}, now); ok {
 		t.Fatal("no primary percentage, no quota")
+	}
+}
+
+// The usage endpoint gives the same two windows the headers do.
+func TestQuotaFromUsage(t *testing.T) {
+	now := time.Unix(1790180000, 0)
+	body := []byte(`{"user_id":"u","email":"x@example.com","plan_type":"team","rate_limit":{"allowed":true,
+		"primary_window":{"used_percent":2,"limit_window_seconds":18000,"reset_after_seconds":2808,"reset_at":1790186084},
+		"secondary_window":{"used_percent":23,"limit_window_seconds":604800,"reset_after_seconds":247491}}}`)
+	quota, ok := quotaFromUsage(body, now)
+	if !ok {
+		t.Fatal("rate limits not read")
+	}
+	if quota.PrimaryUsedPercent != 2 || quota.PrimaryWindowMinutes != 300 || !quota.PrimaryResetAt.Equal(time.Unix(1790186084, 0)) {
+		t.Fatalf("primary: %+v", quota)
+	}
+	if quota.SecondaryUsedPercent != 23 || quota.SecondaryWindowMinutes != 10080 || !quota.SecondaryResetAt.Equal(now.Add(247491*time.Second)) {
+		t.Fatalf("secondary, reset from reset_after_seconds: %+v", quota)
+	}
+	if _, ok := quotaFromUsage([]byte(`{"rate_limit":null}`), now); ok {
+		t.Fatal("no rate limits, no reading")
+	}
+}
+
+// A refresh reads the credential, asks the usage endpoint with it, and never
+// sends a request body or a cookie.
+func TestRefreshQuotaAsksTheUsageEndpoint(t *testing.T) {
+	oldGet, oldDo := hostAuthGetFunc, hostHTTPDoFunc
+	t.Cleanup(func() { hostAuthGetFunc, hostHTTPDoFunc = oldGet, oldDo })
+	hostAuthGetFunc = func(string) (json.RawMessage, error) {
+		return json.RawMessage(`{"access_token":"tok","account_id":"acct"}`), nil
+	}
+	var sent hostHTTPRequest
+	hostHTTPDoFunc = func(req hostHTTPRequest) (hostHTTPResponse, error) {
+		sent = req
+		return hostHTTPResponse{StatusCode: 200, Body: []byte(`{"rate_limit":{"primary_window":{"used_percent":40,"limit_window_seconds":18000,"reset_at":1790186084}}}`)}, nil
+	}
+	quota, err := refreshQuota("idx")
+	if err != nil || quota.PrimaryUsedPercent != 40 {
+		t.Fatalf("quota=%+v err=%v", quota, err)
+	}
+	if sent.Method != http.MethodGet || sent.URL != usageURL || len(sent.Body) != 0 || sent.Headers.Get("Cookie") != "" {
+		t.Fatalf("request: %s %s body=%d cookie=%q", sent.Method, sent.URL, len(sent.Body), sent.Headers.Get("Cookie"))
+	}
+	if sent.Headers.Get("Authorization") != "Bearer tok" || sent.Headers.Get("Chatgpt-Account-Id") != "acct" {
+		t.Fatalf("credential headers: %v", sent.Headers)
+	}
+	hostHTTPDoFunc = func(hostHTTPRequest) (hostHTTPResponse, error) { return hostHTTPResponse{StatusCode: 401}, nil }
+	if _, err := refreshQuota("idx"); err == nil || !strings.Contains(err.Error(), "401") {
+		t.Fatalf("a refused refresh says so: %v", err)
 	}
 }

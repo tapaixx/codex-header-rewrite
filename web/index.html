@@ -347,6 +347,7 @@ textarea{resize:vertical;min-height:70px;font-family:var(--mono);font-size:13px;
   .history-time{grid-column:1;font-size:13px}
   .history-origin{grid-column:2;justify-self:end}
   .history-model{grid-column:1 / -1}
+  .history-route{grid-column:1 / -1;font-size:12px;color:var(--text-soft)}
   .history-outcome{grid-column:1}
   .history-status{grid-column:2;justify-self:end;text-align:right!important}
   .history-detail{display:block}
@@ -1336,6 +1337,11 @@ body[data-workspace="history"] #turnStatePanel .state-pool{display:block}
 .pool-table th{text-align:left;font-size:11px;color:var(--text-mute);font-weight:600;padding:5px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
 .pool-table td{padding:5px 9px;border-top:1px solid var(--line);font-size:12px;vertical-align:middle;white-space:nowrap}
 .pool-table tbody tr:first-child td{border-top:0}
+.pool-lb-host{font-size:11px}
+.pool-cookie-raw{margin-top:8px}
+.pool-cookie-raw>summary{cursor:pointer;font-size:12px;color:var(--text-soft);padding:4px 0;list-style-position:inside}
+.pool-cookie-raw>summary:hover{color:var(--text)}
+.pool-cookie-raw .pool-state-value{margin-top:4px}
 .pool-model-cell{font-size:12px}
 .pool-row{cursor:pointer}
 .pool-row:hover td{background:var(--sunk)}
@@ -2031,11 +2037,13 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
    606px is the sum of the five fixed columns. */
 #historyPanel .history-table{
   table-layout:fixed!important;width:100%!important;
-  min-width:calc(606px + var(--history-model-w,250px))!important
+  min-width:calc(746px + var(--history-model-w,250px))!important
 }
 #historyPanel th.history-time{width:164px!important}
 #historyPanel th.history-origin{width:64px!important}
 #historyPanel th.history-model{width:var(--history-model-w,250px)!important}
+#historyPanel th.history-route{width:140px!important}
+#historyPanel td.history-route{font-size:11px;color:var(--text-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #historyPanel th.history-outcome{width:236px!important}
 #historyPanel th.history-latency{width:74px!important}
 #historyPanel th.history-status{width:68px!important}
@@ -2237,7 +2245,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
     <span class="quota-item" id="quotaPrimary"><span class="quota-label">5H</span><span class="qbar"><i></i></span><span class="quota-text num"></span></span>
     <span class="quota-item" id="quotaSecondary"><span class="quota-label">Weekly</span><span class="qbar"><i></i></span><span class="quota-text num"></span></span>
     <span class="muted num" id="quotaObserved"></span>
-    <button class="quiet icon" id="quotaRefresh" type="button" title="重新读取配额" aria-label="重新读取配额"><svg class="i"><use href="#i-refresh"/></svg></button>
+    <button class="quiet icon" id="quotaRefresh" type="button" title="从上游刷新配额（只读，不消耗额度）" aria-label="从上游刷新配额"><svg class="i"><use href="#i-refresh"/></svg></button>
   </div>
 </header>
 
@@ -2430,7 +2438,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
         <div class="spacer"></div>
         <label class="switch panel-switch"><input type="checkbox" id="poolMaintain" checked disabled><span>State 池维护<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="State 池维护的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">插件从每个响应里读 <code>X-Codex-Turn-State</code>：合格的入池、过期的标记，池子一直是活的。</span><span class="hint-k">关掉</span><span class="hint-v">池子冻结：不入池、不注入，自动探针和拦截后重试也停下，已有记录原样保留。</span><span class="hint-p">这是池子的总开关，默认开启；「注入 State」只在它开着时生效。</span></span></span></span></label>
         <label class="switch panel-switch"><input type="checkbox" id="poolInject" disabled><span>注入 State<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="注入 State 的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">从池里取「该凭证 + 当前模型」的合格 state 写进请求的 <code>X-Codex-Turn-State</code>（池里没有就不写），并摘掉确认来自其他凭证或其他模型的回带值。</span><span class="hint-k">关掉</span><span class="hint-v">完全不碰这个 Header，客户端带什么就原样发什么。</span><span class="hint-p">与「启用改写」无关，规则关着也照样注入；规则<b>启用</b>且手工设置或移除了这个 Header 时，以手工为准。默认关闭。</span></span></span></span></label>
-        <label class="switch panel-switch"><input type="checkbox" id="poolCookie" disabled><span>注入 Cookie<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="注入 Cookie 的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">池里「该凭证 + 当前模型」那条 state 入池时带着的会话 Cookie，合并进请求的 <code>Cookie</code>：同名的以池里为准，客户端独有的保留。池里没有、或那条没有会话，就不动。</span><span class="hint-k">关掉</span><span class="hint-v">完全不碰 <code>Cookie</code>，客户端带什么就原样发什么。</span><span class="hint-p">与「注入 State」各自独立，可以只开一个。同样只在 State 池维护开着时生效；规则<b>启用</b>且手工设置或移除了 <code>Cookie</code> 时，以手工为准。默认关闭。</span></span></span></span></label>
+        <label class="switch panel-switch"><input type="checkbox" id="poolCookie" disabled><span>注入 Cookie<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="注入 Cookie 的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">池里「该凭证 + 当前模型」那条 state 入池时带着的会话 Cookie，合并进请求的 <code>Cookie</code>：同名的以池里为准，客户端独有的保留。池里没有、或那条没有会话，就不动。</span><span class="hint-k">关掉</span><span class="hint-v">完全不碰 <code>Cookie</code>，客户端带什么就原样发什么。</span><span class="hint-k">转发</span><span class="hint-v">CPA 默认不把 <code>Cookie</code> 转发给上游。开着（且池维护开着）时，插件在这个凭证的 auth 文件里写入 <code>"headers": {"Cookie": "$Cookie"}</code>，让 CPA 把改写后的 Cookie 带上去；关掉时再删掉这一条。auth 文件里别的自定义 Header 不动，已有别的 Cookie 值时拒绝写入。</span><span class="hint-p">与「注入 State」各自独立，可以只开一个。规则<b>启用</b>且手工设置或移除了 <code>Cookie</code> 时，以手工为准。默认关闭。</span></span></span></span></label>
         <span class="muted" id="turnStateMeta"></span>
         <button class="quiet icon" id="turnStateRefresh" title="刷新" aria-label="刷新回合状态"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
@@ -2532,7 +2540,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
         <datalist id="modelOptions"></datalist>
         <div class="table-scroll">
         <table class="history-table">
-            <thead><tr><th class="history-time">时间</th><th class="history-origin">来源</th><th class="history-model">模型：发出 → 上游</th><th class="history-outcome">结果</th><th class="history-latency">耗时</th><th class="history-status" style="text-align:right">状态码</th></tr></thead>
+            <thead><tr><th class="history-time">时间</th><th class="history-origin">来源</th><th class="history-model">模型：发出 → 上游</th><th class="history-route" title="请求 Cookie 里 __oailb 的 host 声明">路由目标</th><th class="history-outcome">结果</th><th class="history-latency">耗时</th><th class="history-status" style="text-align:right">状态码</th></tr></thead>
             <tbody id="historyBody"></tbody>
           </table>
         </div>
@@ -3065,28 +3073,43 @@ function renderQuota(quota) {
   if (!quota) { bar.hidden = true; return; }
   const fill = (id, used, resetAt) => {
     const item = $(id);
-    const left = Math.max(0, Math.min(100, 100 - Number(used || 0)));
+    // A window whose reset time has passed is full again, whatever the last
+    // reading said; it is marked as an estimate until a new reading arrives.
+    const lapsed = resetAt && new Date(resetAt).getTime() <= Date.now();
+    const left = lapsed ? 100 : Math.max(0, Math.min(100, 100 - Number(used || 0)));
     item.querySelector(".qbar i").style.width = `${left}%`;
     item.dataset.tone = left <= 5 ? "out" : (left <= 20 ? "low" : "");
-    const reset = quotaResetText(resetAt);
+    const reset = lapsed ? "已重置（估）" : quotaResetText(resetAt);
     item.querySelector(".quota-text").textContent = `剩 ${Math.round(left)}%${reset ? " · " + reset : ""}`;
-    item.querySelector(".qbar").setAttribute("title", `已用 ${used}%`);
+    item.querySelector(".qbar").setAttribute("title", lapsed ? `上次读数已用 ${used}%，之后窗口已重置` : `已用 ${used}%`);
   };
   fill("quotaPrimary", quota.primary_used_percent, quota.primary_reset_at);
   fill("quotaSecondary", quota.secondary_used_percent, quota.secondary_reset_at);
   $("quotaObserved").textContent = quota.observed_at ? formatAge(Math.max(0, Math.round((Date.now() - new Date(quota.observed_at)) / 1000))) : "";
   bar.hidden = false;
 }
-async function loadQuota() {
+// Loading reads what the plugin has; refreshing asks the upstream's usage
+// endpoint, a read that spends no allowance, and says how it went.
+async function loadQuota(refresh = false) {
   const epoch = store.selectionEpoch;
   if (!store.selected) { renderQuota(null); return; }
+  const icon = $("quotaRefresh")?.querySelector("svg");
+  if (refresh) icon?.classList.add("spin");
   try {
-    const payload = await api(`/quota?auth_index=${encodeURIComponent(store.selected)}`);
+    const payload = await api(`/quota?auth_index=${encodeURIComponent(store.selected)}${refresh ? "&refresh=1" : ""}`);
     if (epoch !== store.selectionEpoch) return;
     renderQuota(payload.quota || null);
-  } catch { if (epoch === store.selectionEpoch) renderQuota(null); }
+    if (refresh) {
+      if (payload.refreshed) toast("配额已从上游刷新");
+      else toast(`没能从上游刷新，显示的是上次读数：${payload.refresh_error || "未知原因"}`, true);
+    }
+  } catch (error) {
+    if (epoch === store.selectionEpoch) { renderQuota(null); if (refresh) fail(error); }
+  } finally {
+    icon?.classList.remove("spin");
+  }
 }
-$("quotaRefresh")?.addEventListener("click", () => loadQuota());
+$("quotaRefresh")?.addEventListener("click", () => loadQuota(true));
 async function selectCredential(authIndex) {
   renderQuota(null);
   const epoch = ++store.selectionEpoch;
@@ -3494,6 +3517,28 @@ function cookieItemHTML(cookie) {
     <dl class="ts-grid">${rows.join("")}</dl>`;
 }
 
+// The load-balancer cookie is a JWT naming the backend the session is pinned
+// to and when that pin was issued and lapses. The pool list shows those three
+// so rows can be told apart without opening each one.
+function oailbClaims(cookieHeader) {
+  const crumb = parseRequestCookies({ Cookie: [cookieHeader || ""] }).find((cookie) => cookie.name === "__oailb");
+  const jwt = crumb && decodeCookieJWT(crumb.value);
+  if (!jwt) return null;
+  const payload = jwt.payload || {};
+  return { host: payload.host !== undefined ? String(payload.host) : "", iat: cookieTime(payload.iat), exp: cookieTime(payload.exp) };
+}
+// The backend the request's session was pinned to, from the Cookie that went
+// upstream -- the rewritten one when the plugin changed it.
+function recordRouteHost(record) {
+  const cookie = headerValues(record.after_headers || record.before_headers, "cookie").join("; ");
+  return oailbClaims(cookie)?.host || "";
+}
+// Local time, short enough for a table cell; the full form is in the title.
+function shortLocalTime(date) {
+  if (!date) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
 function cookieCard(label, cookies, emptyText) {
   if (!cookies.length) return absentCard(label, emptyText);
   return `<div class="ts-block">
@@ -3801,7 +3846,7 @@ function outcomeTag(outcome) {
 /* ---------- history --------------------------------------------------- */
 function historySkeleton() {
   $("historyBody").innerHTML = Array.from({ length: store.pageSize || 20 }, () =>
-    '<tr><td colspan="6"><div class="skel" style="width:100%;height:16px"></div></td></tr>').join("");
+    '<tr><td colspan="7"><div class="skel" style="width:100%;height:16px"></div></td></tr>').join("");
 }
 // One table, two sources. The probe writes far more rows than the traffic
 // does, so they are bounded separately and read separately; sharing the list
@@ -3826,7 +3871,7 @@ async function loadHistory(page = 1) {
   const body = $("historyBody");
   body.replaceChildren();
   if (!store.history.length) {
-    body.innerHTML = '<tr><td colspan="6" class="empty">暂无记录</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="empty">暂无记录</td></tr>';
     $("pager").replaceChildren();
     return;
   }
@@ -3841,6 +3886,7 @@ async function loadHistory(page = 1) {
     row.innerHTML = `<td class="history-time num">${esc(new Date(record.started_at).toLocaleString())}</td>
       <td class="history-origin">${originTag(record.origin)}</td>
       <td class="history-model">${modelChain(record)}</td>
+      <td class="history-route mono" translate="no">${esc(recordRouteHost(record) || "-")}</td>
       <td class="history-outcome"><span class="history-outcome-wrap">${outcomeTag(record.outcome)}${turnStateTags(record)}</span></td>
       <td class="history-latency num">${formatLatency(recordLatency(record))}</td>
       <td class="history-status num" style="text-align:right">${record.status_code || "-"}</td>`;
@@ -3970,10 +4016,11 @@ async function showPoolState(item) {
       <div id="poolEnvelope"><div class="muted">解码中…</div></div>
     </div>
     <div class="history-detail-section">
-      <div class="history-detail-label"><span>会话 Cookie</span></div>
-      <div class="pool-state-value mono">${item.cookie
-        ? esc(item.cookie)
-        : '<span class="muted">没有记录会话 —— 入池时请求没有带 Cookie，响应也没有下发</span>'}</div>
+      <div class="history-detail-label"><span>会话 Cookie</span><span class="muted">结构解析 · 只显示长度、声明与属性</span></div>
+      ${item.cookie
+        ? `${cookieCard("入池时的会话", parseRequestCookies({ Cookie: [item.cookie] }), "")}
+          <details class="pool-cookie-raw"><summary>原值</summary><div class="pool-state-value mono">${esc(item.cookie)}</div></details>`
+        : '<div class="muted">没有记录会话 —— 入池时请求没有带 Cookie，响应也没有下发</div>'}
     </div>
     <div class="history-detail-section">
       <div class="history-detail-label"><span>原始值</span></div>
@@ -4388,12 +4435,13 @@ async function loadTurnStates() {
     // and cards spent a screen on what a table says in a line per state. The
     // row itself opens the detail drawer, the same way a history row does.
     body.innerHTML = `<div class="pool-scroll"><table class="history-table pool-table">
-      <thead><tr><th>模型</th><th>套餐</th><th>长度 / 阈值</th><th>铸造时间</th><th>状态</th></tr></thead>
+      <thead><tr><th>模型</th><th>套餐</th><th>长度 / 阈值</th><th title="会话里 __oailb 的 host 声明">路由目标</th><th title="__oailb 的 iat，本地时间">签发 (本地)</th><th title="__oailb 的 exp，本地时间">过期 (本地)</th><th>铸造时间</th><th>状态</th></tr></thead>
       <tbody></tbody></table></div>`;
     const tbody = body.querySelector("tbody");
     items.forEach((item, index) => {
       const minted = new Date(item.minted_at);
       const age = formatAge(item.age_seconds);
+      const lb = oailbClaims(item.cookie);
       const row = document.createElement("tr");
       row.className = "pool-row";
       row.dataset.index = String(index);
@@ -4404,7 +4452,13 @@ async function loadTurnStates() {
       row.innerHTML = `<td class="mono pool-model-cell" translate="no">${esc(item.model || "未记录")}</td>
         <td><span class="tag flat">${esc(item.plan_type || "未知套餐")}</span></td>
         <td class="num">${item.chars || "-"}${item.max_chars ? ` / ≤ ${item.max_chars}` : ""} 字符</td>
-        <td class="num">${esc(minted.toLocaleString())} · ${age}</td>
+        ${lb ? `<td class="mono pool-lb-host" translate="no">${esc(lb.host || "-")}</td>
+        <td class="num" title="${esc(lb.iat ? lb.iat.toLocaleString() : "")}">${esc(shortLocalTime(lb.iat) || "-")}</td>
+        <td class="num" title="${esc(lb.exp ? lb.exp.toLocaleString() : "")}">${lb.exp
+          ? (lb.exp < new Date() ? `<span class="tag warn">${esc(shortLocalTime(lb.exp))}</span>` : esc(shortLocalTime(lb.exp)))
+          : "-"}</td>`
+        : '<td colspan="3" class="muted">会话里没有 __oailb</td>'}
+        <td class="num pool-minted">${esc(minted.toLocaleString())} · ${age}</td>
         <td>${item.expired ? '<span class="tag warn">已过期</span>' : '<span class="tag ok beam">可用</span>'}</td>`;
       row.addEventListener("click", () => showPoolState(item));
       row.addEventListener("keydown", (event) => {
@@ -5119,7 +5173,10 @@ async function savePoolSettings() {
     $("poolMaintain").checked = previous.maintain_state_pool !== false;
     $("poolInject").checked = !!(previous.inject_turn_state ?? previous.strip_foreign_turn_state);
     if ($("poolCookie")) $("poolCookie").checked = !!previous.inject_cookie;
-    fail(error);
+    const message = String(error?.message || error);
+    toast(message.startsWith("cookie forwarding:")
+      ? `没能改写凭证的 auth 文件，开关未生效：${message.slice("cookie forwarding:".length).trim()}`
+      : message, true);
   } finally {
     poolSaving = false;
     syncPoolControls();
@@ -5129,7 +5186,26 @@ async function savePoolSettings() {
 }
 // Whether the pool is frozen, as the other two cards read it.
 const poolFrozen = () => !!$("poolMaintain") && !$("poolMaintain").checked;
-for (const id of ["poolMaintain", "poolInject", "poolCookie"]) $(id)?.addEventListener("change", savePoolSettings);
+for (const id of ["poolMaintain", "poolInject"]) $(id)?.addEventListener("change", savePoolSettings);
+// Turning cookie injection on writes to the credential's auth file, so it is
+// confirmed first; turning it off undoes that and needs no warning.
+$("poolCookie")?.addEventListener("change", () => {
+  const box = $("poolCookie");
+  if (box.checked && !confirm([
+    "打开「注入 Cookie」会修改这个凭证的 auth 文件：",
+    "",
+    "· 写入 \"headers\": {\"Cookie\": \"$Cookie\"}，让 CPA 把改写后的 Cookie 转发给上游（CPA 默认不转发 Cookie）。",
+    "· 只增删这一条，文件里其他字段和自定义 Header 不变；已有别的 Cookie 值时会拒绝写入。",
+    "· CPA 保存 auth 文件时会把凭证重建为可用状态：如果你在 CPA 里停用过它，它可能重新参与轮换。",
+    "· 关闭开关或暂停 State 池维护时，插件会把这一条删掉。",
+    "",
+    "继续？",
+  ].join("\n"))) {
+    box.checked = false;
+    return;
+  }
+  savePoolSettings();
+});
 
 /* ---------- automatic state probe ---------------------------------------
    The window is stored as minutes into a UTC day and edited in browser time,

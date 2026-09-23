@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -51,11 +54,15 @@ func headerReset(h http.Header, atName, afterName string, now time.Time) time.Ti
 // noteQuotaLocked keeps the newest reading on the credential's direct jar.
 // The caller holds state.mu.
 func noteQuotaLocked(authIndex string, headers http.Header) {
-	if state.store == nil || authIndex == "" {
-		return
-	}
 	quota, ok := quotaFromHeaders(headers, time.Now())
 	if !ok {
+		return
+	}
+	storeQuotaLocked(authIndex, quota)
+}
+
+func storeQuotaLocked(authIndex string, quota credentialQuota) {
+	if state.store == nil || authIndex == "" {
 		return
 	}
 	record, _, _ := state.store.Session(authIndex, "")
@@ -83,4 +90,83 @@ func credentialQuotaFor(authIndex string) (credentialQuota, bool) {
 		return credentialQuota{}, false
 	}
 	return *record.Quota, true
+}
+
+// usageURL is the endpoint Codex clients read their limits from. It is a read:
+// it returns the allowance without spending any of it, which is what lets the
+// panel's refresh ask the upstream rather than wait for the next response.
+const usageURL = "https://chatgpt.com/backend-api/wham/usage"
+
+type usageWindow struct {
+	UsedPercent        float64 `json:"used_percent"`
+	LimitWindowSeconds int     `json:"limit_window_seconds"`
+	ResetAfterSeconds  int64   `json:"reset_after_seconds"`
+	ResetAt            int64   `json:"reset_at"`
+}
+
+// quotaFromUsage reads the usage payload into the same reading the response
+// headers give. Only the rate-limit windows are read; identity fields in the
+// payload are not kept.
+func quotaFromUsage(body []byte, now time.Time) (credentialQuota, bool) {
+	var payload struct {
+		RateLimit *struct {
+			Primary   *usageWindow `json:"primary_window"`
+			Secondary *usageWindow `json:"secondary_window"`
+		} `json:"rate_limit"`
+	}
+	if json.Unmarshal(body, &payload) != nil || payload.RateLimit == nil || payload.RateLimit.Primary == nil {
+		return credentialQuota{}, false
+	}
+	reset := func(w *usageWindow) time.Time {
+		if w.ResetAt > 0 {
+			return time.Unix(w.ResetAt, 0).UTC()
+		}
+		if w.ResetAfterSeconds > 0 {
+			return now.UTC().Add(time.Duration(w.ResetAfterSeconds) * time.Second)
+		}
+		return time.Time{}
+	}
+	primary := payload.RateLimit.Primary
+	quota := credentialQuota{
+		PrimaryUsedPercent: primary.UsedPercent, PrimaryResetAt: reset(primary),
+		PrimaryWindowMinutes: primary.LimitWindowSeconds / 60, ObservedAt: now.UTC(),
+	}
+	if secondary := payload.RateLimit.Secondary; secondary != nil {
+		quota.SecondaryUsedPercent, quota.SecondaryResetAt = secondary.UsedPercent, reset(secondary)
+		quota.SecondaryWindowMinutes = secondary.LimitWindowSeconds / 60
+	}
+	return quota, true
+}
+
+// refreshQuota asks the upstream for the credential's allowance through the
+// host's proxy-aware client, keeps the answer as the newest reading, and
+// returns it. The credential is read for this one call and nothing of it is
+// kept, logged, or returned.
+func refreshQuota(authIndex string) (credentialQuota, error) {
+	document, err := hostAuthGetFunc(authIndex)
+	if err != nil {
+		return credentialQuota{}, errors.New("credential is not readable through the host")
+	}
+	material := parseTestAuthMaterial(document)
+	if material.accessToken == "" {
+		return credentialQuota{}, errors.New("credential has no usable access token")
+	}
+	headers := retryHeaders(material, "")
+	headers.Del("Content-Type")
+	headers.Set("Accept", "application/json")
+	response, err := hostHTTPDoFunc(hostHTTPRequest{Method: http.MethodGet, URL: usageURL, Headers: headers})
+	if err != nil {
+		return credentialQuota{}, err
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return credentialQuota{}, fmt.Errorf("usage endpoint returned HTTP %d", response.StatusCode)
+	}
+	quota, ok := quotaFromUsage(response.Body, time.Now())
+	if !ok {
+		return credentialQuota{}, errors.New("usage endpoint returned no rate limits")
+	}
+	state.mu.Lock()
+	storeQuotaLocked(authIndex, quota)
+	state.mu.Unlock()
+	return quota, nil
 }

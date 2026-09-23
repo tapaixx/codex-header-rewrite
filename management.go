@@ -267,6 +267,21 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 		if authIndex == "" {
 			return jsonError(http.StatusBadRequest, "auth_index is required"), nil
 		}
+		// refresh=1 asks the upstream's usage endpoint -- a read that spends no
+		// allowance. A failed refresh still answers with the stored reading,
+		// and says why it could not be renewed.
+		if req.Query.Get("refresh") == "1" {
+			quota, errRefresh := refreshQuota(authIndex)
+			if errRefresh == nil {
+				return jsonResponse(http.StatusOK, map[string]any{"auth_index": authIndex, "quota": quota, "refreshed": true}), nil
+			}
+			stored, found := credentialQuotaFor(authIndex)
+			payload := map[string]any{"auth_index": authIndex, "quota": nil, "refresh_error": errRefresh.Error()}
+			if found {
+				payload["quota"] = stored
+			}
+			return jsonResponse(http.StatusOK, payload), nil
+		}
 		quota, found := credentialQuotaFor(authIndex)
 		if !found {
 			return jsonResponse(http.StatusOK, map[string]any{"auth_index": authIndex, "quota": nil}), nil

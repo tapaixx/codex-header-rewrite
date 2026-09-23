@@ -31,6 +31,7 @@ const (
 	methodHostAuthList                 = "host.auth.list"
 	methodHostAuthGetRuntime           = "host.auth.get_runtime"
 	methodHostAuthGet                  = "host.auth.get"
+	methodHostAuthSave                 = "host.auth.save"
 	methodHostHTTPDo                   = "host.http.do"
 )
 
@@ -231,6 +232,8 @@ type hostAuthGetRuntimeResponse struct {
 // hostAuthGetResponse carries one credential document. Hosts have used all
 // three field names for the payload, so each is accepted.
 type hostAuthGetResponse struct {
+	Name string          `json:"name"`
+	Path string          `json:"path"`
 	JSON json.RawMessage `json:"json"`
 	Auth json.RawMessage `json:"auth"`
 	Data json.RawMessage `json:"data"`

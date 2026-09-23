@@ -68,7 +68,7 @@ try {
 
   // The pool header states the credential's own window, in seconds when short.
   assert.equal(await page.locator('#turnStateWindow').textContent(), '200 秒');
-  const ages = await page.locator('.pool-row td.num:nth-child(4)').allTextContents();
+  const ages = await page.locator('.pool-row td.pool-minted').allTextContents();
   assert.ok(ages[0].endsWith('45 秒前'), `sub-minute age reads in seconds: ${ages[0]}`);
   assert.ok(ages[1].endsWith('15 分钟前'), `older age reads in minutes: ${ages[1]}`);
   assert.equal((await page.locator('.pool-row').nth(1).textContent()).includes('已过期'), true);
@@ -108,6 +108,17 @@ try {
   assert.equal(await page.locator('#poolCookie').isChecked(), false, 'cookie injection defaults off');
   const cookieLight = page.locator('#statusLights .light[data-light="cookie"]');
   assert.equal(await cookieLight.getAttribute('data-on'), '0', 'its light is off');
+  // Turning it on edits the credential's auth file, so it asks first:
+  // declined, nothing is saved; accepted, it saves at once.
+  let asked = '';
+  page.once('dialog', (d) => { asked = d.message(); d.dismiss(); });
+  const beforeDecline = saved;
+  await page.evaluate(()=>document.querySelector('#poolCookie').click());
+  await new Promise(r=>setTimeout(r,300));
+  assert.ok(asked.includes('auth 文件') && asked.includes('$Cookie'), 'the confirmation explains the file edit: ' + asked);
+  assert.equal(await page.locator('#poolCookie').isChecked(), false, 'declined, the switch stays off');
+  assert.equal(saved, beforeDecline, 'and nothing was sent');
+  page.once('dialog', (d) => d.accept());
   await page.evaluate(()=>document.querySelector('#poolCookie').click());
   await new Promise(r=>setTimeout(r,300));
   assert.equal(saved.inject_cookie, true, 'turning it on saved at once');

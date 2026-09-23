@@ -60,6 +60,30 @@ try {
     await page.waitForSelector('.history-summary');
     assert.equal(await page.locator('.history-summary').count(), 6, label);
     assert.equal(await page.locator('.pool-row').count(), 2, label);
+    // The history list names the backend each request's session was pinned to.
+    const historyHeads = await page.locator('#historyPanel thead th').allTextContents();
+    assert.ok(historyHeads.includes('路由目标'), `${label}: ${historyHeads}`);
+    const routes = await page.locator('#historyBody td.history-route').allTextContents();
+    assert.equal(routes.length, 6, `${label}: one route cell per row`);
+    assert.ok(routes[0].includes('gw-iad-7.internal'), `${label}: ${routes}`);
+    // The quota strip's refresh asks the upstream and says so.
+    await page.locator('#quotaRefresh').click();
+    await page.waitForFunction(() => document.getElementById('toast').dataset.show === 'true');
+    assert.ok((await page.locator('#toast').textContent()).includes('已从上游刷新'), label);
+        // The pool list reads the session's __oailb: routing target and its
+    // local issue and expiry times, or says the session has none.
+    const heads = await page.locator('.pool-table th').allTextContents();
+    assert.ok(heads.includes('路由目标') && heads.includes('签发 (本地)') && heads.includes('过期 (本地)'), `${label}: ${heads}`);
+    const firstPool = await page.locator('.pool-row').first().textContent();
+    assert.ok(firstPool.includes('gw-iad-7.internal') && /\d\d-\d\d \d\d:\d\d:\d\d/.test(firstPool), `${label}: ${firstPool}`);
+    assert.ok((await page.locator('.pool-row').nth(1).textContent()).includes('会话里没有 __oailb'), label);
+    // Its drawer parses the session instead of showing only the raw string.
+    await page.locator('.pool-row').first().click();
+    await page.waitForSelector('#drawerBody .pool-cookie-raw');
+    const session = (await page.locator('#drawerBody .history-detail-section').filter({hasText:'会话 Cookie'}).textContent()).replace(/\s+/g,' ');
+    assert.ok(session.includes('__oailb') && session.includes('路由目标') && session.includes('gw-iad-7.internal'), `${label}: ${session.slice(0,200)}`);
+    assert.equal(await page.locator('#drawerBody .pool-cookie-raw .pool-state-value').isVisible(), false, `${label}: raw value starts collapsed`);
+    await page.locator('#drawerClose').click();
 
     // And the detail opens with its bodies.
     await page.locator('.history-summary').first().click();

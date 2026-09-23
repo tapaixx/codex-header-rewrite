@@ -157,7 +157,7 @@ const bodies = {
 const turnStates = [
   // Pooled by the probe: probe-1 returned it a few seconds ago.
   { state: teamState, digest: 'c91a0e77bb42', auth_index: 'acct-a', label: 'alex@example.com', model: 'gpt-6-astra', plan_type: 'team', chars: 332, max_chars: 0, minted_at: at(11), age_seconds: 11, expired: false, reuse_window_seconds: 200,
-    cookie: '__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device' },
+    cookie: `__oailb=${oailb}; __Secure-next-auth.session-token=demo-session-value; oai-did=demo-device` },
   // Pooled before the session was recorded, which reads as "no session" rather
   // than as an error.
   { state: teamState, digest: 'b7710f3e55aa', auth_index: 'acct-a', label: 'alex@example.com', model: 'gpt-5.6-luna', plan_type: 'team', chars: 332, max_chars: 0, minted_at: at(900), age_seconds: 900, expired: true, reuse_window_seconds: 200, cookie: '' },
@@ -275,7 +275,7 @@ const stub = `
       return json({ auth_index: authIndex, page: 1, page_size: 10, total: items.length, total_pages: 1, items });
     }
     if (path.endsWith("/quota")) {
-      return json({ auth_index: authIndex, quota: authIndex === "acct-a" ? {
+      return json({ auth_index: authIndex, refreshed: q.get("refresh") === "1", quota: authIndex === "acct-a" ? {
         primary_used_percent: 47, primary_reset_at: new Date(Date.now() + 82 * 60000).toISOString(), primary_window_minutes: 300,
         secondary_used_percent: 15, secondary_reset_at: new Date(Date.now() + 3 * 86400000).toISOString(), secondary_window_minutes: 10080,
         observed_at: new Date(Date.now() - 42000).toISOString() } : null });

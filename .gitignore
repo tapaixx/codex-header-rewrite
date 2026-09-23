@@ -13,3 +13,6 @@ dist/
 /release/
 /checksums.txt
 /codex-header-rewrite_*.zip
+
+# Personal test folder
+/test/
