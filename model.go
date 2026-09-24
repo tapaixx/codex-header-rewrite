@@ -204,6 +204,10 @@ type historyRecord struct {
 	// CookieInjected reports that the pooled session was merged into the
 	// request's Cookie header.
 	CookieInjected bool `json:"cookie_injected,omitempty"`
+	// CookieInvalidated names the Cookie 池 backend this request's degraded
+	// turn took out of use; ProbePoolInvalidated says the same of a probe.
+	CookieInvalidated    string `json:"cookie_invalidated,omitempty"`
+	ProbePoolInvalidated bool   `json:"probe_pool_invalidated,omitempty"`
 	// TurnStateInvalidated reports that the injected state was past the reuse
 	// window and the upstream still minted a degraded state, so the pooled
 	// entry was dropped rather than injected again.

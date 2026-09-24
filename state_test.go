@@ -1335,3 +1335,44 @@ func TestHeldLiveTurnFeedsTheCookiePool(t *testing.T) {
 		t.Fatalf("the held turn's session should be pooled: %+v", entries)
 	}
 }
+
+// A degraded live turn that carried an injected cookie takes that cookie's
+// backend out of the Cookie 池: still listed, never drawn, until a new
+// non-degraded cookie for the same backend replaces it.
+func TestDegradedInjectedCookieInvalidatesItsBackend(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	now := time.Now()
+	session := "__oailb=" + oailbToken("gw-bad", now, now.Add(time.Hour))
+	poolWithCookie(t, headerRule{AuthIndex: "idx-a", InjectTurnState: true, InjectCookie: true}, session)
+	state.mu.Lock()
+	noteCookiePoolLocked("idx-a", session, "probe", "m", "")
+	state.mu.Unlock()
+	if _, ok := pickPoolCookie("idx-a", now); !ok {
+		t.Fatal("the fixture entry should be usable")
+	}
+
+	injectTestRequest(t, "bad", nil)
+	observeResponse(responseInterceptRequest{RequestID: "bad", StatusCode: 200, ResponseHeaders: http.Header{turnStateHeader: {fernetToken(0x80, now, 2)}}})
+	state.mu.Lock()
+	attempt := *state.pending["bad"].current
+	state.mu.Unlock()
+	if attempt.CookieInvalidated != "gw-bad" {
+		t.Fatalf("the record should name the backend taken out: %q", attempt.CookieInvalidated)
+	}
+	entries, _ := cookiePoolFor("idx-a")
+	if len(entries) != 1 || entries[0].InvalidatedAt.IsZero() || entries[0].InvalidatedBy != "live" || entries[0].usable(now) {
+		t.Fatalf("the entry stays listed but unusable: %+v", entries)
+	}
+	if _, ok := pickPoolCookie("idx-a", now); ok {
+		t.Fatal("an invalidated entry is never drawn")
+	}
+	// A new non-degraded cookie for the same backend brings it back.
+	state.mu.Lock()
+	noteCookiePoolLocked("idx-a", session+"; __cf_bm=new", "probe", "m", "")
+	state.mu.Unlock()
+	if entry, ok := pickPoolCookie("idx-a", now); !ok || !entry.InvalidatedAt.IsZero() {
+		t.Fatalf("the replacement is usable: %+v %v", entry, ok)
+	}
+}

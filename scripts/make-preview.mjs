@@ -289,7 +289,9 @@ const stub = `
         // Enough backends to need a second page.
         ...["ord-2", "dfw-5", "lax-1", "ams-4", "fra-8"].map((dc, i) => ({ host: "gw-" + dc + ".internal", cookie: "__oailb=" + F.oailb,
           issued_at: new Date(Date.now() - (i + 1) * 900000).toISOString(), expires_at: new Date(Date.now() + (5 - i) * 1200000).toISOString(),
-          source: i % 2 ? "live" : "probe", model: "gpt-6-astra", digest: "", saved_at: new Date(Date.now() - (i + 1) * 60000 - 20000).toISOString(), usable: true })) ] });
+          source: i % 2 ? "live" : "probe", model: "gpt-6-astra", digest: "", saved_at: new Date(Date.now() - (i + 1) * 60000 - 20000).toISOString(),
+          // One taken out by a degraded turn: listed, never drawn.
+          usable: i !== 1, ...(i === 1 ? { invalidated_at: new Date(Date.now() - 30000).toISOString(), invalidated_by: "live" } : {}) })) ] });
     }
     if (path.endsWith("/session")) {
       return json(authIndex === "acct-a"

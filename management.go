@@ -281,7 +281,7 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			items = append(items, map[string]any{
 				"host": entry.Host, "cookie": entry.Cookie, "issued_at": entry.IssuedAt, "expires_at": entry.ExpiresAt,
 				"source": entry.Source, "model": entry.Model, "digest": entry.Digest, "saved_at": entry.SavedAt,
-				"usable": entry.usable(now),
+				"usable": entry.usable(now), "invalidated_at": entry.InvalidatedAt, "invalidated_by": entry.InvalidatedBy,
 			})
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"auth_index": authIndex, "entries": items}), nil

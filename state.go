@@ -495,6 +495,11 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 	// the reuse window only says when a state is due for renewal.
 	if attempt.injectedDigest != "" && info.NonDegraded != nil && !*info.NonDegraded {
 		attempt.TurnStateInvalidated = invalidateTurnStateLocked(attempt.AuthIndex, sentModel(attempt.Model, attempt.RequestedModel), attempt.injectedDigest)
+		// The cookie that went out with it is as suspect as the state: its
+		// backend's entry in the Cookie 池 stops being drawn.
+		if attempt.CookieInjected {
+			attempt.CookieInvalidated = invalidateCookiePoolLocked(attempt.AuthIndex, attempt.clientCookie, "live")
+		}
 	}
 	// Response rejection has its own switch and model scope, independent of
 	// request rewriting. Both streaming and non-streaming use this decision.

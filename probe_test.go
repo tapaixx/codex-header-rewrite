@@ -658,3 +658,40 @@ func TestCookiePoolModeDrawsAndFeeds(t *testing.T) {
 		t.Fatalf("the vouched session replaces the entry for its backend: %+v", entries)
 	}
 }
+
+// A probe that drew a pool cookie and whose multi-check judged the turn
+// degraded marks that cookie's backend invalid.
+func TestDegradedProbeInvalidatesTheDrawnCookie(t *testing.T) {
+	resetState(t)
+	resetTurnStates(t)
+	now := time.Now()
+	drawn := "__oailb=" + oailbToken("gw-drawn", now, now.Add(time.Hour))
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	noteCookiePoolLocked("idx-a", drawn, "live", "m", "")
+	state.mu.Unlock()
+	probeStub(t, fernetToken(0x80, now, 1), nil)
+	inner := probeHTTPDoFunc
+	probeHTTPDoFunc = func(ctx context.Context, transport *http.Transport, req hostHTTPRequest, via bool) (hostHTTPResponse, error) {
+		if req.Headers.Get(turnStateHeader) == "" {
+			return inner(ctx, transport, req, via)
+		}
+		// The check draws a new state back: degraded.
+		return hostHTTPResponse{StatusCode: 200, Headers: http.Header{turnStateHeader: {fernetToken(0x80, now, 3)}}}, nil
+	}
+	rule := probeRuleFixture()
+	rule.ProbeCookieMode = probeCookiePool
+	rule.ProbeVerify = true
+	probeModel(context.Background(), "idx-a", "gpt-6-astra", rule, credentialSession{})
+
+	if row := probeRows(t)[0]; !row.ProbePoolInvalidated || row.ProbePoolHost != "gw-drawn" {
+		t.Fatalf("the row should say the drawn cookie was taken out: %+v", row.ProbePoolHost)
+	}
+	if _, ok := pickPoolCookie("idx-a", now); ok {
+		t.Fatal("the drawn cookie is no longer drawn")
+	}
+	entries, _ := cookiePoolFor("idx-a")
+	if len(entries) != 1 || entries[0].InvalidatedBy != "probe" {
+		t.Fatalf("invalidated by the probe: %+v", entries)
+	}
+}

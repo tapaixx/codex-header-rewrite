@@ -26,10 +26,16 @@ type cookiePoolEntry struct {
 	IssuedAt  time.Time `json:"issued_at,omitempty"`
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
 	// Source is "probe" or "live": which verdict vouched for it.
-	Source  string    `json:"source"`
-	Model   string    `json:"model,omitempty"`
-	Digest  string    `json:"digest,omitempty"`
-	SavedAt time.Time `json:"saved_at"`
+	Source string `json:"source"`
+	// InvalidatedAt is set when a turn that carried this cookie was judged
+	// degraded; the entry stays listed but is never drawn again. A new
+	// non-degraded cookie for the same backend replaces it outright.
+	InvalidatedAt time.Time `json:"invalidated_at,omitempty"`
+	// InvalidatedBy is "live" or "probe": which verdict took it out.
+	InvalidatedBy string    `json:"invalidated_by,omitempty"`
+	Model         string    `json:"model,omitempty"`
+	Digest        string    `json:"digest,omitempty"`
+	SavedAt       time.Time `json:"saved_at"`
 }
 
 func cookiePoolKey(authIndex, host string) string { return authIndex + "\x00" + host }
@@ -37,7 +43,7 @@ func cookiePoolKey(authIndex, host string) string { return authIndex + "\x00" + 
 // usable is whether the entry may still be sent: its __oailb has not expired.
 // An entry whose token names no expiry is taken at its word.
 func (e cookiePoolEntry) usable(now time.Time) bool {
-	return e.ExpiresAt.IsZero() || now.Before(e.ExpiresAt)
+	return e.InvalidatedAt.IsZero() && (e.ExpiresAt.IsZero() || now.Before(e.ExpiresAt))
 }
 
 // oailbRoute reads the backend and validity out of the __oailb crumb. The
@@ -129,4 +135,33 @@ func pickPoolCookie(authIndex string, now time.Time) (cookiePoolEntry, bool) {
 		return cookiePoolEntry{}, false
 	}
 	return usable[rand.IntN(len(usable))], true
+}
+
+// invalidateCookiePoolLocked marks the entry for the backend this cookie is
+// pinned to as invalid: a turn that carried it was judged degraded. It reports
+// the backend, or "" when the cookie names none or the pool has no entry for
+// it. Callers hold state.mu.
+func invalidateCookiePoolLocked(authIndex, cookie, by string) string {
+	if state.store == nil || authIndex == "" {
+		return ""
+	}
+	host, _, _, ok := oailbRoute(cookie)
+	if !ok {
+		return ""
+	}
+	all, err := state.store.ListCookiePool()
+	if err != nil {
+		return ""
+	}
+	for _, entry := range all {
+		if entry.AuthIndex != authIndex || entry.Host != host || !entry.InvalidatedAt.IsZero() {
+			continue
+		}
+		entry.InvalidatedAt, entry.InvalidatedBy = time.Now().UTC(), by
+		if state.store.SaveCookiePoolEntry(entry) != nil {
+			return ""
+		}
+		return host
+	}
+	return ""
 }

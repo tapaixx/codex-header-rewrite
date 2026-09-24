@@ -388,6 +388,8 @@ type probeAttempt struct {
 	upstreamEffort string
 	// What the multi-check request did, when it ran.
 	verified bool
+	// poolInvalidated reports that the drawn cookie was marked invalid.
+	poolInvalidated bool
 	// poolHost is the backend of the cookie drawn from the cookie pool.
 	poolHost      string
 	verifyStatus  int
@@ -499,9 +501,12 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 		verdict, stateSession = verifyProbeState(ctx, transport, authIndex, model, material, stateSession, &attempt)
 	}
 	state.mu.Lock()
-	// A session the multi-check vouched for is a non-degraded cookie.
+	// A session the multi-check vouched for is a non-degraded cookie; a pool
+	// cookie the multi-check judged degraded stops being drawn.
 	if verdict.Judged && !verdict.Degraded {
 		noteCookiePoolLocked(authIndex, stateSession, "probe", model, turnStateDigest(attempt.blob))
+	} else if verdict.Judged && verdict.Degraded && attempt.poolHost != "" {
+		attempt.poolInvalidated = invalidateCookiePoolLocked(authIndex, attempt.cookie, "probe") != ""
 	}
 	info := classifyTurnStateWith(decodeTurnState(attempt.blob), plan, verdict)
 	if verdict.Eligible {
@@ -659,7 +664,7 @@ func recordProbe(authIndex string, rule headerRule, attempt probeAttempt) {
 		ResponseBody: attempt.response, ResponseBytes: attempt.resBytes,
 		ProbeEgress: attempt.egress, ProbePrimed: attempt.primed,
 		ProbeVerified: attempt.verified, ProbeVerifyStatus: attempt.verifyStatus, ProbeVerifyError: attempt.verifyErr,
-		ProbePoolHost:   attempt.poolHost,
+		ProbePoolHost: attempt.poolHost, ProbePoolInvalidated: attempt.poolInvalidated,
 		ProbeCookieMode: probeCookieModeFor(rule),
 		ProbeExitRegion: cloudflareRegion(attempt.received),
 		UpstreamModel:   attempt.upstreamModel, UpstreamEffort: attempt.upstreamEffort,

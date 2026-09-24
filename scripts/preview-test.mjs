@@ -73,7 +73,9 @@ try {
     assert.equal(cookieRows.length, 5, `${label}: five to a page`);
     assert.ok(cookieRows[0].includes('gw-iad-7.internal') && cookieRows[0].includes('可用') && /\d\d-\d\d \d\d:\d\d:\d\d/.test(cookieRows[0]), `${label}: ${cookieRows[0]}`);
     assert.ok(cookieRows[1].includes('已过期'), `${label}: ${cookieRows[1]}`);
-    assert.equal(await page.locator('#cookiePoolMeta').textContent(), '6 / 7 条可用', label);
+    assert.equal(await page.locator('#cookiePoolMeta').textContent(), '5 / 7 条可用', label);
+    // A cookie a degraded turn took out reads as invalid, not as usable.
+    assert.ok(cookieRows[3].includes('gw-dfw-5.internal') && cookieRows[3].includes('已失效') && !cookieRows[3].includes('可用'), `${label}: ${cookieRows[3]}`);
     // The pager says how many there are and turns to the rest.
     assert.ok((await page.locator('#cookiePoolPager').textContent()).includes('共 7 条'), label);
     await page.locator('#cookiePoolPager button[aria-label="第 2 页"]').click();

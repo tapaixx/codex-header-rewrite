@@ -2522,7 +2522,7 @@ body[data-workspace="history"] #historyPanel{grid-row:5!important}
     </section>
 
     <section class="panel" id="cookiePoolPanel">
-      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>Cookie 池</h2><div class="panel-caption">判定为不降智的会话 Cookie，按路由目标各留最新一条<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="Cookie 池的说明">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只收有「不降智」判定的会话：开了多重判断、复核通过的探针会话，以及注入了 state 而上游没有回写的线上会话。按 <code>__oailb</code> 里的路由目标去重，同一个路由目标来了新的就覆盖；没有 <code>__oailb</code> 的会话不收。</span><span class="hint-k">状态</span><span class="hint-v">由 <code>__oailb</code> 的过期时间决定：没过期就可用。</span><span class="hint-k">使用</span><span class="hint-v">自动探针的 Cookie 来源选「Cookie 池」时，随机取一条可用的带上；池里没有可用的就不带 Cookie。</span></span></span></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>Cookie 池</h2><div class="panel-caption">判定为不降智的会话 Cookie，按路由目标各留最新一条<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="Cookie 池的说明">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只收有「不降智」判定的会话：开了多重判断、复核通过的探针会话，以及注入了 state 而上游没有回写的线上会话。按 <code>__oailb</code> 里的路由目标去重，同一个路由目标来了新的就覆盖；没有 <code>__oailb</code> 的会话不收。</span><span class="hint-k">状态</span><span class="hint-v">由 <code>__oailb</code> 的过期时间决定：没过期就可用。</span><span class="hint-k">失效</span><span class="hint-v">注入了 Cookie 的线上请求被判为降智，或探针从池里取的 Cookie 复核判为降智，对应路由目标的那条就置为<b>已失效</b>：还在列表里，但不会再被取用；同一路由目标来了新的不降智 Cookie 就覆盖它。</span><span class="hint-k">使用</span><span class="hint-v">自动探针的 Cookie 来源选「Cookie 池」时，随机取一条可用的带上；池里没有可用的就不带 Cookie。</span></span></span></div></div>
         <div class="spacer"></div>
         <span class="muted" id="cookiePoolMeta"></span>
         <button class="quiet icon" id="cookiePoolRefresh" title="刷新" aria-label="刷新 Cookie 池"><svg class="i"><use href="#i-refresh"/></svg></button>
@@ -3765,6 +3765,7 @@ function turnStateTags(record) {
   if (record.retry_attempts) tag("flat", `重试 ${record.retry_attempts} 次`, "一次降智响应触发的重试系列，合并为一行");
   if (record.turn_state_rejected) tag("bad", "已拦截", "判为降智，这次响应没有下发给客户端");
   if (record.turn_state_invalidated) tag("bad", "已剔除", "注入的 state 之上上游又回写了一个，注入的那条已从池里移除");
+  if (record.cookie_invalidated) tag("bad", "Cookie 失效", `注入的 Cookie 随这一轮降智了，Cookie 池里路由目标 ${record.cookie_invalidated} 的那条已置为失效`);
   const minted = record.turn_state_minted;
   // The verdict. A healthy live turn has no minted state: the upstream wrote
   // none back, and that silence is the verdict.
@@ -4272,7 +4273,7 @@ function probeDetail(record) {
   }
   if (mode === "cookie_pool") {
     rows.push(`<dt>Cookie 来源</dt><dd>Cookie 池<span class="muted"> · ${record.probe_pool_host
-      ? `取了路由目标 <span class="mono">${esc(record.probe_pool_host)}</span> 的那条`
+      ? `取了路由目标 <span class="mono">${esc(record.probe_pool_host)}</span> 的那条${record.probe_pool_invalidated ? "，复核判为降智，已置为失效" : ""}`
       : "池里没有可用的，未带 Cookie"}</span></dd>`);
   } else if (mode === "none") {
     rows.push('<dt>Cookie 来源</dt><dd>不带 Cookie<span class="muted"> · v0.25.7</span></dd>');
@@ -4668,7 +4669,7 @@ async function loadCookiePool(page) {
         <td class="num" title="${esc(expires ? expires.toLocaleString() : "")}">${esc(shortLocalTime(expires) || "-")}</td>
         <td><span class="tag flat">${entry.source === "probe" ? "探针" : "线上"}</span></td>
         <td class="num pool-minted">${esc(saved.toLocaleString())} · ${esc(formatAge(Math.max(0, Math.round((Date.now() - saved) / 1000))))}</td>
-        <td>${entry.usable ? '<span class="tag ok beam">可用</span>' : '<span class="tag warn">已过期</span>'}</td>`;
+        <td>${cookiePoolStatus(entry)}</td>`;
       const open = () => showCookiePoolEntry(entry);
       row.addEventListener("click", open);
       row.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); } });
@@ -4680,13 +4681,23 @@ async function loadCookiePool(page) {
     if (epoch === store.selectionEpoch) body.innerHTML = `<div class="empty">${esc(error.message || String(error))}</div>`;
   }
 }
+// Invalid outranks expired: a cookie a degraded turn took out stays out even
+// if its token would still be valid.
+function cookiePoolStatus(entry) {
+  const invalidated = entry.invalidated_at && !entry.invalidated_at.startsWith("0001");
+  if (invalidated) {
+    const when = new Date(entry.invalidated_at).toLocaleString();
+    return `<span class="tag bad" title="${esc(`${entry.invalidated_by === "probe" ? "探针" : "线上"}请求带着它降智了 · ${when}`)}">已失效</span>`;
+  }
+  return entry.usable ? '<span class="tag ok beam">可用</span>' : '<span class="tag warn">已过期</span>';
+}
 function showCookiePoolEntry(entry) {
   store.selectedRecord = "";
   store.selectedState = "";
   const at = (iso) => iso && !iso.startsWith("0001") ? esc(new Date(iso).toLocaleString()) : '<span class="muted">未声明</span>';
   openDrawer("Cookie 池", `<div class="history-detail-shell">
     <div class="history-detail-head">
-      <div><div class="chain"><span class="mono">${esc(entry.host)}</span>${entry.usable ? '<span class="tag ok beam">可用</span>' : '<span class="tag warn">已过期</span>'}</div></div>
+      <div><div class="chain"><span class="mono">${esc(entry.host)}</span>${cookiePoolStatus(entry)}</div></div>
     </div>
     <div class="history-detail-section">
       <div class="history-detail-label"><span>入池</span></div>
@@ -4696,6 +4707,8 @@ function showCookiePoolEntry(entry) {
         <dt>对应 state</dt><dd class="mono">${esc(entry.digest || "-")}</dd>
         <dt>入池时间</dt><dd>${at(entry.saved_at)}</dd>
         <dt>过期 (本地)</dt><dd>${at(entry.expires_at)}</dd>
+        ${entry.invalidated_at && !entry.invalidated_at.startsWith("0001")
+          ? `<dt>失效</dt><dd>${at(entry.invalidated_at)}<span class="muted"> · ${entry.invalidated_by === "probe" ? "探针" : "线上"}请求带着它降智了</span></dd>` : ""}
       </dl>
     </div>
     <div class="history-detail-section">
