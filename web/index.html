@@ -2444,13 +2444,14 @@ html[data-theme="dark"]{color-scheme:dark!important}
         <div class="pool-ttl">
           <label class="field-inline" for="ruleStateTTL">State 有效期<input id="ruleStateTTL" type="number" inputmode="numeric" min="5" max="7200" step="5" value="200" autocomplete="off" disabled><span class="field-unit">秒</span></label>
           <span class="muted">按凭证维护，改完离开输入框即保存。超过这个时长的 state 标记为过期，仍会注入，探针也会去换新的。任何 state 注入后上游还是降智，就立刻把它从池里清掉。留空按 200 秒。</span>
+          <button class="quiet" type="button" id="credentialCookieOpen" aria-haspopup="dialog" disabled>凭证级 Cookie</button>
         </div>
         <div id="turnStateBody" class="state-pool"></div>
       </div>
     </section>
 
     <section class="panel" id="probePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-refresh"/></svg><div class="panel-title"><h2>自动 State 探针</h2><div class="panel-caption">按时补池，而不是等降智了才反应<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="探针的说明">!</button><span class="hint-text"><span class="hint-k">做什么</span><span class="hint-v">按间隔检查探针模型，池里没有 state 或已过期的就补发一次最小 <code>hi</code> 请求（思考强度 <code>low</code>）。拿到的 state 连同会话自动入池；打开下面的「多重判断降智」后，要先通过一次复核才入池。</span><span class="hint-k">何时不跑</span><span class="hint-v">开关关着、不在生效时段、或者距离上一次<b>真实请求</b>超过下面的活跃判定时间 —— 账号没人用就不该继续烧额度。探针自己的请求不算「真实请求」。</span><span class="hint-p">与「拦截后重试」互斥，两者都在给同一个池补货。每次探针都是一次计费的真实调用。</span></span></span></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-refresh"/></svg><div class="panel-title"><h2>自动 State 探针</h2><div class="panel-caption">按时补池，而不是等降智了才反应<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="探针的说明">!</button><span class="hint-text"><span class="hint-k">做什么</span><span class="hint-v">按间隔检查探针模型，池里没有 state 或已过期的就补发一次最小 <code>hi</code> 请求（思考强度 <code>low</code>，<b>不带 Cookie</b>，出口回给它的 state 和 Set-Cookie 就是一对）。拿到的 state 连同会话自动入池；打开下面的「多重判断降智」后，要先通过一次复核才入池。</span><span class="hint-k">何时不跑</span><span class="hint-v">开关关着、不在生效时段、或者距离上一次<b>真实请求</b>超过下面的活跃判定时间 —— 账号没人用就不该继续烧额度。探针自己的请求不算「真实请求」。</span><span class="hint-p">与「拦截后重试」互斥，两者都在给同一个池补货。每次探针都是一次计费的真实调用。</span></span></span></div></div>
         <div class="spacer"></div>
         <label class="switch panel-switch"><input type="checkbox" id="probeEnabled"><span>启用自动探针</span></label>
       </div>
@@ -2462,7 +2463,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
         </div>
 
         <div class="probe-side" style="flex-basis:100%">
-          <label class="switch"><input type="checkbox" id="probeVerify" disabled><span>多重判断降智<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="多重判断降智的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">探针拿到 state 后，再发一次同样的最小请求：<b>带上这条 state、不带 Cookie</b>。复核响应里<b>没有</b>新 state，说明这条 state 撑住了，才入池；回写了新 state 判为降智，复核请求失败算没判定，都不入池。和正常请求的判定是同一条规则。</span><span class="hint-k">关掉</span><span class="hint-v">探针拿到什么就入池，不做判定。</span><span class="hint-p">每次探针多一次上游调用，也多计一次额度。默认关闭。</span></span></span></span></label>
+          <label class="switch"><input type="checkbox" id="probeVerify" disabled><span>多重判断降智<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="多重判断降智的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">探针拿到 state 后，再发一次同样的最小请求：<b>带上这条 state 和同一响应下发的 Cookie</b>，从同一个出口发出。复核响应里<b>没有</b>新 state，说明这条 state 撑住了，才入池；回写了新 state 判为降智，复核请求失败算没判定，都不入池。和正常请求的判定是同一条规则。</span><span class="hint-k">关掉</span><span class="hint-v">探针拿到什么就入池，不做判定。</span><span class="hint-p">每次探针多一次上游调用，也多计一次额度。默认关闭。</span></span></span></span></label>
         </div>
 
         <label class="field-inline" for="probeInterval">间隔<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="间隔的说明">!</button><span class="hint-text"><span class="hint-v">从<b>上一轮结束</b>算起等这么久再跑下一轮，所以相邻两次上游调用的间距就是这个值。</span><span class="hint-p">一轮跑得比间隔久时，下一次自然被跳过；池里都新鲜时任务立刻结束，只花一次查表。没有上限，下限 1 秒。</span></span></span><input id="probeInterval" type="number" inputmode="numeric" min="1" step="1" value="30" autocomplete="off" disabled><span class="field-unit">秒</span></label>
@@ -2488,15 +2489,6 @@ html[data-theme="dark"]{color-scheme:dark!important}
           <div class="probe-copy">
             <button class="quiet" type="button" id="copyRetryToProbe" disabled>← 从重试代理池复制</button>
             <button class="quiet" type="button" id="copyProbeToRetry" disabled>复制到重试代理池 →</button>
-          </div>
-        </div>
-
-        <div class="field" style="flex-basis:100%" id="probeCookieField" hidden>
-          <label id="probeCookieLabel">Cookie 来源（配了代理就必须选，没有默认值）</label>
-          <div class="probe-modes" role="radiogroup" aria-labelledby="probeCookieLabel">
-            <label class="probe-mode"><input type="radio" name="probeCookieMode" value="credential" disabled><span>凭证级</span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="凭证级的说明">!</button><span class="hint-text"><span class="hint-v">用<b>真实请求</b>留下的那份 cookie，探针不自己维护。</span><span class="hint-p">代理出口和真实出口不是同一个 IP 时，这份 cookie 绑的是另一个 IP，带出去可能反而更可疑。没配代理时它是唯一说得通的选择。</span></span></span></label>
-            <label class="probe-mode"><input type="radio" name="probeCookieMode" value="static_proxy" disabled><span>静态代理</span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="静态代理的说明">!</button><span class="hint-text"><span class="hint-v">每个代理各自一个 cookie 罐，由经过它的探针响应维护。</span><span class="hint-p">前提是这条代理的出口 IP 稳定：罐里的 <code>__cf_bm</code> 是按 IP 发的，出口一变就作废。</span></span></span></label>
-            <label class="probe-mode"><input type="radio" name="probeCookieMode" value="rotating_proxy" disabled><span>动态代理池</span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="动态代理池的说明">!</button><span class="hint-text"><span class="hint-v">不存 cookie。每次在<b>同一条连接</b>上先取一次再用，所以<b>请求数翻倍</b>。</span><span class="hint-p">出口每次都变时只有这个是对的：拿到的 cookie 和接下来那一次请求走的是同一个出口。</span></span></span></label>
           </div>
         </div>
 
@@ -4043,6 +4035,46 @@ async function showPoolState(item) {
     }
   }
 }
+// The credential-level jar: the cookie this credential's live traffic
+// presented, updated by what its responses set. Probes no longer use it; it is
+// shown so the session the account is actually running on can be inspected.
+async function showCredentialCookie() {
+  if (!store.selected) return;
+  const epoch = store.selectionEpoch;
+  store.selectedRecord = "";
+  store.selectedState = "";
+  openDrawer("凭证级 Cookie", '<div class="history-detail-shell"><div class="muted">读取中…</div></div>');
+  try {
+    const payload = await api(`/session?auth_index=${encodeURIComponent(store.selected)}`);
+    if (epoch !== store.selectionEpoch) return;
+    const when = (iso) => {
+      if (!iso) return '<span class="muted">未记录</span>';
+      const at = new Date(iso);
+      return `${esc(at.toLocaleString())}<span class="muted"> · ${esc(formatAge(Math.max(0, Math.round((Date.now() - at) / 1000))))}</span>`;
+    };
+    const cookies = payload.found ? parseRequestCookies({ Cookie: [payload.cookie] }) : [];
+    $("drawerBody").innerHTML = `<div class="history-detail-shell">
+      <div class="history-detail-section">
+        <div class="history-detail-label"><span>凭证级 Cookie</span><span class="muted">由这个凭证的真实请求维护</span></div>
+        <dl class="ts-grid">
+          <dt>最近更新</dt><dd>${when(payload.refreshed_at)}</dd>
+          <dt>最近真实请求</dt><dd>${when(payload.last_live_at)}</dd>
+        </dl>
+      </div>
+      ${payload.found ? `<div class="history-detail-section">
+        <div class="history-detail-label"><span>解析</span><span class="muted">结构解析 · 长度、声明与属性</span></div>
+        ${cookieCard("凭证级会话", cookies, "")}
+      </div>
+      <div class="history-detail-section">
+        <div class="history-detail-label"><span>原值</span></div>
+        <div class="pool-state-value mono">${esc(payload.cookie)}</div>
+      </div>` : '<div class="history-detail-section"><div class="empty">这个凭证还没有记录到 Cookie：真实请求没有带 Cookie，响应也没有下发</div></div>'}
+    </div>`;
+  } catch (error) {
+    if (epoch === store.selectionEpoch) $("drawerBody").innerHTML = `<div class="empty">${esc(error.message || String(error))}</div>`;
+  }
+}
+$("credentialCookieOpen")?.addEventListener("click", showCredentialCookie);
 const COOKIE_MODES = {
   credential: "凭证级 cookie",
   static_proxy: "静态代理 cookie 罐",
@@ -4062,13 +4094,15 @@ function probeDetail(record) {
     : '<span class="muted">响应里没有 Cf-Ray</span>'}</dd>`);
   if (record.probe_exit_ip) {
     rows.push(`<dt>出口 IP</dt><dd class="mono">${esc(record.probe_exit_ip)}</dd>`);
-  } else if (record.probe_cookie_mode === "rotating_proxy") {
-    rows.push('<dt>出口 IP</dt><dd><span class="muted">动态代理池下取不到真实值</span></dd>');
   }
-  rows.push(`<dt>Cookie 来源</dt><dd>${esc(COOKIE_MODES[record.probe_cookie_mode] || "未记录")}</dd>`);
-  rows.push(`<dt>预热请求</dt><dd>${record.probe_primed
-    ? '有<span class="muted"> · 多一次上游调用</span>'
-    : '<span class="muted">无</span>'}</dd>`);
+  if (record.probe_cookie_mode) {
+    // Written before probes stopped carrying a cookie.
+    rows.push(`<dt>Cookie 来源</dt><dd>${esc(COOKIE_MODES[record.probe_cookie_mode] || record.probe_cookie_mode)}<span class="muted"> · 旧版</span></dd>`);
+    if (record.probe_primed) rows.push('<dt>预热请求</dt><dd>有<span class="muted"> · 旧版</span></dd>');
+  } else {
+    const issued = parseSetCookies(record.response_headers).length;
+    rows.push(`<dt>Cookie</dt><dd>不带 Cookie 发出<span class="muted"> · 上游下发 ${issued} 个，${issued ? "和 state 一起入池" : "入池时没有会话"}</span></dd>`);
+  }
   if (record.probe_verified) {
     const minted = record.turn_state_minted || {};
     const outcome = record.probe_verify_error
@@ -5139,6 +5173,7 @@ function syncPoolControls() {
   renderStatusLights();
   const ready = !!store.rule && store.rule.auth_index === store.selected;
   $("poolMaintain").disabled = !ready;
+  if ($("credentialCookieOpen")) $("credentialCookieOpen").disabled = !store.selected;
   // A frozen pool cannot inject, so the injection switch waits for it.
   const frozen = !$("poolMaintain").checked;
   for (const id of ["poolInject", "poolCookie"]) {
@@ -5221,7 +5256,6 @@ const probeModelList = () => [...chipValues.probeModels];
 const probeProxyList = () => [...chipValues.probeProxies];
 const probeInterval = () => Math.max(1, Math.round(Number($("probeInterval")?.value) || 30));
 const probeCookieTTL = () => Math.max(1, Math.round(Number($("probeCookieTTL")?.value) || 1800));
-const probeCookieMode = () => document.querySelector('input[name="probeCookieMode"]:checked')?.value || "";
 
 // Browser time in, UTC minutes out. The reference date is today, so a window
 // written during one offset keeps meaning the same wall-clock hours.
@@ -5254,7 +5288,6 @@ function collectProbe() {
     probe_models: probeModelList(),
     probe_proxies: probeProxyList(),
     probe_proxy_enabled: !!$("probeProxyOn")?.checked,
-    probe_cookie_mode: probeCookieMode(),
     probe_cookie_ttl_seconds: probeCookieTTL(),
     probe_interval_seconds: probeInterval(),
     probe_window_start_minute: window.start,
@@ -5278,9 +5311,6 @@ function fillProbeForm(rule) {
   setChips("probeModels", rule.probe_models);
   setChips("probeProxies", rule.probe_proxies);
   $("probeProxyOn").checked = !!rule.probe_proxy_enabled;
-  for (const radio of document.querySelectorAll('input[name="probeCookieMode"]')) {
-    radio.checked = radio.value === rule.probe_cookie_mode;
-  }
   syncProbeControls();
 }
 
@@ -5289,12 +5319,10 @@ function fillProbeForm(rule) {
 function probeRateText() {
   const models = probeModelList().length;
   if (!models) return "";
-  const primed = probeCookieMode() === "rotating_proxy";
   const verified = !!$("probeVerify")?.checked;
-  const perRound = 1 + (primed ? 1 : 0) + (verified ? 1 : 0);
+  const perRound = verified ? 2 : 1;
   const perHour = Math.round((3600 / probeInterval()) * models * perRound);
-  const extras = [primed ? "预热请求" : "", verified ? "复核请求" : ""].filter(Boolean);
-  const note = extras.length ? `（含${extras.join("、")}）` : "";
+  const note = verified ? "（含复核请求）" : "";
   return `按当前配置最多约 ${perHour.toLocaleString()} 次/小时${note}`;
 }
 
@@ -5328,16 +5356,7 @@ function syncProbeControls() {
   for (const id of ["copyRetryToProbe", "copyProbeToRetry"]) {
     if ($(id)) $(id).disabled = !editable;
   }
-  // With no proxy the egress is the host's own, so there is one coherent jar
-  // and nothing to ask. With proxies there is no safe default.
-  const proxied = viaProxy && probeProxyList().length > 0;
-  $("probeCookieField").hidden = !proxied;
-  for (const radio of document.querySelectorAll('input[name="probeCookieMode"]')) radio.disabled = !editable;
-  const rotating = probeCookieMode() === "rotating_proxy";
-  if ($("probeResolveIP")) {
-    $("probeResolveIP").disabled = !editable || rotating;
-    $("probeResolveIP").parentElement.title = rotating ? "动态代理池下取不到真实出口，留空" : "";
-  }
+  if ($("probeResolveIP")) $("probeResolveIP").disabled = !editable;
   const window = probeWindowMinutes();
   $("probeWindowHint").textContent = window.start === window.end
     ? "全天生效"
@@ -5470,9 +5489,6 @@ $("probeWindowClear")?.addEventListener("click", () => {
   syncProbeControls();
   saveProbeSettings(() => {});
 });
-for (const radio of document.querySelectorAll('input[name="probeCookieMode"]')) {
-  radio.addEventListener("change", () => { syncProbeControls(); saveProbeSettings(() => {}); });
-}
 // The two proxy pools are usually the same machines; copying replaces rather
 // than merges, because a pool is a set of exits, not an accumulation.
 $("copyRetryToProbe")?.addEventListener("click", () => {

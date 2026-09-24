@@ -30,6 +30,7 @@ const (
 	apiTurnStatesPath      = "/codex-header-rewrite/turn-states"
 	apiTurnStatePoolPath   = "/codex-header-rewrite/turn-state/pool"
 	apiQuotaPath           = "/codex-header-rewrite/quota"
+	apiSessionPath         = "/codex-header-rewrite/session"
 )
 
 type credentialView struct {
@@ -60,6 +61,7 @@ func registerManagement() managementRegistration {
 		{Method: http.MethodGet, Path: apiTurnStatesPath, Description: "List the newest turn state per credential and model"},
 		{Method: http.MethodPost, Path: apiTurnStatePoolPath, Description: "Pool the turn state a recorded live response returned"},
 		{Method: http.MethodGet, Path: apiQuotaPath, Description: "The credential's allowance as the upstream last reported it"},
+		{Method: http.MethodGet, Path: apiSessionPath, Description: "The credential-level cookie jar the live traffic fills"},
 	}, Resources: []resourceRoute{{Path: resourceIndexPath, Menu: pluginName, Description: "Codex credential header rewrite and history"}}}
 }
 
@@ -262,6 +264,32 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"cleared": strings.TrimSpace(body.AuthIndex)}), nil
+	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiSessionPath):
+		// The credential-level jar: the cookie the live traffic presented,
+		// updated by what its responses set. Cookies are recorded in plain text
+		// by design, so the panel may show the value.
+		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
+		if authIndex == "" {
+			return jsonError(http.StatusBadRequest, "auth_index is required"), nil
+		}
+		state.mu.Lock()
+		store := state.store
+		state.mu.Unlock()
+		if store == nil {
+			return jsonError(http.StatusServiceUnavailable, "persistence is not initialized"), nil
+		}
+		session, found, err := store.Session(authIndex, "")
+		if err != nil {
+			return jsonError(http.StatusInternalServerError, err.Error()), nil
+		}
+		payload := map[string]any{"auth_index": authIndex, "found": found && session.Cookie != "", "cookie": session.Cookie}
+		if !session.RefreshAt.IsZero() {
+			payload["refreshed_at"] = session.RefreshAt
+		}
+		if !session.LastLiveAt.IsZero() {
+			payload["last_live_at"] = session.LastLiveAt
+		}
+		return jsonResponse(http.StatusOK, payload), nil
 	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiQuotaPath):
 		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
 		if authIndex == "" {

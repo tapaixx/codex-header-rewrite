@@ -117,7 +117,6 @@ func validateRule(rule headerRule) (headerRule, error) {
 		return rule, err
 	}
 	rule.ProbeProxies = probeProxies
-	rule.ProbeCookieMode = strings.TrimSpace(rule.ProbeCookieMode)
 	for name, minute := range map[string]int{
 		"probe_window_start_minute": rule.ProbeWindowStartMinute,
 		"probe_window_end_minute":   rule.ProbeWindowEndMinute,
@@ -125,10 +124,6 @@ func validateRule(rule headerRule) (headerRule, error) {
 		if minute < 0 || minute >= minutesPerDay {
 			return rule, fmt.Errorf("%s must be between 0 and %d", name, minutesPerDay-1)
 		}
-	}
-	if rule.ProbeCookieMode != "" && !validProbeCookieMode(rule.ProbeCookieMode) {
-		return rule, fmt.Errorf("probe_cookie_mode must be one of %s, %s, %s",
-			probeCookieCredential, probeCookieStaticProxy, probeCookieRotatingProxy)
 	}
 	// A frozen pool has nothing for the retry or the probe to fill: both are
 	// switched off with it, so the stored rule says what actually runs.
@@ -150,16 +145,6 @@ func validateRule(rule headerRule) (headerRule, error) {
 		}
 		if rule.ProbeIntervalSeconds < minProbeIntervalSec {
 			return rule, fmt.Errorf("probe_interval_seconds must be at least %d", minProbeIntervalSec)
-		}
-		// With no proxy the egress is the host's own, so the jar the live
-		// traffic fills is the only coherent choice and is not worth asking
-		// about. With proxies there is no safe default: each mode is correct
-		// for a different kind of egress and the wrong one sends a cookie
-		// bound to one address out through another.
-		if len(rule.probeProxyPool()) == 0 {
-			rule.ProbeCookieMode = probeCookieCredential
-		} else if rule.ProbeCookieMode == "" {
-			return rule, fmt.Errorf("probe_cookie_mode must be chosen once the probe proxy list is switched on")
 		}
 	}
 	return rule, nil

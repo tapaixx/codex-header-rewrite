@@ -76,7 +76,6 @@ const rules = {
     probe_enabled: true, probe_verify: true,
     probe_models: ['gpt-6-astra', 'gpt-5.6-luna'],
     probe_proxies: ['socks5://user:secret@127.0.0.1:1080'],
-    probe_cookie_mode: 'rotating_proxy',
     probe_cookie_ttl_seconds: 1800,
     probe_interval_seconds: 30,
     probe_window_start_minute: 60,
@@ -170,34 +169,37 @@ const probeRow = (over) => ({
   attempt: 1, source_format: 'plugin_probe', stream: true, origin: 'probe',
   model: 'gpt-6-astra', requested_model: 'gpt-6-astra', upstream_model: 'gpt-6-astra', model_mismatch: false,
   request_effort: 'low', upstream_effort: 'low', status_code: 200, outcome: 'succeeded',
-  probe_cookie_mode: 'rotating_proxy', probe_exit_region: 'IAD',
-  before_headers: { 'Authorization': ['Bearer [REDACTED]'], 'Content-Type': ['application/json'], 'Originator': ['codex-cli'], 'Cookie': ['__cf_bm=for-this-exit'] },
-  after_headers: { 'Authorization': ['Bearer [REDACTED]'], 'Content-Type': ['application/json'], 'Originator': ['codex-cli'], 'Cookie': ['__cf_bm=for-this-exit'] },
-  response_headers: { 'X-Codex-Turn-State': [teamState], 'Cf-Ray': ['a3e22f4439f2dddf-IAD'], 'X-Codex-Primary-Used-Percent': ['47'] },
+  probe_exit_region: 'IAD',
+  // Probes go out with no cookie; the session is what the response sets.
+  before_headers: { 'Authorization': ['Bearer [REDACTED]'], 'Content-Type': ['application/json'], 'Originator': ['codex-cli'] },
+  after_headers: { 'Authorization': ['Bearer [REDACTED]'], 'Content-Type': ['application/json'], 'Originator': ['codex-cli'] },
+  response_headers: { 'X-Codex-Turn-State': [teamState], 'Cf-Ray': ['a3e22f4439f2dddf-IAD'], 'X-Codex-Primary-Used-Percent': ['47'],
+    'Set-Cookie': [`__oailb=${oailb}; Path=/; Secure; HttpOnly`, `__cf_bm=for-this-exit; path=/; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None`] },
   ...over,
 });
 const probes = [
   probeRow({ id: 'probe-1#1', request_id: 'probe-1', started_at: at(12), completed_at: at(10),
-    probe_egress: 'socks5://127.0.0.1:1080', probe_primed: true, probe_verified: true, probe_verify_status: 200,
+    probe_egress: 'socks5://127.0.0.1:1080', probe_verified: true, probe_verify_status: 200,
     // Multi-check: the second request carried this state and drew none back.
     turn_state_minted: { digest: 'c91a0e77bb42', chars: 332, bytes: 249, version: 128, issued_at: at(11), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'verify', non_degraded: true, pooled: true } }),
   // The check request itself failed, so there is no verdict and no pooling.
   probeRow({ id: 'probe-1b#1', request_id: 'probe-1b', started_at: at(48), completed_at: at(33),
-    probe_egress: 'socks5://127.0.0.1:1080', probe_primed: false, probe_verified: true, probe_verify_status: 502,
+    probe_egress: 'socks5://127.0.0.1:1080', probe_verified: true, probe_verify_status: 502,
     probe_verify_error: 'verification returned HTTP 502',
     turn_state_minted: { digest: '88be41d0c7a2', chars: 332, bytes: 249, version: 128, issued_at: at(34), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'verify', pooled: false } }),
   probeRow({ id: 'probe-2#1', request_id: 'probe-2', started_at: at(75), completed_at: at(73),
     model: 'gpt-5.6-luna', requested_model: 'gpt-5.6-luna', upstream_model: 'gpt-5.6-luna',
-    probe_egress: '', probe_primed: false, probe_cookie_mode: 'credential', probe_exit_region: 'LHR',
+    probe_egress: '', probe_exit_region: 'LHR',
     turn_state_minted: { digest: '2f80ab19cc63', chars: 356, bytes: 265, version: 128, issued_at: at(74), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'verify', non_degraded: false, pooled: false },
     probe_verified: true, probe_verify_status: 200 }),
   probeRow({ id: 'probe-3#1', request_id: 'probe-3', started_at: at(140), completed_at: at(139),
-    probe_egress: 'socks5://127.0.0.1:1080', probe_primed: true, outcome: 'failed', status_code: 429,
+    // Written before probes stopped carrying a cookie.
+    probe_egress: 'socks5://127.0.0.1:1080', probe_cookie_mode: 'rotating_proxy', probe_primed: true, outcome: 'failed', status_code: 429,
     upstream_model: '', model_mismatch: null, probe_exit_region: '',
     error: 'probe returned HTTP 429' }),
 ];
 
-const fixtures = { credentials, rules, items, bodies, turnStates, teamState, probes };
+const fixtures = { credentials, rules, items, bodies, turnStates, teamState, probes, oailb, cfbm };
 
 const stub = `
 <script>
@@ -273,6 +275,12 @@ const stub = `
     if (path.endsWith("/history")) {
       const items = authIndex === "acct-a" ? F.items : [];
       return json({ auth_index: authIndex, page: 1, page_size: 10, total: items.length, total_pages: 1, items });
+    }
+    if (path.endsWith("/session")) {
+      return json(authIndex === "acct-a"
+        ? { auth_index: authIndex, found: true, cookie: "__oailb=" + F.oailb + "; __cf_bm=" + F.cfbm + "; oai-did=demo-device",
+            refreshed_at: new Date(Date.now() - 42000).toISOString(), last_live_at: new Date(Date.now() - 42000).toISOString() }
+        : { auth_index: authIndex, found: false, cookie: "" });
     }
     if (path.endsWith("/quota")) {
       return json({ auth_index: authIndex, refreshed: q.get("refresh") === "1", quota: authIndex === "acct-a" ? {

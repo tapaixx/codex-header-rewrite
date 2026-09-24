@@ -22,15 +22,14 @@ import (
 //     live request must have happened within the configured window. Probe
 //     requests deliberately do not refresh that clock; if they did, the probe
 //     would keep itself alive.
-//   - it chooses its own egress, which means it must also choose which cookie
-//     jar to present. A Cloudflare bot token is bound to the address that
-//     obtained it, so presenting one address's token from another is worse
-//     than presenting none. probeCookieMode names which of the three coherent
-//     answers applies to this deployment.
+//   - it chooses its own egress, and it goes out with no cookie at all. A
+//     Cloudflare token is bound to the address that obtained it, so the only
+//     cookie that belongs to this exit is the one this exit is handed: the
+//     probe takes the state and the Set-Cookie of its own response, and that
+//     pair -- checked together when multi-check is on -- is what it pools.
 //
-// One task per credential, and within a task the models run in sequence: they
-// share one cookie jar, and parallel requests would race to decide which
-// response's Set-Cookie wins.
+// One task per credential, and within a task the models run in sequence, so
+// the probe never has two requests in flight for one credential.
 
 // probeScanInterval is how often the scheduler looks for work, not how often a
 // probe runs -- each credential carries its own due time. Scanning finely
@@ -200,7 +199,7 @@ func runProbeTask(authIndex string, stop <-chan struct{}) {
 		next = nextProbeWindowOpen(rule, now)
 		return
 	}
-	session, live := probeCredentialLiveness(authIndex, rule)
+	_, live := probeCredentialLiveness(authIndex, rule)
 	if !live {
 		next = time.Now().Add(interval)
 		return
@@ -227,7 +226,7 @@ func runProbeTask(authIndex string, stop <-chan struct{}) {
 		default:
 		}
 		modelCtx, cancelModel := context.WithTimeout(ctx, probeRequestTimeout)
-		probeModel(modelCtx, authIndex, model, rule, session)
+		probeModel(modelCtx, authIndex, model, rule)
 		cancelModel()
 	}
 }
@@ -349,23 +348,11 @@ func probeEgress(rule headerRule) string {
 	return pool[rand.IntN(len(pool))]
 }
 
-func probeCookieModeFor(rule headerRule) string {
-	if len(rule.probeProxyPool()) == 0 {
-		return probeCookieCredential
-	}
-	if validProbeCookieMode(rule.ProbeCookieMode) {
-		return rule.ProbeCookieMode
-	}
-	return probeCookieCredential
-}
-
 // probeAttempt is what one model's probe did, kept together so the history row
 // and the pooling decision read the same facts.
 type probeAttempt struct {
 	model    string
 	egress   string
-	cookie   string
-	primed   bool
 	started  time.Time
 	sent     http.Header
 	received http.Header
@@ -392,12 +379,11 @@ type probeAttempt struct {
 }
 
 // probeModel runs one model's probe: at most two requests over one transport,
-// so that a rotating pool cannot change address between priming a cookie and
-// using it. A SOCKS5 tunnel is one connection to one exit, so reuse is what
-// makes the pair mean anything.
-func probeModel(ctx context.Context, authIndex, model string, rule headerRule, session credentialSession) {
+// so the multi-check leaves from the same exit that was handed the state and
+// cookie it presents. A SOCKS5 tunnel is one connection to one exit, so reuse
+// is what makes the pair mean anything.
+func probeModel(ctx context.Context, authIndex, model string, rule headerRule) {
 	attempt := probeAttempt{model: model, egress: probeEgress(rule), started: time.Now().UTC()}
-	mode := probeCookieModeFor(rule)
 
 	if !retryIdentityMatches(authIndex, credentialAuthID(authIndex)) {
 		attempt.err = "credential identity changed or unavailable"
@@ -426,22 +412,15 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 	}
 	defer transport.CloseIdleConnections()
 
-	cookie, primed, err := probeCookieFor(ctx, transport, authIndex, attempt.egress, mode, session, material)
-	if err != nil {
-		attempt.err = err.Error()
-		attempt.primed = primed
-		recordProbe(authIndex, rule, attempt)
-		return
-	}
-	attempt.cookie, attempt.primed = cookie, primed
-
 	body, marshalErr := probeRequestBody(model)
 	if marshalErr != nil {
 		attempt.err = marshalErr.Error()
 		recordProbe(authIndex, rule, attempt)
 		return
 	}
-	headers := retryHeaders(material, cookie)
+	// No cookie: whatever this exit is handed back is the session that goes
+	// with the state, and nothing stored could be bound to this address.
+	headers := retryHeaders(material, "")
 	response, callErr := probeHTTPDoFunc(ctx, transport, hostHTTPRequest{
 		Method: http.MethodPost, URL: defaultTestURL, Headers: headers, Body: body,
 	}, attempt.egress != "")
@@ -469,10 +448,9 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 		return
 	}
 
-	// The session this response leaves behind belongs to the egress it came
-	// back through, and nowhere else.
-	rememberSession(authIndex, attempt.egress, mode, applySetCookies(cookie, response.Headers))
 	noteQuota(authIndex, response.Headers)
+	// The session is what this exit was just handed, and nothing else.
+	session := applySetCookies("", response.Headers)
 
 	attempt.blob = headerTurnState(response.Headers)
 	if attempt.blob == "" {
@@ -482,96 +460,17 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 	}
 	verdict := judgeDegraded(attempt.blob, plan)
 	if rule.ProbeVerify {
-		verdict = verifyProbeState(ctx, transport, authIndex, model, material, &attempt)
+		verdict, session = verifyProbeState(ctx, transport, authIndex, model, material, session, &attempt)
 	}
 	state.mu.Lock()
 	info := classifyTurnStateWith(decodeTurnState(attempt.blob), plan, verdict)
 	if verdict.Eligible {
 		// The state and the session that produced it enter the pool together.
-		info.Pooled = noteTurnStateMintLocked(attempt.blob, authIndex, credentialLabelLocked(authIndex), model, plan,
-			applySetCookies(cookie, response.Headers))
+		info.Pooled = noteTurnStateMintLocked(attempt.blob, authIndex, credentialLabelLocked(authIndex), model, plan, session)
 	}
 	state.mu.Unlock()
 	attempt.info, attempt.pooled = info, info.Pooled
 	recordProbe(authIndex, rule, attempt)
-}
-
-// probeCookieFor answers which cookie this request presents. The three modes
-// are not preferences: each is the only correct answer for a different kind of
-// egress.
-func probeCookieFor(ctx context.Context, transport *http.Transport, authIndex, egress, mode string, session credentialSession, material testAuthMaterial) (string, bool, error) {
-	switch mode {
-	case probeCookieStaticProxy:
-		// A stable proxy keeps its own jar, filled by the probes that went
-		// through it. Empty until the first response comes back.
-		stored, found, err := loadSession(authIndex, egress)
-		if err != nil || !found {
-			return "", false, nil
-		}
-		return stored.Cookie, false, nil
-	case probeCookieRotatingProxy:
-		// Nothing stored could be this connection's address, so the cookie is
-		// obtained on this connection and used on it. The priming response's
-		// state is discarded: a state fetched without a cookie is not the
-		// state this probe is for.
-		cookie, primed, err := primeCookie(ctx, transport, egress, material)
-		return cookie, primed, err
-	default:
-		// The jar the live traffic fills. Correct when the probe leaves the
-		// same way live traffic does.
-		return session.Cookie, false, nil
-	}
-}
-
-// primeCookie spends one request to obtain a cookie for this connection's
-// exit. Its response is read only for Set-Cookie.
-func primeCookie(ctx context.Context, transport *http.Transport, egress string, material testAuthMaterial) (string, bool, error) {
-	body, err := probeRequestBody(probeWarmupModel)
-	if err != nil {
-		return "", true, err
-	}
-	response, callErr := probeHTTPDoFunc(ctx, transport, hostHTTPRequest{
-		Method: http.MethodPost, URL: defaultTestURL, Headers: retryHeaders(material, ""), Body: body,
-	}, egress != "")
-	if callErr != nil {
-		return "", true, callErr
-	}
-	return applySetCookies("", response.Headers), true, nil
-}
-
-// rememberSession writes a jar, and only the jar belonging to the egress the
-// response came back through. A probe that went out through a proxy must never
-// touch the credential jar that live traffic fills, and never touches
-// LastLiveAt at all.
-func rememberSession(authIndex, egress, mode, cookie string) {
-	if cookie == "" || mode == probeCookieRotatingProxy {
-		return
-	}
-	if mode == probeCookieCredential && egress != "" {
-		// The response came back through a proxy; its cookie is bound to that
-		// address and would poison the direct jar.
-		return
-	}
-	state.mu.Lock()
-	store := state.store
-	state.mu.Unlock()
-	if store == nil {
-		return
-	}
-	existing, _, _ := store.Session(authIndex, egress)
-	existing.AuthIndex, existing.Egress = authIndex, egress
-	existing.Cookie, existing.RefreshAt = cookie, time.Now().UTC()
-	_ = store.SaveSession(existing)
-}
-
-func loadSession(authIndex, egress string) (credentialSession, bool, error) {
-	state.mu.Lock()
-	store := state.store
-	state.mu.Unlock()
-	if store == nil {
-		return credentialSession{}, false, nil
-	}
-	return store.Session(authIndex, egress)
 }
 
 func credentialAuthID(authIndex string) string {
@@ -587,10 +486,6 @@ func credentialLabelLocked(authIndex string) string {
 	}
 	return cred.Name
 }
-
-// probeWarmupModel is what the priming request asks for. It only exists to
-// collect a Set-Cookie, so it asks for the cheapest thing it can.
-const probeWarmupModel = "gpt-5.6-luna"
 
 func probeRequestBody(model string) ([]byte, error) {
 	return json.Marshal(retryPayload(model))
@@ -637,9 +532,8 @@ func recordProbe(authIndex string, rule headerRule, attempt probeAttempt) {
 		BeforeHeaders: attempt.sent, AfterHeaders: attempt.sent, ResponseHeaders: attempt.received,
 		RequestBody: attempt.request, RequestBytes: attempt.reqBytes,
 		ResponseBody: attempt.response, ResponseBytes: attempt.resBytes,
-		ProbeEgress: attempt.egress, ProbePrimed: attempt.primed,
+		ProbeEgress:   attempt.egress,
 		ProbeVerified: attempt.verified, ProbeVerifyStatus: attempt.verifyStatus, ProbeVerifyError: attempt.verifyErr,
-		ProbeCookieMode: probeCookieModeFor(rule),
 		ProbeExitRegion: cloudflareRegion(attempt.received),
 		UpstreamModel:   attempt.upstreamModel, UpstreamEffort: attempt.upstreamEffort,
 		ModelConflict: attempt.modelConflict, RequestEffort: attempt.requestEffort,
@@ -692,15 +586,16 @@ func rememberLiveSessionLocked(attempt *pendingAttempt, session string) {
 
 // verifyProbeState is the multi-check. The same minimal request goes out again
 // over the same connection, now carrying the state the probe just obtained and
-// no cookie -- the state alone is under test, not the session that minted it.
-// The answer is read with the live rule: a state that held draws no new one.
-func verifyProbeState(ctx context.Context, transport *http.Transport, authIndex, model string, material testAuthMaterial, attempt *probeAttempt) degradedVerdict {
+// the cookie that same response set -- the pair this exit was handed, tested
+// together. The answer is read with the live rule: a state that held draws no
+// new one. The session comes back updated by whatever the check response set.
+func verifyProbeState(ctx context.Context, transport *http.Transport, authIndex, model string, material testAuthMaterial, cookie string, attempt *probeAttempt) (degradedVerdict, string) {
 	body, err := probeRequestBody(model)
 	if err != nil {
 		attempt.verifyErr = err.Error()
-		return judgeProbeVerification(false, true)
+		return judgeProbeVerification(false, true), cookie
 	}
-	headers := retryHeaders(material, "")
+	headers := retryHeaders(material, cookie)
 	headers.Set(turnStateHeader, attempt.blob)
 	attempt.verified = true
 	response, callErr := probeHTTPDoFunc(ctx, transport, hostHTTPRequest{
@@ -714,8 +609,8 @@ func verifyProbeState(ctx context.Context, transport *http.Transport, authIndex,
 		attempt.verifyErr = fmt.Sprintf("verification returned HTTP %d", response.StatusCode)
 	}
 	if attempt.verifyErr != "" {
-		return judgeProbeVerification(false, true)
+		return judgeProbeVerification(false, true), cookie
 	}
 	noteQuota(authIndex, response.Headers)
-	return judgeProbeVerification(headerTurnState(response.Headers) != "", false)
+	return judgeProbeVerification(headerTurnState(response.Headers) != "", false), applySetCookies(cookie, response.Headers)
 }

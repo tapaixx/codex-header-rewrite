@@ -60,6 +60,12 @@ try {
     await page.waitForSelector('.history-summary');
     assert.equal(await page.locator('.history-summary').count(), 6, label);
     assert.equal(await page.locator('.pool-row').count(), 2, label);
+    // The credential-level jar opens in the drawer: raw value plus the parsed card.
+    await page.locator('#credentialCookieOpen').click();
+    await page.waitForFunction(() => document.getElementById('drawerTitle').textContent === '凭证级 Cookie' && !document.getElementById('drawerBody').textContent.includes('读取中'));
+    const jar = (await page.locator('#drawerBody').textContent()).replace(/\s+/g,' ');
+    assert.ok(jar.includes('路由目标') && jar.includes('gw-iad-7.internal') && jar.includes('原值') && jar.includes('oai-did=demo-device'), `${label}: ${jar.slice(0,200)}`);
+    await page.locator('#drawerClose').click();
     // The history list names the backend each request's session was pinned to.
     const historyHeads = await page.locator('#historyPanel thead th').allTextContents();
     assert.ok(historyHeads.includes('路由目标'), `${label}: ${historyHeads}`);

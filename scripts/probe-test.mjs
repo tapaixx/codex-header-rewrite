@@ -80,12 +80,11 @@ try {
   await page.evaluate(()=>document.querySelector('#probeEnabled').click());
   await new Promise(r=>setTimeout(r,300));
 
-  // The cookie question only exists once an exit does.
-  assert.equal(await page.locator('#probeCookieField').isVisible(), false, 'no proxies, no question');
-  await page.evaluate(()=>{ setChips('probeProxies',['socks5://127.0.0.1:1080']); syncProbeControls(); });
-  assert.equal(await page.locator('#probeCookieField').isVisible(), false, 'a list with its switch off is not an exit');
-  await page.evaluate(()=>{ document.getElementById('probeProxyOn').checked = true; syncProbeControls(); });
-  assert.equal(await page.locator('#probeCookieField').isVisible(), true, 'switched on, the proxies raise it');
+  // Probes go out without a cookie, so there is no cookie source to choose,
+  // proxies or not.
+  await page.evaluate(()=>{ setChips('probeProxies',['socks5://127.0.0.1:1080']); document.getElementById('probeProxyOn').checked = true; syncProbeControls(); });
+  assert.equal(await page.locator('input[name=probeCookieMode]').count(), 0, 'no cookie source question');
+  assert.equal(await page.locator('#probeResolveIP').isDisabled(), false, 'exit IP resolution is always available');
 
   // A window is written in browser time and stored in UTC minutes.
   await page.fill('#probeWindowStart','09:00');
@@ -105,32 +104,18 @@ try {
   assert.equal(saved.probe_window_end_minute, 0);
   assert.equal((await page.locator('#probeWindowHint').textContent()).trim(), '全天生效');
 
-  // The rate is shown because the cost is otherwise invisible, and a rotating
-  // pool doubles it.
+  // The rate is shown because the cost is otherwise invisible; the
+  // multi-check doubles it.
   await page.evaluate(()=>{ setChips('probeModels',['m1','m2']); syncProbeControls(); });
   await page.fill('#probeInterval','30');
-  await page.evaluate(()=>{ document.querySelector('input[name=probeCookieMode][value=static_proxy]').click(); });
+  await page.dispatchEvent('#probeInterval','change');
   await new Promise(r=>setTimeout(r,300));
   const single = await page.locator('#probeMeter').textContent();
   assert.ok(single.includes('240'), `2 models at 30s is 240/h: ${single}`);
-  await page.evaluate(()=>{ document.querySelector('input[name=probeCookieMode][value=rotating_proxy]').click(); });
-  await new Promise(r=>setTimeout(r,300));
+  await page.evaluate(()=>{ document.getElementById('probeVerify').checked = true; syncProbeControls(); });
   const doubled = await page.locator('#probeMeter').textContent();
-  assert.ok(doubled.includes('480') && doubled.includes('预热'), `rotating doubles it: ${doubled}`);
-  assert.equal(await page.locator('#probeResolveIP').isDisabled(), true, 'rotating cannot resolve an exit');
-
-  // Each mode's reasoning moved behind a marker that sits inside the mode's own
-  // label, so reading about a mode must not be the same gesture as choosing it.
-  await page.locator('.probe-mode:nth-child(1) .hint').click();
-  await new Promise(r=>setTimeout(r,250));
-  assert.equal(await page.locator('input[name=probeCookieMode][value=rotating_proxy]').isChecked(), true,
-    'reading a mode did not select it');
-  assert.ok((await page.locator('.hint-layer').textContent()).includes('真实请求'), 'and the hint opened');
-  await page.keyboard.press('Escape');
-  await page.locator('.probe-mode:nth-child(1) > span:first-of-type').click();
-  await new Promise(r=>setTimeout(r,300));
-  assert.equal(await page.locator('input[name=probeCookieMode][value=credential]').isChecked(), true,
-    'clicking the card itself still chooses');
+  assert.ok(doubled.includes('480') && doubled.includes('复核'), `the check doubles it: ${doubled}`);
+  await page.evaluate(()=>{ document.getElementById('probeVerify').checked = false; syncProbeControls(); });
 
   // Copying replaces, because a pool is a set of exits.
   await page.locator('#copyRetryToProbe').click();
