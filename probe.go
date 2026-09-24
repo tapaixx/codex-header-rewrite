@@ -389,6 +389,8 @@ type probeAttempt struct {
 	// What the multi-check request did, when it ran.
 	verified bool
 	// poolInvalidated reports that the drawn cookie was marked invalid.
+	// manual marks a run started by hand from the panel.
+	manual          bool
 	poolInvalidated bool
 	// poolHost is the backend of the cookie drawn from the cookie pool.
 	poolHost      string
@@ -403,7 +405,12 @@ type probeAttempt struct {
 // using it. A SOCKS5 tunnel is one connection to one exit, so reuse is what
 // makes the pair mean anything.
 func probeModel(ctx context.Context, authIndex, model string, rule headerRule, session credentialSession) {
-	attempt := probeAttempt{model: model, egress: probeEgress(rule), started: time.Now().UTC()}
+	probeModelWith(ctx, authIndex, model, rule, session, false)
+}
+
+// probeModelWith is probeModel with a mark for a run started by hand.
+func probeModelWith(ctx context.Context, authIndex, model string, rule headerRule, session credentialSession, manual bool) {
+	attempt := probeAttempt{model: model, egress: probeEgress(rule), started: time.Now().UTC(), manual: manual}
 	mode := probeCookieModeFor(rule)
 
 	if !retryIdentityMatches(authIndex, credentialAuthID(authIndex)) {
@@ -433,7 +440,7 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 	}
 	defer transport.CloseIdleConnections()
 
-	cookie, primed, err := probeCookieFor(ctx, transport, authIndex, attempt.egress, mode, session, material)
+	cookie, primed, err := probeCookieFor(ctx, transport, authIndex, attempt.egress, mode, session, material, rule.ProbeHeaders)
 	if err != nil {
 		attempt.err = err.Error()
 		attempt.primed = primed
@@ -454,7 +461,7 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 		recordProbe(authIndex, rule, attempt)
 		return
 	}
-	headers := retryHeaders(material, cookie)
+	headers := probeHeaders(material, cookie, rule.ProbeHeaders)
 	response, callErr := probeHTTPDoFunc(ctx, transport, hostHTTPRequest{
 		Method: http.MethodPost, URL: defaultTestURL, Headers: headers, Body: body,
 	}, attempt.egress != "")
@@ -498,15 +505,15 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 	}
 	verdict := judgeDegraded(attempt.blob, plan)
 	if rule.ProbeVerify {
-		verdict, stateSession = verifyProbeState(ctx, transport, authIndex, model, material, stateSession, &attempt)
+		verdict, stateSession = verifyProbeState(ctx, transport, authIndex, model, material, stateSession, rule.ProbeHeaders, &attempt)
 	}
 	state.mu.Lock()
 	// A session the multi-check vouched for is a non-degraded cookie; a pool
-	// cookie the multi-check judged degraded stops being drawn.
+	// cookie the multi-check judged degraded cools down.
 	if verdict.Judged && !verdict.Degraded {
 		noteCookiePoolLocked(authIndex, stateSession, "probe", model, turnStateDigest(attempt.blob))
 	} else if verdict.Judged && verdict.Degraded && attempt.poolHost != "" {
-		attempt.poolInvalidated = invalidateCookiePoolLocked(authIndex, attempt.cookie, "probe") != ""
+		attempt.poolInvalidated = coolCookiePoolLocked(authIndex, attempt.cookie, "probe") != ""
 	}
 	info := classifyTurnStateWith(decodeTurnState(attempt.blob), plan, verdict)
 	if verdict.Eligible {
@@ -521,7 +528,7 @@ func probeModel(ctx context.Context, authIndex, model string, rule headerRule, s
 // probeCookieFor answers which cookie this request presents. The three modes
 // are not preferences: each is the only correct answer for a different kind of
 // egress.
-func probeCookieFor(ctx context.Context, transport *http.Transport, authIndex, egress, mode string, session credentialSession, material testAuthMaterial) (string, bool, error) {
+func probeCookieFor(ctx context.Context, transport *http.Transport, authIndex, egress, mode string, session credentialSession, material testAuthMaterial, overrides map[string]string) (string, bool, error) {
 	switch mode {
 	case probeCookieStaticProxy:
 		// A stable proxy keeps its own jar, filled by the probes that went
@@ -539,7 +546,7 @@ func probeCookieFor(ctx context.Context, transport *http.Transport, authIndex, e
 		// obtained on this connection and used on it. The priming response's
 		// state is discarded: a state fetched without a cookie is not the
 		// state this probe is for.
-		cookie, primed, err := primeCookie(ctx, transport, egress, material)
+		cookie, primed, err := primeCookie(ctx, transport, egress, material, overrides)
 		return cookie, primed, err
 	default:
 		// The jar the live traffic fills. Correct when the probe leaves the
@@ -550,13 +557,13 @@ func probeCookieFor(ctx context.Context, transport *http.Transport, authIndex, e
 
 // primeCookie spends one request to obtain a cookie for this connection's
 // exit. Its response is read only for Set-Cookie.
-func primeCookie(ctx context.Context, transport *http.Transport, egress string, material testAuthMaterial) (string, bool, error) {
+func primeCookie(ctx context.Context, transport *http.Transport, egress string, material testAuthMaterial, overrides map[string]string) (string, bool, error) {
 	body, err := probeRequestBody(probeWarmupModel)
 	if err != nil {
 		return "", true, err
 	}
 	response, callErr := probeHTTPDoFunc(ctx, transport, hostHTTPRequest{
-		Method: http.MethodPost, URL: defaultTestURL, Headers: retryHeaders(material, ""), Body: body,
+		Method: http.MethodPost, URL: defaultTestURL, Headers: probeHeaders(material, "", overrides), Body: body,
 	}, egress != "")
 	if callErr != nil {
 		return "", true, callErr
@@ -664,6 +671,7 @@ func recordProbe(authIndex string, rule headerRule, attempt probeAttempt) {
 		ResponseBody: attempt.response, ResponseBytes: attempt.resBytes,
 		ProbeEgress: attempt.egress, ProbePrimed: attempt.primed,
 		ProbeVerified: attempt.verified, ProbeVerifyStatus: attempt.verifyStatus, ProbeVerifyError: attempt.verifyErr,
+		ProbeManual:   attempt.manual,
 		ProbePoolHost: attempt.poolHost, ProbePoolInvalidated: attempt.poolInvalidated,
 		ProbeCookieMode: probeCookieModeFor(rule),
 		ProbeExitRegion: cloudflareRegion(attempt.received),
@@ -722,13 +730,13 @@ func rememberLiveSessionLocked(attempt *pendingAttempt, session string) {
 // by what the response set; in the no-cookie mode, just what the response set.
 // The answer is read with the live rule: a state that held draws no new one.
 // The session comes back updated by what the check response set.
-func verifyProbeState(ctx context.Context, transport *http.Transport, authIndex, model string, material testAuthMaterial, session string, attempt *probeAttempt) (degradedVerdict, string) {
+func verifyProbeState(ctx context.Context, transport *http.Transport, authIndex, model string, material testAuthMaterial, session string, overrides map[string]string, attempt *probeAttempt) (degradedVerdict, string) {
 	body, err := probeRequestBody(model)
 	if err != nil {
 		attempt.verifyErr = err.Error()
 		return judgeProbeVerification(false, true), session
 	}
-	headers := retryHeaders(material, session)
+	headers := probeHeaders(material, session, overrides)
 	headers.Set(turnStateHeader, attempt.blob)
 	attempt.verified = true
 	response, callErr := probeHTTPDoFunc(ctx, transport, hostHTTPRequest{
@@ -746,4 +754,46 @@ func verifyProbeState(ctx context.Context, transport *http.Transport, authIndex,
 	}
 	noteQuota(authIndex, response.Headers)
 	return judgeProbeVerification(headerTurnState(response.Headers) != "", false), applySetCookies(session, response.Headers)
+}
+
+// probeHeaders is the probe's request headers: the minimal set the retry
+// sends, with the operator's overrides laid over it. The reserved headers are
+// refused when the rule is saved, so an override never reaches them.
+func probeHeaders(material testAuthMaterial, cookie string, overrides map[string]string) http.Header {
+	headers := retryHeaders(material, cookie)
+	for name, value := range overrides {
+		headers.Set(name, value)
+	}
+	return headers
+}
+
+// runManualProbe starts one probe by hand with the credential's probe
+// settings. The probe switch, window and liveness do not gate it -- the
+// operator asked -- but a frozen pool still takes nothing in, so that is
+// refused. It runs in the background and reports as a probe history row.
+func runManualProbe(authIndex, model string) error {
+	authIndex, model = strings.TrimSpace(authIndex), strings.TrimSpace(model)
+	if authIndex == "" || model == "" {
+		return manualPoolFailure(http.StatusBadRequest, "auth_index and model are required")
+	}
+	state.mu.Lock()
+	rule, hasRule := state.rules[authIndex]
+	store := state.store
+	state.mu.Unlock()
+	if store == nil {
+		return manualPoolFailure(http.StatusServiceUnavailable, "persistence is not initialized")
+	}
+	if !hasRule {
+		rule = headerRule{AuthIndex: authIndex}
+	}
+	if !rule.poolMaintained() {
+		return manualPoolFailure(http.StatusConflict, "state pool maintenance is off for this credential")
+	}
+	session, _, _ := store.Session(authIndex, "")
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*probeRequestTimeout)
+		defer cancel()
+		probeModelWith(ctx, authIndex, model, rule, session, true)
+	}()
+	return nil
 }

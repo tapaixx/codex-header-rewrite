@@ -496,9 +496,9 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 	if attempt.injectedDigest != "" && info.NonDegraded != nil && !*info.NonDegraded {
 		attempt.TurnStateInvalidated = invalidateTurnStateLocked(attempt.AuthIndex, sentModel(attempt.Model, attempt.RequestedModel), attempt.injectedDigest)
 		// The cookie that went out with it is as suspect as the state: its
-		// backend's entry in the Cookie 池 stops being drawn.
+		// backend's entry in the Cookie 池 cools down.
 		if attempt.CookieInjected {
-			attempt.CookieInvalidated = invalidateCookiePoolLocked(attempt.AuthIndex, attempt.clientCookie, "live")
+			attempt.CookieInvalidated = coolCookiePoolLocked(attempt.AuthIndex, attempt.clientCookie, "live")
 		}
 	}
 	// Response rejection has its own switch and model scope, independent of

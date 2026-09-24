@@ -29,11 +29,13 @@ type cookiePoolEntry struct {
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
 	// Source is "probe" or "live": which verdict vouched for it.
 	Source string `json:"source"`
-	// InvalidatedAt is set when a turn that carried this cookie was judged
-	// degraded; the entry stays listed but is never drawn again. A new
-	// non-degraded cookie for the same backend replaces it outright.
+	// InvalidatedAt is when a turn that carried this cookie was last judged
+	// degraded. The entry cools down from then for the credential's cookie
+	// cooldown and is not drawn meanwhile; each new degraded verdict restarts
+	// the clock. A new non-degraded cookie for the same backend replaces the
+	// entry outright. (The name predates the cooldown, when this was final.)
 	InvalidatedAt time.Time `json:"invalidated_at,omitempty"`
-	// InvalidatedBy is "live" or "probe": which verdict took it out.
+	// InvalidatedBy is "live" or "probe": which verdict started the cooldown.
 	InvalidatedBy string    `json:"invalidated_by,omitempty"`
 	Model         string    `json:"model,omitempty"`
 	Digest        string    `json:"digest,omitempty"`
@@ -44,8 +46,40 @@ func cookiePoolKey(authIndex, host string) string { return authIndex + "\x00" + 
 
 // usable is whether the entry may still be sent: its __oailb has not expired.
 // An entry whose token names no expiry is taken at its word.
-func (e cookiePoolEntry) usable(now time.Time) bool {
-	return e.InvalidatedAt.IsZero() && (e.ExpiresAt.IsZero() || now.Before(e.ExpiresAt))
+func (e cookiePoolEntry) usable(now time.Time, cooldown time.Duration) bool {
+	return !e.cooling(now, cooldown) && (e.ExpiresAt.IsZero() || now.Before(e.ExpiresAt))
+}
+
+// coolingUntil is when the cooldown ends; zero when there is none.
+func (e cookiePoolEntry) coolingUntil(cooldown time.Duration) time.Time {
+	if e.InvalidatedAt.IsZero() {
+		return time.Time{}
+	}
+	return e.InvalidatedAt.Add(cooldown)
+}
+
+func (e cookiePoolEntry) cooling(now time.Time, cooldown time.Duration) bool {
+	until := e.coolingUntil(cooldown)
+	return !until.IsZero() && now.Before(until)
+}
+
+const (
+	defaultCookieCooldownSeconds = 1800
+	maxCookieCooldownSeconds     = 7 * 24 * 3600
+)
+
+// cookieCooldown is the credential's cooldown, read from its rule.
+func cookieCooldown(authIndex string) time.Duration {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return cookieCooldownLocked(authIndex)
+}
+
+func cookieCooldownLocked(authIndex string) time.Duration {
+	if rule, ok := state.rules[authIndex]; ok && rule.CookieCooldownSeconds > 0 {
+		return time.Duration(rule.CookieCooldownSeconds) * time.Second
+	}
+	return defaultCookieCooldownSeconds * time.Second
 }
 
 // oailbRoute reads the backend and validity out of the __oailb crumb. The
@@ -127,9 +161,10 @@ func pickPoolCookie(authIndex string, now time.Time) (cookiePoolEntry, bool) {
 	if err != nil {
 		return cookiePoolEntry{}, false
 	}
+	cooldown := cookieCooldown(authIndex)
 	usable := entries[:0]
 	for _, entry := range entries {
-		if entry.usable(now) {
+		if entry.usable(now, cooldown) {
 			usable = append(usable, entry)
 		}
 	}
@@ -139,11 +174,11 @@ func pickPoolCookie(authIndex string, now time.Time) (cookiePoolEntry, bool) {
 	return usable[rand.IntN(len(usable))], true
 }
 
-// invalidateCookiePoolLocked marks the entry for the backend this cookie is
-// pinned to as invalid: a turn that carried it was judged degraded. It reports
-// the backend, or "" when the cookie names none or the pool has no entry for
-// it. Callers hold state.mu.
-func invalidateCookiePoolLocked(authIndex, cookie, by string) string {
+// coolCookiePoolLocked starts (or restarts) the cooldown of the entry for the
+// backend this cookie is pinned to: a turn that carried it was judged
+// degraded. It reports the backend, or "" when the cookie names none or the
+// pool has no entry for it. Callers hold state.mu.
+func coolCookiePoolLocked(authIndex, cookie, by string) string {
 	if state.store == nil || authIndex == "" {
 		return ""
 	}
@@ -156,7 +191,7 @@ func invalidateCookiePoolLocked(authIndex, cookie, by string) string {
 		return ""
 	}
 	for _, entry := range all {
-		if entry.AuthIndex != authIndex || entry.Host != host || !entry.InvalidatedAt.IsZero() {
+		if entry.AuthIndex != authIndex || entry.Host != host {
 			continue
 		}
 		entry.InvalidatedAt, entry.InvalidatedBy = time.Now().UTC(), by

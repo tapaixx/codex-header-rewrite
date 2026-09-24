@@ -58,6 +58,7 @@ const degradedState = 'gAAAAAB' + 'q'.repeat(348);
 const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const nowSec = Math.floor(Date.now() / 1000);
 const oailb = `${b64url({ alg: 'HS256', typ: 'JWT', kid: 'gw-2' })}.${b64url({ host: 'gw-iad-7.internal', iss: 'oai-lb', aud: 'chatgpt.com', iat: nowSec - 600, exp: nowSec + 6600 })}.${b64url({ sig: 'not-a-real-signature-just-bytes-for-preview' })}`;
+const oailbMoved = `${b64url({ alg: 'HS256', typ: 'JWT', kid: 'gw-2' })}.${b64url({ host: 'gw-ord-2.internal', iss: 'oai-lb', aud: 'chatgpt.com', iat: nowSec - 600, exp: nowSec + 6600 })}.${b64url({ sig: 'not-a-real-signature-just-bytes-for-preview' })}`;
 const cfbm = `2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-${nowSec - 300}-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH`;
 const credentials = [
   { auth_index: 'acct-a', auth_id: 'auth-a', name: 'alex.json', label: 'alex@example.com', email: 'alex@example.com', provider: 'codex', type: 'codex', plan_type: 'team', plan_resolved: true },
@@ -109,7 +110,7 @@ const record = (over) => ({
   request_effort: 'high', upstream_effort: 'high',
   status_code: 200, outcome: 'succeeded',
   before_headers: liveHeadersBefore, after_headers: liveHeadersAfter,
-  response_headers: { 'X-Codex-Turn-State': [teamState], 'X-Request-Id': ['req_9f2a'], 'Set-Cookie': [`__cf_bm=${cfbm}; path=/; expires=${new Date(Date.now() + 1800 * 1000).toUTCString()}; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None`, `__cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; SameSite=None; Secure; path=/; expires=${new Date(Date.now() + 86400 * 1000).toUTCString()}; HttpOnly`, `__oailb=${oailb}; path=/; Max-Age=7200; SameSite=Lax; Secure`] },
+  response_headers: { 'X-Codex-Turn-State': [teamState], 'X-Request-Id': ['req_9f2a'], 'Set-Cookie': [`__oailb=${oailbMoved}; Path=/; Secure; HttpOnly`, `__cf_bm=${cfbm}; path=/; expires=${new Date(Date.now() + 1800 * 1000).toUTCString()}; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None`, `__cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; SameSite=None; Secure; path=/; expires=${new Date(Date.now() + 86400 * 1000).toUTCString()}; HttpOnly`, `__oailb=${oailb}; path=/; Max-Age=7200; SameSite=Lax; Secure`] },
   ...over,
 });
 
@@ -277,6 +278,12 @@ const stub = `
       const items = authIndex === "acct-a" ? F.items : [];
       return json({ auth_index: authIndex, page: 1, page_size: 10, total: items.length, total_pages: 1, items });
     }
+    if (path.endsWith("/probe/run")) {
+      // The plugin runs it in the background; the preview adds the row it would write.
+      F.probes.unshift({ ...F.probes[0], id: "probe-manual-" + Date.now() + "#1", request_id: "probe-manual", probe_manual: true,
+        model: body.model, requested_model: body.model, started_at: new Date(Date.now() - 3000).toISOString(), completed_at: new Date().toISOString() });
+      return json({ started: true, model: body.model }, 202);
+    }
     if (path.endsWith("/cookie-pool")) {
       const hour = 3600 * 1000;
       F.cookiePool = F.cookiePool || [
@@ -291,7 +298,8 @@ const stub = `
           issued_at: new Date(Date.now() - (i + 1) * 900000).toISOString(), expires_at: new Date(Date.now() + (5 - i) * 1200000).toISOString(),
           source: i % 2 ? "live" : "probe", model: "gpt-6-astra", digest: "", saved_at: new Date(Date.now() - (i + 1) * 60000 - 20000).toISOString(),
           // One taken out by a degraded turn: listed, never drawn.
-          usable: i !== 1, ...(i === 1 ? { invalidated_at: new Date(Date.now() - 30000).toISOString(), invalidated_by: "live" } : {}) })) ];
+          usable: i !== 1, ...(i === 1 ? { degraded_at: new Date(Date.now() - 30000).toISOString(), degraded_by: "live",
+            cooling: true, cooling_until: new Date(Date.now() + 1770000).toISOString() } : {}) })) ];
       if (init.method === "POST") {
         // Read the routing target the way the plugin does: from __oailb.
         let cookie = body?.cookie || "";
@@ -309,7 +317,7 @@ const stub = `
           source: "manual", model: "", digest: "", saved_at: new Date().toISOString(), usable: true });
         return json({ host, source: "manual" });
       }
-      return json({ auth_index: authIndex, entries: authIndex !== "acct-a" ? [] : F.cookiePool });
+      return json({ auth_index: authIndex, entries: authIndex !== "acct-a" ? [] : F.cookiePool, cooldown_seconds: F.rules[authIndex]?.cookie_cooldown_seconds || 1800 });
     }
     if (path.endsWith("/session")) {
       if (init.method === "POST") return json({ auth_index: body.auth_index, refreshed_at: new Date().toISOString() });

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -693,5 +694,86 @@ func TestDegradedProbeInvalidatesTheDrawnCookie(t *testing.T) {
 	entries, _ := cookiePoolFor("idx-a")
 	if len(entries) != 1 || entries[0].InvalidatedBy != "probe" {
 		t.Fatalf("invalidated by the probe: %+v", entries)
+	}
+}
+
+// Overrides reach both the probe and its multi-check, without touching the
+// headers the plugin owns.
+func TestProbeHeaderOverridesReachEveryRequest(t *testing.T) {
+	resetState(t)
+	resetTurnStates(t)
+	blob := fernetToken(0x80, time.Now(), 1)
+	sent := probeStub(t, blob, nil)
+	inner := probeHTTPDoFunc
+	var checks []hostHTTPRequest
+	probeHTTPDoFunc = func(ctx context.Context, transport *http.Transport, req hostHTTPRequest, via bool) (hostHTTPResponse, error) {
+		if req.Headers.Get(turnStateHeader) == "" {
+			return inner(ctx, transport, req, via)
+		}
+		checks = append(checks, req)
+		return hostHTTPResponse{StatusCode: 200, Headers: http.Header{}}, nil
+	}
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.mu.Unlock()
+	rule := probeRuleFixture()
+	rule.ProbeVerify = true
+	rule.ProbeHeaders = map[string]string{"User-Agent": "probe-ua/1", "X-Extra": "yes"}
+	probeModel(context.Background(), "idx-a", "gpt-6-astra", rule, credentialSession{})
+	for _, req := range append([]hostHTTPRequest{(*sent)[0]}, checks...) {
+		if req.Headers.Get("User-Agent") != "probe-ua/1" || req.Headers.Get("X-Extra") != "yes" {
+			t.Fatalf("override missing: %v", req.Headers)
+		}
+		if req.Headers.Get("Authorization") != "Bearer secret-token" {
+			t.Fatalf("the credential header is the plugin's: %q", req.Headers.Get("Authorization"))
+		}
+	}
+	if len(checks) != 1 {
+		t.Fatalf("one check expected, got %d", len(checks))
+	}
+}
+
+// A manual probe ignores the switch but not a frozen pool, runs in the
+// background, and lands in the probe history marked as manual.
+func TestManualProbeRun(t *testing.T) {
+	store := resetState(t)
+	resetTurnStates(t)
+	probeStub(t, fernetToken(0x80, time.Now(), 1), nil)
+	off := false
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.rules["idx-a"] = headerRule{AuthIndex: "idx-a", MaintainStatePool: &off}
+	state.mu.Unlock()
+	var failure *manualPoolError
+	if err := runManualProbe("idx-a", "gpt-6-astra"); !errors.As(err, &failure) || failure.status != http.StatusConflict {
+		t.Fatalf("a frozen pool refuses: %v", err)
+	}
+	rule := probeRuleFixture()
+	rule.ProbeEnabled = false // the switch does not gate a manual run
+	state.mu.Lock()
+	state.rules["idx-a"] = rule
+	state.mu.Unlock()
+	if err := runManualProbe("idx-a", "gpt-6-astra"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		state.mu.Lock()
+		writer := state.writer
+		state.mu.Unlock()
+		if writer != nil {
+			_ = writer.backend.Flush()
+		}
+		page, _ := store.ProbeHistory("idx-a", 1, pageSize)
+		if len(page.Items) == 1 {
+			if !page.Items[0].ProbeManual {
+				t.Fatalf("the row should be marked manual: %+v", page.Items[0])
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the manual probe never recorded a row")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

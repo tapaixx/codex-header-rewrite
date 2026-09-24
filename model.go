@@ -87,6 +87,10 @@ type headerRule struct {
 	// credential. Zero means defaultStateTTLSeconds, which is what every rule
 	// saved before the field existed carries.
 	StateTTLSeconds int `json:"state_ttl_seconds,omitempty"`
+	// CookieCooldownSeconds is how long a Cookie 池 entry sits out after a
+	// turn that carried it was judged degraded. Zero means
+	// defaultCookieCooldownSeconds.
+	CookieCooldownSeconds int `json:"cookie_cooldown_seconds,omitempty"`
 
 	// ProbeEnabled keeps the pool warm on a timer instead of waiting for a
 	// degraded response to react to. It is mutually exclusive with
@@ -98,6 +102,11 @@ type headerRule struct {
 	// pools the state only if the upstream writes none back. Off (the
 	// default), the probe pools what it gets without judging it.
 	ProbeVerify bool `json:"probe_verify,omitempty"`
+	// ProbeHeaders overrides headers on every probe request -- the probe, the
+	// multi-check and the rotating pool's priming request alike. Authorization
+	// (the credential), Cookie (the cookie source's) and X-Codex-Turn-State
+	// (the multi-check's) are the plugin's and cannot be overridden.
+	ProbeHeaders map[string]string `json:"probe_headers,omitempty"`
 	// The window the probe may run in, as minutes into a UTC day. Equal values
 	// or both zero mean all day; start greater than end crosses midnight,
 	// which a local-time window routinely becomes once converted.
@@ -239,6 +248,8 @@ type historyRecord struct {
 	// ProbePoolHost is the backend of the cookie the cookie_pool mode drew;
 	// empty when the pool had nothing usable and the probe went out bare.
 	ProbePoolHost string `json:"probe_pool_host,omitempty"`
+	// ProbeManual marks a probe an operator started by hand from the panel.
+	ProbeManual bool `json:"probe_manual,omitempty"`
 	// Bodies travel on the record only between the request path and the store,
 	// which splits them into their own bucket. They are absent from a record
 	// read back by History, because a page of fifty records would otherwise

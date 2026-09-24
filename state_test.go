@@ -1336,9 +1336,9 @@ func TestHeldLiveTurnFeedsTheCookiePool(t *testing.T) {
 	}
 }
 
-// A degraded live turn that carried an injected cookie takes that cookie's
-// backend out of the Cookie 池: still listed, never drawn, until a new
-// non-degraded cookie for the same backend replaces it.
+// A degraded live turn that carried an injected cookie cools that cookie's
+// backend down in the Cookie 池: still listed, not drawn for the credential's
+// cooldown, and a new non-degraded cookie for the same backend replaces it.
 func TestDegradedInjectedCookieInvalidatesItsBackend(t *testing.T) {
 	stubCredentialPlan(t, "team")
 	resetState(t)
@@ -1362,11 +1362,35 @@ func TestDegradedInjectedCookieInvalidatesItsBackend(t *testing.T) {
 		t.Fatalf("the record should name the backend taken out: %q", attempt.CookieInvalidated)
 	}
 	entries, _ := cookiePoolFor("idx-a")
-	if len(entries) != 1 || entries[0].InvalidatedAt.IsZero() || entries[0].InvalidatedBy != "live" || entries[0].usable(now) {
-		t.Fatalf("the entry stays listed but unusable: %+v", entries)
+	cooldown := cookieCooldown("idx-a")
+	if cooldown != defaultCookieCooldownSeconds*time.Second {
+		t.Fatalf("an unset cooldown is the default: %v", cooldown)
+	}
+	if len(entries) != 1 || entries[0].InvalidatedAt.IsZero() || entries[0].InvalidatedBy != "live" || entries[0].usable(now, cooldown) {
+		t.Fatalf("the entry stays listed but cools down: %+v", entries)
 	}
 	if _, ok := pickPoolCookie("idx-a", now); ok {
-		t.Fatal("an invalidated entry is never drawn")
+		t.Fatal("a cooling entry is not drawn")
+	}
+	// The cooldown follows the credential's setting and then ends.
+	state.mu.Lock()
+	rule := state.rules["idx-a"]
+	rule.CookieCooldownSeconds = 60
+	state.rules["idx-a"] = rule
+	state.mu.Unlock()
+	if _, ok := pickPoolCookie("idx-a", entries[0].InvalidatedAt.Add(59*time.Second)); ok {
+		t.Fatal("still cooling inside the configured minute")
+	}
+	if _, ok := pickPoolCookie("idx-a", entries[0].InvalidatedAt.Add(61*time.Second)); !ok {
+		t.Fatal("drawn again once the cooldown is over")
+	}
+	// Another degraded verdict restarts the clock.
+	state.mu.Lock()
+	coolCookiePoolLocked("idx-a", session, "probe")
+	state.mu.Unlock()
+	again, _ := cookiePoolFor("idx-a")
+	if !again[0].InvalidatedAt.After(entries[0].InvalidatedAt) || again[0].InvalidatedBy != "probe" {
+		t.Fatalf("the cooldown restarts: %+v", again[0])
 	}
 	// A new non-degraded cookie for the same backend brings it back.
 	state.mu.Lock()

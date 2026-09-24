@@ -139,6 +139,22 @@ try {
   assert.equal(await page.locator('input[name=probeCookieMode][value=credential]').isChecked(), true,
     'clicking the card itself still chooses');
 
+  // The advanced options start folded; inside, header overrides save on
+  // change and the manual probe offers the configured models.
+  assert.equal(await page.locator('#probeAdvanced').getAttribute('open'), null, 'advanced options start folded');
+  await page.locator('#probeAdvanced > summary').click();
+  await page.locator('#probeHeaderAdd').click();
+  await page.locator('#probeHeaderRows .hk').last().fill('X-Probe-Test');
+  await page.locator('#probeHeaderRows .hv').last().fill('on');
+  await page.locator('#probeHeaderRows .hv').last().dispatchEvent('change');
+  await new Promise(r=>setTimeout(r,300));
+  assert.deepEqual(saved.probe_headers, {'X-Probe-Test':'on'}, 'the override saved');
+  const runModels = await page.locator('#probeRunModel option').allTextContents();
+  assert.deepEqual(runModels, ['m1','m2'], 'the manual probe offers the probe models: ' + runModels);
+  await page.locator('#probeHeaderRows button').last().click();
+  await new Promise(r=>setTimeout(r,300));
+  assert.deepEqual(saved.probe_headers, {}, 'removing the row saves it away');
+
   // Copying replaces, because a pool is a set of exits.
   await page.locator('#copyRetryToProbe').click();
   await new Promise(r=>setTimeout(r,300));

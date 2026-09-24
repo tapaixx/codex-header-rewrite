@@ -107,6 +107,14 @@ func validateRule(rule headerRule) (headerRule, error) {
 	if rule.StateTTLSeconds < 0 || (rule.StateTTLSeconds > 0 && rule.StateTTLSeconds < minStateTTLSeconds) {
 		return rule, fmt.Errorf("state_ttl_seconds must be at least %d", minStateTTLSeconds)
 	}
+	probeHeaders, err := cleanProbeHeaders(rule.ProbeHeaders)
+	if err != nil {
+		return rule, err
+	}
+	rule.ProbeHeaders = probeHeaders
+	if rule.CookieCooldownSeconds < 0 || rule.CookieCooldownSeconds > maxCookieCooldownSeconds {
+		return rule, fmt.Errorf("cookie_cooldown_seconds must be between 0 and %d", maxCookieCooldownSeconds)
+	}
 	if rule.StateTTLSeconds > maxStateTTLSeconds {
 		return rule, fmt.Errorf("state_ttl_seconds must not exceed %d", maxStateTTLSeconds)
 	}
@@ -283,4 +291,29 @@ func specialHeaderWarnings(rule headerRule) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// probeReservedHeaders are the plugin's on a probe request: the credential,
+// the cookie the cookie source chose, and the state the multi-check carries.
+var probeReservedHeaders = map[string]bool{"authorization": true, "cookie": true, "x-codex-turn-state": true}
+
+func cleanProbeHeaders(raw map[string]string) (map[string]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]string, len(raw))
+	for rawKey, value := range raw {
+		key := http.CanonicalHeaderKey(strings.TrimSpace(rawKey))
+		if key == "" || !tokenRE.MatchString(key) {
+			return nil, fmt.Errorf("invalid probe header name %q", rawKey)
+		}
+		if probeReservedHeaders[strings.ToLower(key)] {
+			return nil, fmt.Errorf("probe header %s is set by the plugin and cannot be overridden", key)
+		}
+		if strings.ContainsAny(value, "\r\n") {
+			return nil, fmt.Errorf("probe header %s contains CR/LF", key)
+		}
+		out[key] = value
+	}
+	return out, nil
 }

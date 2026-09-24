@@ -32,6 +32,7 @@ const (
 	apiQuotaPath           = "/codex-header-rewrite/quota"
 	apiSessionPath         = "/codex-header-rewrite/session"
 	apiCookiePoolPath      = "/codex-header-rewrite/cookie-pool"
+	apiProbeRunPath        = "/codex-header-rewrite/probe/run"
 )
 
 type credentialView struct {
@@ -66,6 +67,7 @@ func registerManagement() managementRegistration {
 		{Method: http.MethodGet, Path: apiCookiePoolPath, Description: "The non-degraded cookie pool, one cookie per backend"},
 		{Method: http.MethodPost, Path: apiCookiePoolPath, Description: "Add a cookie to the pool by hand, pasted or from a recorded request"},
 		{Method: http.MethodPost, Path: apiSessionPath, Description: "Replace the credential-level cookie with a pool entry"},
+		{Method: http.MethodPost, Path: apiProbeRunPath, Description: "Run one probe by hand with the credential's probe settings"},
 	}, Resources: []resourceRoute{{Path: resourceIndexPath, Menu: pluginName, Description: "Codex credential header rewrite and history"}}}
 }
 
@@ -268,6 +270,18 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"cleared": strings.TrimSpace(body.AuthIndex)}), nil
+	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiProbeRunPath):
+		var body struct {
+			AuthIndex string `json:"auth_index"`
+			Model     string `json:"model"`
+		}
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return jsonError(http.StatusBadRequest, "invalid JSON body"), nil
+		}
+		if err := runManualProbe(body.AuthIndex, body.Model); err != nil {
+			return manualFailureResponse(err), nil
+		}
+		return jsonResponse(http.StatusAccepted, map[string]any{"started": true, "model": strings.TrimSpace(body.Model)}), nil
 	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiCookiePoolPath):
 		var body struct {
 			AuthIndex string `json:"auth_index"`
@@ -305,15 +319,17 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
 		now := time.Now()
+		cooldown := cookieCooldown(authIndex)
 		items := make([]map[string]any, 0, len(entries))
 		for _, entry := range entries {
 			items = append(items, map[string]any{
 				"host": entry.Host, "cookie": entry.Cookie, "issued_at": entry.IssuedAt, "expires_at": entry.ExpiresAt,
 				"source": entry.Source, "model": entry.Model, "digest": entry.Digest, "saved_at": entry.SavedAt,
-				"usable": entry.usable(now), "invalidated_at": entry.InvalidatedAt, "invalidated_by": entry.InvalidatedBy,
+				"usable": entry.usable(now, cooldown), "degraded_at": entry.InvalidatedAt, "degraded_by": entry.InvalidatedBy,
+				"cooling": entry.cooling(now, cooldown), "cooling_until": entry.coolingUntil(cooldown),
 			})
 		}
-		return jsonResponse(http.StatusOK, map[string]any{"auth_index": authIndex, "entries": items}), nil
+		return jsonResponse(http.StatusOK, map[string]any{"auth_index": authIndex, "entries": items, "cooldown_seconds": int64(cooldown.Seconds())}), nil
 	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiSessionPath):
 		// The credential-level jar: the cookie the live traffic presented,
 		// updated by what its responses set. Cookies are recorded in plain text

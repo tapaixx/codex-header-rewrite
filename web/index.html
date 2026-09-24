@@ -1764,6 +1764,17 @@ input:disabled,select:disabled,textarea:disabled{background:var(--sunk);color:va
    out of the 生效时段 row is also what lets that row stay beside 间隔 and
    活跃判定 instead of wrapping and knocking the card out of step with 降智. */
 .probe-foot{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;width:100%}
+.probe-advanced{border-top:1px solid var(--line);padding-top:8px}
+.probe-advanced>summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--text-soft);padding:4px 0;list-style:none;display:flex;align-items:center;gap:6px}
+.probe-advanced>summary::-webkit-details-marker{display:none}
+.probe-advanced>summary::before{content:"";width:10px;height:10px;background:currentColor;-webkit-mask:var(--icon-chevron) center/contain no-repeat;mask:var(--icon-chevron) center/contain no-repeat;transform:rotate(-90deg);transition:transform var(--t-fade) var(--ease)}
+.probe-advanced[open]>summary::before{transform:none}
+.probe-advanced>summary:hover{color:var(--text)}
+.probe-advanced-body{display:grid;gap:14px;padding:10px 0 4px}
+.probe-advanced-body .field{display:grid;gap:6px}
+.probe-advanced-body .muted{font-size:12px;line-height:1.55}
+.probe-run{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.probe-run select{width:auto;min-width:180px}
 .probe-foot .muted{font-size:11px}
 .probe-meter{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11px;color:var(--text-mute)}
 .probe-meter .num{font-variant-numeric:tabular-nums;color:var(--text-soft)}
@@ -2041,12 +2052,12 @@ body[data-drawer="open"]{position:fixed;left:0;right:0;overflow-y:scroll}
    606px is the sum of the five fixed columns. */
 #historyPanel .history-table{
   table-layout:fixed!important;width:100%!important;
-  min-width:calc(746px + var(--history-model-w,250px))!important
+  min-width:calc(876px + var(--history-model-w,250px))!important
 }
 #historyPanel th.history-time{width:164px!important}
 #historyPanel th.history-origin{width:64px!important}
 #historyPanel th.history-model{width:var(--history-model-w,250px)!important}
-#historyPanel th.history-route{width:140px!important}
+#historyPanel th.history-route{width:130px!important}
 #historyPanel td.history-route{font-size:11px;color:var(--text-soft);white-space:normal;overflow-wrap:anywhere}
 #historyPanel th.history-outcome{width:236px!important}
 #historyPanel th.history-latency{width:74px!important}
@@ -2527,13 +2538,17 @@ body[data-workspace="history"] #historyPanel{grid-row:5!important}
     </section>
 
     <section class="panel" id="cookiePoolPanel">
-      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>Cookie 池</h2><div class="panel-caption">判定为不降智的会话 Cookie，按路由目标各留最新一条<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="Cookie 池的说明">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只收有「不降智」判定的会话：开了多重判断、复核通过的探针会话，以及注入了 state 而上游没有回写的线上会话。按 <code>__oailb</code> 里的路由目标去重，同一个路由目标来了新的就覆盖；没有 <code>__oailb</code> 的会话不收。</span><span class="hint-k">状态</span><span class="hint-v">由 <code>__oailb</code> 的过期时间决定：没过期就可用。</span><span class="hint-k">失效</span><span class="hint-v">注入了 Cookie 的线上请求被判为降智，或探针从池里取的 Cookie 复核判为降智，对应路由目标的那条就置为<b>已失效</b>：还在列表里，但不会再被取用；同一路由目标来了新的不降智 Cookie 就覆盖它。</span><span class="hint-k">使用</span><span class="hint-v">自动探针的 Cookie 来源选「Cookie 池」时，随机取一条可用的带上；池里没有可用的就不带 Cookie。</span></span></span></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>Cookie 池</h2><div class="panel-caption">判定为不降智的会话 Cookie，按路由目标各留最新一条<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="Cookie 池的说明">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只收有「不降智」判定的会话：开了多重判断、复核通过的探针会话，以及注入了 state 而上游没有回写的线上会话。按 <code>__oailb</code> 里的路由目标去重，同一个路由目标来了新的就覆盖；没有 <code>__oailb</code> 的会话不收。</span><span class="hint-k">状态</span><span class="hint-v">由 <code>__oailb</code> 的过期时间决定：没过期就可用。</span><span class="hint-k">冷却</span><span class="hint-v">注入了 Cookie 的线上请求被判为降智，或探针从池里取的 Cookie 复核判为降智，对应路由目标的那条就<b>冷却</b>上面配置的时长：还在列表里，冷却期间不会被取用，再次降智重新计时；同一路由目标来了新的不降智 Cookie 就覆盖它。</span><span class="hint-k">使用</span><span class="hint-v">自动探针的 Cookie 来源选「Cookie 池」时，随机取一条可用的带上；池里没有可用的就不带 Cookie。</span></span></span></div></div>
         <div class="spacer"></div>
         <span class="muted" id="cookiePoolMeta"></span>
         <button class="quiet" type="button" id="cookiePoolAdd" disabled><svg class="i"><use href="#i-plus"/></svg>添加</button>
         <button class="quiet icon" id="cookiePoolRefresh" title="刷新" aria-label="刷新 Cookie 池"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
       <div class="panel-body">
+        <div class="pool-ttl">
+          <label class="field-inline" for="cookieCooldown">冷却时间<input id="cookieCooldown" type="number" inputmode="numeric" min="1" max="604800" step="60" value="1800" autocomplete="off" disabled><span class="field-unit">秒</span></label>
+          <span class="muted">按凭证维护，改完离开输入框即保存。带着某条 Cookie 的请求（线上或探针）被判为降智，这条就冷却这么久：冷却期间探针不会取用它，再次降智就重新计时。留空按 1800 秒。</span>
+        </div>
         <div id="cookiePoolBody" class="state-pool"></div>
       </div>
     </section>
@@ -2595,6 +2610,26 @@ body[data-workspace="history"] #historyPanel{grid-row:5!important}
           <div class="probe-meter" id="probeMeter"></div>
           <span class="muted" id="probeWindowHint"></span>
         </div>
+
+        <details class="probe-advanced" id="probeAdvanced" style="flex-basis:100%">
+          <summary>高级选项</summary>
+          <div class="probe-advanced-body">
+            <div class="field">
+              <div class="field-head"><label id="probeHeadersLabel">覆盖请求 Header</label>
+                <button class="quiet" type="button" id="probeHeaderAdd" disabled><svg class="i"><use href="#i-plus"/></svg>添加 Header</button></div>
+              <div id="probeHeaderRows" role="group" aria-labelledby="probeHeadersLabel"></div>
+              <span class="muted">对每一次探针请求生效（探针、多重判断复核、动态代理池的预热），改完离开输入框即保存。<code>Authorization</code>、<code>Cookie</code>、<code>X-Codex-Turn-State</code> 由插件决定，不能覆盖。</span>
+            </div>
+            <div class="field">
+              <label for="probeRunModel">手动探针</label>
+              <div class="probe-run">
+                <select id="probeRunModel" disabled></select>
+                <button type="button" id="probeRunBtn" disabled><svg class="i"><use href="#i-play"/></svg>立即探针</button>
+              </div>
+              <span class="muted">按上面的探针配置发一次（Cookie 来源、代理、多重判断、覆盖 Header 都一样），<b>不看</b>「启用自动探针」开关、生效时段和活跃判定。结果进探针历史，标「手动」，入池、Cookie 池和冷却的处理与自动触发的相同。State 池维护关闭时不能发。</span>
+            </div>
+          </div>
+        </details>
       </div>
     </section>
 
@@ -2629,7 +2664,7 @@ body[data-workspace="history"] #historyPanel{grid-row:5!important}
         <datalist id="modelOptions"></datalist>
         <div class="table-scroll">
         <table class="history-table">
-            <thead><tr><th class="history-time">时间</th><th class="history-origin">来源</th><th class="history-model">模型：发出 → 上游</th><th class="history-route" title="请求 Cookie 里 __oailb 的 host 声明">路由目标</th><th class="history-outcome">结果</th><th class="history-latency">耗时</th><th class="history-status" style="text-align:right">状态码</th></tr></thead>
+            <thead><tr><th class="history-time">时间</th><th class="history-origin">来源</th><th class="history-model">模型：发出 → 上游</th><th class="history-route" title="发出的 Cookie 里 __oailb 的 host 声明">请求路由</th><th class="history-route" title="响应 Set-Cookie 里 __oailb 的 host 声明">响应路由</th><th class="history-outcome">结果</th><th class="history-latency">耗时</th><th class="history-status" style="text-align:right">状态码</th></tr></thead>
             <tbody id="historyBody"></tbody>
           </table>
         </div>
@@ -3319,6 +3354,10 @@ async function selectCredential(authIndex) {
     $("ruleStateTTL").value = String(defaultStateTTL);
     $("ruleStateTTL").disabled = true;
   }
+  if ($("cookieCooldown")) {
+    $("cookieCooldown").value = String(DEFAULT_COOKIE_COOLDOWN);
+    $("cookieCooldown").disabled = true;
+  }
   if ($("probeEnabled")) {
     $("probeEnabled").checked = false;
     setChips("probeModels", []);
@@ -3424,6 +3463,10 @@ async function loadRule() {
   if ($("ruleStateTTL")) {
     $("ruleStateTTL").value = String(store.rule.state_ttl_seconds || defaultStateTTL);
     $("ruleStateTTL").disabled = false;
+  }
+  if ($("cookieCooldown")) {
+    $("cookieCooldown").value = String(store.rule.cookie_cooldown_seconds || DEFAULT_COOKIE_COOLDOWN);
+    $("cookieCooldown").disabled = false;
   }
   fillProbeForm(store.rule);
   setChips("rejectDegradedModels", store.rule.reject_degraded_models);
@@ -3714,6 +3757,13 @@ function recordRouteHost(record) {
   const cookie = headerValues(record.after_headers || record.before_headers, "cookie").join("; ");
   return oailbClaims(cookie)?.host || "";
 }
+// The backend the response pinned the session to: __oailb in its Set-Cookie,
+// which differs from the request's when the load balancer moved it.
+function responseRouteHost(record) {
+  const crumb = parseSetCookies(record.response_headers).find((cookie) => cookie.name === "__oailb");
+  const jwt = crumb && decodeCookieJWT(crumb.value);
+  return jwt?.payload?.host !== undefined ? String(jwt.payload.host) : "";
+}
 // Local time, short enough for a table cell; the full form is in the title.
 function shortLocalTime(date) {
   if (!date) return "";
@@ -3775,7 +3825,7 @@ function turnStateTags(record) {
   if (record.retry_attempts) tag("flat", `重试 ${record.retry_attempts} 次`, "一次降智响应触发的重试系列，合并为一行");
   if (record.turn_state_rejected) tag("bad", "已拦截", "判为降智，这次响应没有下发给客户端");
   if (record.turn_state_invalidated) tag("bad", "已剔除", "注入的 state 之上上游又回写了一个，注入的那条已从池里移除");
-  if (record.cookie_invalidated) tag("bad", "Cookie 失效", `注入的 Cookie 随这一轮降智了，Cookie 池里路由目标 ${record.cookie_invalidated} 的那条已置为失效`);
+  if (record.cookie_invalidated) tag("bad", "Cookie 冷却", `注入的 Cookie 随这一轮降智了，Cookie 池里路由目标 ${record.cookie_invalidated} 的那条开始冷却`);
   const minted = record.turn_state_minted;
   // The verdict. A healthy live turn has no minted state: the upstream wrote
   // none back, and that silence is the verdict.
@@ -4033,7 +4083,7 @@ function outcomeTag(outcome) {
 /* ---------- history --------------------------------------------------- */
 function historySkeleton() {
   $("historyBody").innerHTML = Array.from({ length: store.pageSize || 20 }, () =>
-    '<tr><td colspan="7"><div class="skel" style="width:100%;height:16px"></div></td></tr>').join("");
+    '<tr><td colspan="8"><div class="skel" style="width:100%;height:16px"></div></td></tr>').join("");
 }
 // One table, two sources. The probe writes far more rows than the traffic
 // does, so they are bounded separately and read separately; sharing the list
@@ -4059,7 +4109,7 @@ async function loadHistory(page = 1) {
   const body = $("historyBody");
   body.replaceChildren();
   if (!store.history.length) {
-    body.innerHTML = '<tr><td colspan="7" class="empty">暂无记录</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="empty">暂无记录</td></tr>';
     $("pager").replaceChildren();
     return;
   }
@@ -4072,9 +4122,10 @@ async function loadHistory(page = 1) {
     row.setAttribute("aria-selected", String(record.id === store.selectedRecord));
     row.setAttribute("aria-haspopup", "dialog");
     row.innerHTML = `<td class="history-time num">${esc(new Date(record.started_at).toLocaleString())}</td>
-      <td class="history-origin">${originTag(record.origin)}</td>
+      <td class="history-origin">${originTag(record.origin)}${record.probe_manual ? ' <span class="tag flat" title="在自动探针卡片的高级选项里手动发起">手动</span>' : ""}</td>
       <td class="history-model">${modelChain(record)}</td>
       <td class="history-route mono" translate="no">${esc(recordRouteHost(record) || "-")}</td>
+      <td class="history-route history-route-res mono" translate="no">${esc(responseRouteHost(record) || "-")}</td>
       <td class="history-outcome"><span class="history-outcome-wrap">${outcomeTag(record.outcome)}${turnStateTags(record)}</span></td>
       <td class="history-latency num">${formatLatency(recordLatency(record))}</td>
       <td class="history-status num" style="text-align:right">${record.status_code || "-"}</td>`;
@@ -4267,6 +4318,7 @@ const COOKIE_MODES = {
 function probeDetail(record) {
   if (record.origin !== "probe") return "";
   const rows = [];
+  rows.push(`<dt>触发</dt><dd>${record.probe_manual ? "手动（高级选项里的「立即探针」）" : "自动调度"}</dd>`);
   rows.push(`<dt>出口</dt><dd>${record.probe_egress
     ? `<span class="mono">${esc(maskProxyURL(record.probe_egress))}</span>`
     : "直连（CPA 自己的出口）"}</dd>`);
@@ -4283,7 +4335,7 @@ function probeDetail(record) {
   }
   if (mode === "cookie_pool") {
     rows.push(`<dt>Cookie 来源</dt><dd>Cookie 池<span class="muted"> · ${record.probe_pool_host
-      ? `取了路由目标 <span class="mono">${esc(record.probe_pool_host)}</span> 的那条${record.probe_pool_invalidated ? "，复核判为降智，已置为失效" : ""}`
+      ? `取了路由目标 <span class="mono">${esc(record.probe_pool_host)}</span> 的那条${record.probe_pool_invalidated ? "，复核判为降智，已开始冷却" : ""}`
       : "池里没有可用的，未带 Cookie"}</span></dd>`);
   } else if (mode === "none") {
     rows.push('<dt>Cookie 来源</dt><dd>不带 Cookie<span class="muted"> · v0.25.7</span></dd>');
@@ -4694,10 +4746,10 @@ async function loadCookiePool(page) {
 // Invalid outranks expired: a cookie a degraded turn took out stays out even
 // if its token would still be valid.
 function cookiePoolStatus(entry) {
-  const invalidated = entry.invalidated_at && !entry.invalidated_at.startsWith("0001");
-  if (invalidated) {
-    const when = new Date(entry.invalidated_at).toLocaleString();
-    return `<span class="tag bad" title="${esc(`${entry.invalidated_by === "probe" ? "探针" : "线上"}请求带着它降智了 · ${when}`)}">已失效</span>`;
+  if (entry.cooling) {
+    const until = new Date(entry.cooling_until);
+    const by = entry.degraded_by === "probe" ? "探针" : "线上";
+    return `<span class="tag bad num" title="${esc(`${by}请求带着它降智了 · 冷却至 ${until.toLocaleString()}`)}">冷却至 ${esc(shortLocalTime(until).slice(6))}</span>`;
   }
   return entry.usable ? '<span class="tag ok beam">可用</span>' : '<span class="tag warn">已过期</span>';
 }
@@ -4717,8 +4769,9 @@ function showCookiePoolEntry(entry) {
         <dt>对应 state</dt><dd class="mono">${esc(entry.digest || "-")}</dd>
         <dt>入池时间</dt><dd>${at(entry.saved_at)}</dd>
         <dt>过期 (本地)</dt><dd>${at(entry.expires_at)}</dd>
-        ${entry.invalidated_at && !entry.invalidated_at.startsWith("0001")
-          ? `<dt>失效</dt><dd>${at(entry.invalidated_at)}<span class="muted"> · ${entry.invalidated_by === "probe" ? "探针" : "线上"}请求带着它降智了</span></dd>` : ""}
+        ${entry.degraded_at && !entry.degraded_at.startsWith("0001")
+          ? `<dt>最近降智</dt><dd>${at(entry.degraded_at)}<span class="muted"> · ${entry.degraded_by === "probe" ? "探针" : "线上"}请求带着它降智了</span></dd>
+             <dt>冷却至</dt><dd>${at(entry.cooling_until)}${entry.cooling ? "" : '<span class="muted"> · 已结束</span>'}</dd>` : ""}
       </dl>
     </div>
     <div class="history-detail-section">
@@ -4763,7 +4816,7 @@ async function useCookieForCredential(entry) {
   const ok = await confirmDialog({ title: `用路由目标 ${entry.host} 的 Cookie 替换凭证级 Cookie？`, okText: "替换",
     content: `<ul><li>写入这个凭证的凭证级 Cookie，「凭证级」Cookie 来源的探针会带上它。</li>
       <li>这个凭证的下一次真实请求会再覆盖它。</li>
-      ${entry.usable ? "" : "<li><b>这条已不可用</b>（已过期或已失效），仍要替换吗？</li>"}</ul>` });
+      ${entry.usable ? "" : "<li><b>这条现在不可用</b>（已过期或在冷却中），仍要替换吗？</li>"}</ul>` });
   if (!ok) return;
   try {
     await api("/session", { method: "POST", body: { auth_index: store.selected, host: entry.host } });
@@ -5576,6 +5629,7 @@ $("poolCookie")?.addEventListener("change", async () => {
    same way the response-side settings do, so toggling one never carries an
    unsaved rule edit along with it. */
 let probeSaving = false;
+let probeSaveAgain = false;
 
 const probeModelList = () => [...chipValues.probeModels];
 const probeProxyList = () => [...chipValues.probeProxies];
@@ -5620,11 +5674,49 @@ function collectProbe() {
     probe_resolve_exit_ip: !!$("probeResolveIP")?.checked,
     probe_cookie_mode: probeCookieMode(),
     probe_verify: !!$("probeVerify")?.checked,
+    probe_headers: readPairs($("probeHeaderRows")),
   };
 }
 
+// The manual probe offers the configured probe models; with none there is
+// nothing to run.
+function fillProbeRunModels(models) {
+  const select = $("probeRunModel");
+  if (!select) return;
+  const current = select.value;
+  select.replaceChildren(...models.map((model) => new Option(model, model)));
+  if (models.includes(current)) select.value = current;
+}
+// A manual probe runs in the background; the history switches to the probe
+// list and watches for the new row.
+async function runManualProbe() {
+  const model = $("probeRunModel").value;
+  if (!store.selected || !model) return;
+  if (!await confirmDialog({ title: `用 ${model} 手动探针一次？`, okText: "发送",
+    content: "按当前探针配置发一次真实请求（开了多重判断就是两次），会消耗额度；不看自动探针开关、生效时段和活跃判定。" })) return;
+  const epoch = store.selectionEpoch;
+  try {
+    await api("/probe/run", { method: "POST", body: { auth_index: store.selected, model } });
+    toast("已发起手动探针，结果会出现在探针历史里");
+  } catch (error) {
+    toast(`手动探针没有发出：${error?.message === "state pool maintenance is off for this credential" ? "State 池维护已关闭" : (error?.message || error)}`, true);
+    return;
+  }
+  const probeTab = document.querySelector('.detail-tabs [data-history="probe"]');
+  if (store.historyTab !== "probe") probeTab?.click();
+  const before = store.history[0]?.id || "";
+  for (let i = 0; i < 60 && epoch === store.selectionEpoch; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    if (store.historyTab !== "probe" || epoch !== store.selectionEpoch) return;
+    await loadHistory(1).catch(() => {});
+    if (store.history[0] && store.history[0].id !== before && store.history[0].probe_manual) { loadTurnStates(); return; }
+  }
+}
 function fillProbeForm(rule) {
   if (!$("probeEnabled")) return;
+  $("probeHeaderRows").replaceChildren();
+  for (const [name, value] of Object.entries(rule.probe_headers || {})) headerRow($("probeHeaderRows"), name, value);
+  fillProbeRunModels(rule.probe_models || []);
   $("probeEnabled").checked = !!rule.probe_enabled;
   $("probeInterval").value = String(rule.probe_interval_seconds || 30);
   $("probeCookieTTL").value = String(rule.probe_cookie_ttl_seconds || 1800);
@@ -5674,8 +5766,14 @@ function syncProbeControls() {
   // before the probe may be switched on, so it has to be editable while off.
   // Everything below is editable whenever a rule is loaded.
   const editable = ready && !frozen;
-  for (const id of ["probeInterval", "probeCookieTTL", "probeWindowStart", "probeWindowEnd", "probeWindowClear", "probeResolveIP", "probeVerify"]) {
+  for (const id of ["probeInterval", "probeCookieTTL", "probeWindowStart", "probeWindowEnd", "probeWindowClear", "probeResolveIP", "probeVerify", "probeHeaderAdd"]) {
     if ($(id)) $(id).disabled = !editable;
+  }
+  for (const input of $("probeHeaderRows")?.querySelectorAll("input, button") || []) input.disabled = !editable;
+  fillProbeRunModels(probeModelList());
+  if ($("probeRunModel")) {
+    $("probeRunModel").disabled = !editable || !$("probeRunModel").options.length;
+    $("probeRunBtn").disabled = $("probeRunModel").disabled;
   }
   $("probeProxyOn").disabled = !editable;
   const viaProxy = editable && $("probeProxyOn").checked;
@@ -5717,7 +5815,9 @@ const utcLabel = (minute) => `${String(Math.floor(minute / 60)).padStart(2, "0")
 
 async function saveProbeSettings(revert) {
   if (!store.selected || !store.rule) { revert?.(); toast("先选择一个凭证", true); return; }
-  if (probeSaving) return;
+  // A save asked for while one is in flight is not dropped: it runs once the
+  // first returns, with whatever the form says by then.
+  if (probeSaving) { probeSaveAgain = true; return; }
   const epoch = store.selectionEpoch;
   const previous = store.rule;
   probeSaving = true;
@@ -5744,6 +5844,7 @@ async function saveProbeSettings(revert) {
   } finally {
     probeSaving = false;
     syncProbeControls();
+    if (probeSaveAgain) { probeSaveAgain = false; saveProbeSettings(() => {}); }
   }
 }
 
@@ -5798,6 +5899,31 @@ $("retryProxyOn")?.addEventListener("change", () => {
 // The pool's own control saves itself: it is the only editable thing on that
 // panel, so a second "save rule" button there would mean two buttons writing
 // one rule, one of them only a single field of it.
+// Blank means the default; anything typed is clamped to what the plugin takes.
+const DEFAULT_COOKIE_COOLDOWN = 1800;
+function cookieCooldownSeconds() {
+  const raw = $("cookieCooldown")?.value?.trim();
+  if (!raw) return 0;
+  return Math.min(604800, Math.max(1, Math.round(Number(raw)) || DEFAULT_COOKIE_COOLDOWN));
+}
+$("cookieCooldown")?.addEventListener("change", async () => {
+  const seconds = cookieCooldownSeconds();
+  $("cookieCooldown").value = seconds ? String(seconds) : "";
+  if (!store.selected || !store.rule) return;
+  const epoch = store.selectionEpoch;
+  const previous = store.rule;
+  try {
+    const payload = await api("/rule", { method: "PUT", body: { ...store.rule, auth_index: store.selected, cookie_cooldown_seconds: seconds } });
+    if (epoch !== store.selectionEpoch) return;
+    store.rule = payload.rule || store.rule;
+    toast("已保存");
+    loadCookiePool().catch(() => {});
+  } catch (error) {
+    if (epoch !== store.selectionEpoch) return;
+    $("cookieCooldown").value = String(previous.cookie_cooldown_seconds || DEFAULT_COOKIE_COOLDOWN);
+    fail(error);
+  }
+});
 $("ruleStateTTL")?.addEventListener("change", () => {
   const seconds = ruleStateTTL();
   $("ruleStateTTL").value = seconds ? String(seconds) : "";
@@ -5823,6 +5949,14 @@ $("probeEnabled")?.addEventListener("change", () => {
 for (const radio of document.querySelectorAll('input[name="probeCookieMode"]')) {
   radio.addEventListener("change", () => { syncProbeControls(); saveProbeSettings(() => {}); });
 }
+$("probeHeaderAdd")?.addEventListener("click", () => headerRow($("probeHeaderRows"), "", "").focus());
+// Rows save when an edit settles or a row goes; a row with no name yet is
+// left out until it has one.
+$("probeHeaderRows")?.addEventListener("change", () => saveProbeSettings(() => {}));
+$("probeHeaderRows")?.addEventListener("click", (event) => {
+  if (event.target.closest?.("button")) setTimeout(() => saveProbeSettings(() => {}), 0);
+});
+$("probeRunBtn")?.addEventListener("click", runManualProbe);
 for (const id of ["probeInterval", "probeCookieTTL", "probeResolveIP", "probeProxyOn", "probeVerify"]) {
   $(id)?.addEventListener("change", () => { syncProbeControls(); saveProbeSettings(() => {}); });
 }

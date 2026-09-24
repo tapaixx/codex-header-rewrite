@@ -111,3 +111,33 @@ func TestRegistrationDeclaresItsConfigFields(t *testing.T) {
 		t.Fatalf("cfg=%+v", cfg)
 	}
 }
+
+// The cookie cooldown is optional, and bounded when set.
+func TestCookieCooldownBounds(t *testing.T) {
+	for _, tc := range []struct {
+		seconds int
+		ok      bool
+	}{{0, true}, {60, true}, {maxCookieCooldownSeconds, true}, {-1, false}, {maxCookieCooldownSeconds + 1, false}} {
+		_, err := validateRule(headerRule{AuthIndex: "i", CookieCooldownSeconds: tc.seconds})
+		if (err == nil) != tc.ok {
+			t.Fatalf("%d seconds: err=%v", tc.seconds, err)
+		}
+	}
+}
+
+// Probe header overrides are canonical, and the plugin's own headers are
+// refused.
+func TestCleanProbeHeaders(t *testing.T) {
+	out, err := cleanProbeHeaders(map[string]string{" x-client-version ": "1.2", "User-Agent": "probe/1"})
+	if err != nil || out["X-Client-Version"] != "1.2" || out["User-Agent"] != "probe/1" {
+		t.Fatalf("out=%v err=%v", out, err)
+	}
+	for _, bad := range []map[string]string{
+		{"Authorization": "Bearer x"}, {"cookie": "a=1"}, {"X-Codex-Turn-State": "s"},
+		{"bad header": "v"}, {"X-Ok": "line\r\nbreak"},
+	} {
+		if _, err := cleanProbeHeaders(bad); err == nil {
+			t.Fatalf("%v should be refused", bad)
+		}
+	}
+}

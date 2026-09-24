@@ -74,8 +74,13 @@ try {
     assert.ok(cookieRows[0].includes('gw-iad-7.internal') && cookieRows[0].includes('可用') && /\d\d-\d\d \d\d:\d\d:\d\d/.test(cookieRows[0]), `${label}: ${cookieRows[0]}`);
     assert.ok(cookieRows[1].includes('已过期'), `${label}: ${cookieRows[1]}`);
     assert.equal(await page.locator('#cookiePoolMeta').textContent(), '5 / 7 条可用', label);
-    // A cookie a degraded turn took out reads as invalid, not as usable.
-    assert.ok(cookieRows[3].includes('gw-dfw-5.internal') && cookieRows[3].includes('已失效') && !cookieRows[3].includes('可用'), `${label}: ${cookieRows[3]}`);
+    // A cookie a degraded turn cooled down reads as cooling, not as usable.
+    assert.ok(cookieRows[3].includes('gw-dfw-5.internal') && cookieRows[3].includes('冷却至') && !cookieRows[3].includes('可用'), `${label}: ${cookieRows[3]}`);
+    // The cooldown is a per-credential setting that saves on change.
+    assert.equal(await page.locator('#cookieCooldown').inputValue(), '1800', label);
+    await page.fill('#cookieCooldown', '600');
+    await page.dispatchEvent('#cookieCooldown', 'change');
+    await page.waitForFunction(() => document.getElementById('toast').textContent.includes('已保存'));
     // The pager says how many there are and turns to the rest.
     assert.ok((await page.locator('#cookiePoolPager').textContent()).includes('共 7 条'), label);
     await page.locator('#cookiePoolPager button[aria-label="第 2 页"]').click();
@@ -119,16 +124,27 @@ try {
     });
     assert.equal(pinned.tabs, pinned.nav, `${label}: the strip stops at the header stack ${JSON.stringify(pinned)}`);
     assert.ok(pinned.row < pinned.tabs, `${label}: the rows keep scrolling beneath it`);
+    // A manual probe is confirmed, sent, and lands in the probe history marked
+    // as manual; the list switches there by itself.
+    await page.evaluate(() => { document.getElementById('probeAdvanced').open = true; });
+    await page.locator('#probeRunBtn').click();
+    await page.locator('.ant-modal button[data-act=ok]').click();
+    await page.waitForFunction(() => document.getElementById('toast').textContent.includes('已发起手动探针'));
+    await page.waitForFunction(() => document.querySelector('#historyBody .history-summary .history-origin')?.textContent.includes('手动'), null, { timeout: 8000 });
+    await page.evaluate(() => document.querySelector('.detail-tabs [data-history="live"]').click());
+    await page.waitForFunction(() => document.querySelector('#historyBody .history-summary .history-origin')?.textContent.trim() === '线上');
     // The history list names the backend each request's session was pinned to.
     const historyHeads = await page.locator('#historyPanel thead th').allTextContents();
-    assert.ok(historyHeads.includes('路由目标'), `${label}: ${historyHeads}`);
-    const routes = await page.locator('#historyBody td.history-route').allTextContents();
-    assert.equal(routes.length, 6, `${label}: one route cell per row`);
+    assert.ok(historyHeads.includes('请求路由') && historyHeads.includes('响应路由'), `${label}: ${historyHeads}`);
+    const routes = await page.locator('#historyBody td.history-route:not(.history-route-res)').allTextContents();
+    const resRoutes = await page.locator('#historyBody td.history-route-res').allTextContents();
+    assert.equal(routes.length, 6, `${label}: one request route per row`);
+    assert.equal(resRoutes.length, 6, `${label}: one response route per row`);
     assert.ok(routes[0].includes('gw-iad-7.internal'), `${label}: ${routes}`);
+    assert.ok(resRoutes[0].includes('gw-ord-2.internal'), `${label}: the response moved the session: ${resRoutes}`);
     // The quota strip's refresh asks the upstream and says so.
     await page.locator('#quotaRefresh').click();
-    await page.waitForFunction(() => document.getElementById('toast').dataset.show === 'true');
-    assert.ok((await page.locator('#toast').textContent()).includes('已从上游刷新'), label);
+    await page.waitForFunction(() => document.getElementById('toast').textContent.includes('已从上游刷新'));
         // The pool list reads the session's __oailb: routing target and its
     // local issue and expiry times, or says the session has none.
     const heads = await page.locator('.pool-table th').allTextContents();
