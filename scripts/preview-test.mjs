@@ -86,7 +86,22 @@ try {
     await page.locator('#cookiePoolBody .cookie-pool-row').first().click();
     await page.waitForFunction(() => document.getElementById('drawerTitle').textContent === 'Cookie 池');
     assert.ok((await page.locator('#drawerBody').textContent()).includes('多重判断复核通过'), label);
+    // An entry can replace the credential-level cookie, after a confirmation.
+    await page.locator('#drawerBody [data-cookie-use]').click();
+    await page.locator('.ant-modal button[data-act=ok]').click();
+    await page.waitForFunction(() => document.getElementById('toast').textContent.includes('已替换凭证级 Cookie'));
     await page.locator('#drawerClose').click();
+    // A pasted cookie is pooled by its __oailb routing target...
+    await page.locator('#cookiePoolAdd').click();
+    await page.locator('.ant-modal-input').fill('__oailb=' + (await page.evaluate(() => { const b = (o) => btoa(JSON.stringify(o)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_'); return b({ alg: 'HS256' }) + '.' + b({ host: 'gw-pasted.internal', exp: Math.floor(Date.now() / 1000) + 3600 }) + '.' + b('s'); })) + '; oai-did=x');
+    await page.locator('.ant-modal button[data-act=ok]').click();
+    await page.waitForFunction(() => document.getElementById('toast').textContent.includes('gw-pasted.internal'));
+    await page.waitForFunction(() => document.querySelector('#cookiePoolBody .cookie-pool-row')?.textContent.includes('手动'));
+    // ...and one without it is refused with the reason.
+    await page.locator('#cookiePoolAdd').click();
+    await page.locator('.ant-modal-input').fill('__cf_bm=only');
+    await page.locator('.ant-modal button[data-act=ok]').click();
+    await page.waitForFunction(() => document.getElementById('toast').textContent.includes('没有 __oailb'));
     // Scrolled past, the history card's tab strip stops at the bottom of the
     // header stack instead of sliding under it; the rows keep scrolling.
     const pinned = await page.evaluate(async () => {

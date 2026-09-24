@@ -1343,6 +1343,10 @@ body[data-workspace="history"] #turnStatePanel .state-pool{display:block}
 .pool-table td.pool-lb-host,.pool-table td.pool-minted{white-space:normal}
 .pool-table td.pool-minted{min-width:9em}
 .pool-cookie-raw{margin-top:8px}
+.cookie-label-side{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.cookie-label-side .pool-act{min-height:26px;padding:0 9px;font-size:11px;border-radius:var(--r-sm)}
+.cookie-pool-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.cookie-pool-actions .muted{font-size:12px}
 .pool-cookie-raw>summary{cursor:pointer;font-size:12px;color:var(--text-soft);padding:4px 0;list-style-position:inside}
 .pool-cookie-raw>summary:hover{color:var(--text)}
 .pool-cookie-raw .pool-state-value{margin-top:4px}
@@ -2222,6 +2226,7 @@ body[data-workspace="history"] #historyPanel{grid-row:5!important}
 .ant-modal-content li+li{margin-top:3px}
 .ant-modal-content code{font-family:var(--mono);font-size:12px}
 .ant-modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.ant-modal-input{display:block;width:100%;margin-top:10px;font-size:12px;line-height:1.5;resize:vertical;min-height:84px}
 .ant-modal-footer button.danger{background:var(--gone);border-color:var(--gone);color:#fff}
 @media (prefers-reduced-motion:reduce){.ant-modal-mask,.ant-modal{transition:none}}
 
@@ -2525,6 +2530,7 @@ body[data-workspace="history"] #historyPanel{grid-row:5!important}
       <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>Cookie 池</h2><div class="panel-caption">判定为不降智的会话 Cookie，按路由目标各留最新一条<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="Cookie 池的说明">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只收有「不降智」判定的会话：开了多重判断、复核通过的探针会话，以及注入了 state 而上游没有回写的线上会话。按 <code>__oailb</code> 里的路由目标去重，同一个路由目标来了新的就覆盖；没有 <code>__oailb</code> 的会话不收。</span><span class="hint-k">状态</span><span class="hint-v">由 <code>__oailb</code> 的过期时间决定：没过期就可用。</span><span class="hint-k">失效</span><span class="hint-v">注入了 Cookie 的线上请求被判为降智，或探针从池里取的 Cookie 复核判为降智，对应路由目标的那条就置为<b>已失效</b>：还在列表里，但不会再被取用；同一路由目标来了新的不降智 Cookie 就覆盖它。</span><span class="hint-k">使用</span><span class="hint-v">自动探针的 Cookie 来源选「Cookie 池」时，随机取一条可用的带上；池里没有可用的就不带 Cookie。</span></span></span></div></div>
         <div class="spacer"></div>
         <span class="muted" id="cookiePoolMeta"></span>
+        <button class="quiet" type="button" id="cookiePoolAdd" disabled><svg class="i"><use href="#i-plus"/></svg>添加</button>
         <button class="quiet icon" id="cookiePoolRefresh" title="刷新" aria-label="刷新 Cookie 池"><svg class="i"><use href="#i-refresh"/></svg></button>
       </div>
       <div class="panel-body">
@@ -3093,7 +3099,9 @@ function renderPagination(host, { page, total, pageSize, onChange, label = "分�
 
 // Modal.confirm. Resolves true on OK, false on cancel or Escape. Focus stays
 // inside while it is open and returns to where it was after.
-function confirmDialog({ title, content = "", okText = "确定", cancelText = "取消", danger = false }) {
+// With `input`, a text field follows the explanation and the promise
+// resolves to its value on OK, or null.
+function confirmDialog({ title, content = "", okText = "确定", cancelText = "取消", danger = false, input = null }) {
   return new Promise((resolve) => {
     const opener = document.activeElement;
     const mask = document.createElement("div");
@@ -3102,17 +3110,18 @@ function confirmDialog({ title, content = "", okText = "确定", cancelText = "�
     mask.innerHTML = `<div class="ant-modal" role="alertdialog" aria-modal="true" aria-labelledby="${id}-t" aria-describedby="${id}-c" data-kind="${danger ? "danger" : "confirm"}">
       <div class="ant-modal-body"><svg class="i"><use href="#i-alert"/></svg>
         <div class="ant-modal-title" id="${id}-t">${esc(title)}</div>
-        <div class="ant-modal-content" id="${id}-c">${content}</div></div>
+        <div class="ant-modal-content" id="${id}-c">${content}${input ? `<textarea class="ant-modal-input mono" rows="${input.rows || 4}" placeholder="${esc(input.placeholder || "")}" aria-label="${esc(input.label || title)}" spellcheck="false"></textarea>` : ""}</div></div>
       <div class="ant-modal-footer"><button type="button" data-act="cancel">${esc(cancelText)}</button>
         <button type="button" data-act="ok" class="${danger ? "danger" : "primary"}">${esc(okText)}</button></div></div>`;
     document.body.append(mask);
-    const buttons = [...mask.querySelectorAll("button")];
+    const field = mask.querySelector(".ant-modal-input");
+    const buttons = [...(field ? [field] : []), ...mask.querySelectorAll("button")];
     const close = (answer) => {
       mask.dataset.show = "false";
       document.removeEventListener("keydown", onKey, true);
       setTimeout(() => mask.remove(), 180);
       opener?.focus?.({ preventScroll: true });
-      resolve(answer);
+      resolve(input ? (answer ? field.value : null) : answer);
     };
     const onKey = (event) => {
       if (event.key === "Escape") { event.preventDefault(); close(false); }
@@ -3129,7 +3138,7 @@ function confirmDialog({ title, content = "", okText = "确定", cancelText = "�
     document.addEventListener("keydown", onKey, true);
     // Focus moves at once, so a key pressed straight away lands in the
     // dialog; only the fade waits a frame.
-    (danger ? buttons[0] : buttons[1]).focus({ preventScroll: true });
+    (field || (danger ? buttons[0] : buttons[1])).focus({ preventScroll: true });
     requestAnimationFrame(() => { mask.dataset.show = "true"; });
   });
 }
@@ -3729,7 +3738,8 @@ function cookieDetail(record) {
     return { count, html: '<div class="history-detail-section"><div class="empty">这次请求没有发送 Cookie，上游也没有返回 Set-Cookie</div></div>' };
   }
   return { count, html: `<div class="history-detail-section">
-    <div class="history-detail-label"><span>Cookie</span><span class="muted">结构解析 · 只显示长度、声明与属性，不显示原值</span></div>
+    <div class="history-detail-label"><span>Cookie</span><span class="cookie-label-side"><span class="muted">结构解析 · 只显示长度、声明与属性，不显示原值</span>
+      <button type="button" class="pool-act" data-cookie-pool="${esc(record.id)}" title="把这次请求的会话（发出的 Cookie 叠加响应的 Set-Cookie）放进 Cookie 池，按 __oailb 路由目标覆盖">Cookie 入池</button></span></div>
     <div class="ts-pair">
       ${cookieCard("发往上游", requestCookies, "本次请求没有向上游发送 Cookie")}
       ${cookieCard("上游返回", responseCookies, "响应没有返回 Set-Cookie")}
@@ -4667,7 +4677,7 @@ async function loadCookiePool(page) {
       row.innerHTML = `<td class="mono pool-lb-host" translate="no">${esc(entry.host)}</td>
         <td class="num" title="${esc(issued ? issued.toLocaleString() : "")}">${esc(shortLocalTime(issued) || "-")}</td>
         <td class="num" title="${esc(expires ? expires.toLocaleString() : "")}">${esc(shortLocalTime(expires) || "-")}</td>
-        <td><span class="tag flat">${entry.source === "probe" ? "探针" : "线上"}</span></td>
+        <td><span class="tag flat">${COOKIE_POOL_SOURCES[entry.source] || entry.source}</span></td>
         <td class="num pool-minted">${esc(saved.toLocaleString())} · ${esc(formatAge(Math.max(0, Math.round((Date.now() - saved) / 1000))))}</td>
         <td>${cookiePoolStatus(entry)}</td>`;
       const open = () => showCookiePoolEntry(entry);
@@ -4702,7 +4712,7 @@ function showCookiePoolEntry(entry) {
     <div class="history-detail-section">
       <div class="history-detail-label"><span>入池</span></div>
       <dl class="ts-grid">
-        <dt>来源</dt><dd>${entry.source === "probe" ? "探针（多重判断复核通过）" : "线上（注入后上游没有回写 state）"}</dd>
+        <dt>来源</dt><dd>${esc(COOKIE_POOL_SOURCE_DETAIL[entry.source] || entry.source)}</dd>
         <dt>模型</dt><dd class="mono">${esc(entry.model || "-")}</dd>
         <dt>对应 state</dt><dd class="mono">${esc(entry.digest || "-")}</dd>
         <dt>入池时间</dt><dd>${at(entry.saved_at)}</dd>
@@ -4719,7 +4729,48 @@ function showCookiePoolEntry(entry) {
       <div class="history-detail-label"><span>原值</span></div>
       <div class="pool-state-value mono">${esc(entry.cookie)}</div>
     </div>
+    <div class="history-detail-section cookie-pool-actions">
+      <button type="button" class="primary" data-cookie-use="${esc(entry.host)}">替换为凭证级 Cookie</button>
+      <span class="muted">凭证级 Cookie 是「凭证级」Cookie 来源的探针带的那份；真实请求之后会再覆盖它。</span>
+    </div>
   </div>`);
+}
+const COOKIE_POOL_SOURCES = { probe: "探针", live: "线上", manual: "手动" };
+const COOKIE_POOL_SOURCE_DETAIL = { probe: "探针（多重判断复核通过）", live: "线上（注入后上游没有回写 state）", manual: "手动入池" };
+async function addCookieToPool({ id = "", cookie = "" }) {
+  if (!store.selected) return;
+  try {
+    const result = await api("/cookie-pool", { method: "POST", body: { auth_index: store.selected, id, cookie } });
+    toast(`已入池：路由目标 ${result.host}`);
+    loadCookiePool().catch(() => {});
+  } catch (error) {
+    toast(`入池失败：${COOKIE_POOL_ERRORS[error?.message] || error?.message || error}`, true);
+  }
+}
+const COOKIE_POOL_ERRORS = {
+  "the cookie carries no __oailb routing target": "这份 Cookie 里没有 __oailb，无法按路由目标入池",
+  "history record not found": "这条记录已不在历史里",
+  "no cookie to pool": "没有可入池的 Cookie",
+  "no cookie for that routing target": "Cookie 池里已没有这个路由目标",
+};
+$("cookiePoolAdd")?.addEventListener("click", async () => {
+  const cookie = await confirmDialog({ title: "手动添加到 Cookie 池", okText: "入池",
+    content: "粘贴完整的 Cookie 值（<code>name=value; name2=value2</code>）。必须带 <code>__oailb</code>，按其中的路由目标入池，同一路由目标的会被覆盖。",
+    input: { placeholder: "__oailb=…; __cf_bm=…", label: "Cookie 值", rows: 5 } });
+  if (cookie !== null && cookie.trim()) addCookieToPool({ cookie: cookie.trim() });
+});
+async function useCookieForCredential(entry) {
+  const ok = await confirmDialog({ title: `用路由目标 ${entry.host} 的 Cookie 替换凭证级 Cookie？`, okText: "替换",
+    content: `<ul><li>写入这个凭证的凭证级 Cookie，「凭证级」Cookie 来源的探针会带上它。</li>
+      <li>这个凭证的下一次真实请求会再覆盖它。</li>
+      ${entry.usable ? "" : "<li><b>这条已不可用</b>（已过期或已失效），仍要替换吗？</li>"}</ul>` });
+  if (!ok) return;
+  try {
+    await api("/session", { method: "POST", body: { auth_index: store.selected, host: entry.host } });
+    toast("已替换凭证级 Cookie");
+  } catch (error) {
+    toast(`替换失败：${COOKIE_POOL_ERRORS[error?.message] || error?.message || error}`, true);
+  }
 }
 async function loadTurnStates() {
   loadCookiePool().catch(() => {});
@@ -5448,6 +5499,7 @@ function syncPoolControls() {
   const ready = !!store.rule && store.rule.auth_index === store.selected;
   $("poolMaintain").disabled = !ready;
   if ($("credentialCookieOpen")) $("credentialCookieOpen").disabled = !store.selected;
+  if ($("cookiePoolAdd")) $("cookiePoolAdd").disabled = !store.selected;
   // A frozen pool cannot inject, so the injection switch waits for it.
   const frozen = !$("poolMaintain").checked;
   for (const id of ["poolInject", "poolCookie"]) {
@@ -5809,6 +5861,13 @@ $("drawerClose").addEventListener("click", closeHistoryDrawer);
 $("drawerBody").addEventListener("click", (event) => {
   const button = event.target.closest?.("[data-manual-pool]");
   if (button && !button.disabled) manualPool(button);
+  const pool = event.target.closest?.("[data-cookie-pool]");
+  if (pool) addCookieToPool({ id: pool.dataset.cookiePool });
+  const use = event.target.closest?.("[data-cookie-use]");
+  if (use) {
+    const entry = (store.cookiePool || []).find((item) => item.host === use.dataset.cookieUse);
+    if (entry) useCookieForCredential(entry);
+  }
 });
 $("drawerBackdrop").addEventListener("click", closeHistoryDrawer);
 document.addEventListener("click", (event) => {

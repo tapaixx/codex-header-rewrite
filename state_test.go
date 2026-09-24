@@ -1376,3 +1376,67 @@ func TestDegradedInjectedCookieInvalidatesItsBackend(t *testing.T) {
 		t.Fatalf("the replacement is usable: %+v %v", entry, ok)
 	}
 }
+
+// A cookie can be pooled by hand, pasted or from a recorded request's session,
+// and a pool entry can replace the credential's own cookie.
+func TestManualCookiePoolAndCredentialReplace(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	store := resetState(t)
+	resetTurnStates(t)
+	now := time.Now()
+	statusOf := func(err error) int {
+		var failure *manualPoolError
+		if errors.As(err, &failure) {
+			return failure.status
+		}
+		return 0
+	}
+
+	pasted := "__oailb=" + oailbToken("gw-pasted", now, now.Add(time.Hour)) + "; oai-did=x"
+	entry, err := poolCookieByHand("idx-a", "", pasted)
+	if err != nil || entry.Host != "gw-pasted" || entry.Source != "manual" {
+		t.Fatalf("pasted: %+v %v", entry, err)
+	}
+	if _, err := poolCookieByHand("idx-a", "", "__cf_bm=no-route"); statusOf(err) != http.StatusUnprocessableEntity {
+		t.Fatalf("a cookie without __oailb is refused: %v", err)
+	}
+
+	// From a record: what went out, updated by what the response set.
+	lb := oailbToken("gw-record", now, now.Add(time.Hour))
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.mu.Unlock()
+	injectTestRequest(t, "rec", http.Header{"Cookie": {"sid=1"}})
+	observeResponse(responseInterceptRequest{RequestID: "rec", StatusCode: 200, ResponseHeaders: http.Header{"Set-Cookie": {"__oailb=" + lb + "; Path=/"}}})
+	completeRequest(requestCompletion{RequestID: "rec", Outcome: "succeeded", StatusCode: 200, CompletedAt: now})
+	record := lastAttempt(t)
+	entry, err = poolCookieByHand("idx-a", record.ID, "")
+	if err != nil || entry.Host != "gw-record" {
+		t.Fatalf("from a record: %+v %v", entry, err)
+	}
+	entries, _ := cookiePoolFor("idx-a")
+	for _, e := range entries {
+		if e.Host == "gw-record" && e.Cookie != "sid=1; __oailb="+lb {
+			t.Fatalf("the record's session is pooled: %q", e.Cookie)
+		}
+	}
+	if _, err := poolCookieByHand("idx-a", "no-such", ""); statusOf(err) != http.StatusNotFound {
+		t.Fatalf("an unknown record is not found: %v", err)
+	}
+
+	// Replacing the credential cookie leaves the liveness clock alone.
+	live := now.Add(-time.Minute).UTC()
+	if err := store.SaveSession(credentialSession{AuthIndex: "idx-a", Cookie: "old=1", LastLiveAt: live}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := useCookieForCredential("idx-a", "gw-pasted"); err != nil {
+		t.Fatal(err)
+	}
+	jar, _, _ := store.Session("idx-a", "")
+	if jar.Cookie != pasted || !jar.LastLiveAt.Equal(live) {
+		t.Fatalf("jar=%+v", jar)
+	}
+	if _, err := useCookieForCredential("idx-a", "gw-none"); statusOf(err) != http.StatusNotFound {
+		t.Fatalf("an unknown routing target is not found: %v", err)
+	}
+}

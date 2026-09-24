@@ -64,6 +64,8 @@ func registerManagement() managementRegistration {
 		{Method: http.MethodGet, Path: apiQuotaPath, Description: "The credential's allowance as the upstream last reported it"},
 		{Method: http.MethodGet, Path: apiSessionPath, Description: "The credential-level cookie jar the live traffic fills"},
 		{Method: http.MethodGet, Path: apiCookiePoolPath, Description: "The non-degraded cookie pool, one cookie per backend"},
+		{Method: http.MethodPost, Path: apiCookiePoolPath, Description: "Add a cookie to the pool by hand, pasted or from a recorded request"},
+		{Method: http.MethodPost, Path: apiSessionPath, Description: "Replace the credential-level cookie with a pool entry"},
 	}, Resources: []resourceRoute{{Path: resourceIndexPath, Menu: pluginName, Description: "Codex credential header rewrite and history"}}}
 }
 
@@ -266,6 +268,33 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"cleared": strings.TrimSpace(body.AuthIndex)}), nil
+	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiCookiePoolPath):
+		var body struct {
+			AuthIndex string `json:"auth_index"`
+			ID        string `json:"id"`
+			Cookie    string `json:"cookie"`
+		}
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return jsonError(http.StatusBadRequest, "invalid JSON body"), nil
+		}
+		entry, err := poolCookieByHand(body.AuthIndex, body.ID, body.Cookie)
+		if err != nil {
+			return manualFailureResponse(err), nil
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"host": entry.Host, "expires_at": entry.ExpiresAt, "source": entry.Source}), nil
+	case req.Method == http.MethodPost && strings.HasSuffix(req.Path, apiSessionPath):
+		var body struct {
+			AuthIndex string `json:"auth_index"`
+			Host      string `json:"host"`
+		}
+		if err := json.Unmarshal(req.Body, &body); err != nil {
+			return jsonError(http.StatusBadRequest, "invalid JSON body"), nil
+		}
+		session, err := useCookieForCredential(body.AuthIndex, body.Host)
+		if err != nil {
+			return manualFailureResponse(err), nil
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"auth_index": session.AuthIndex, "refreshed_at": session.RefreshAt}), nil
 	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiCookiePoolPath):
 		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
 		if authIndex == "" {
@@ -625,4 +654,13 @@ func jsonError(status int, message string) managementResponse {
 func jsonResponseUnsafe(status int, v any) managementResponse {
 	raw, _ := json.Marshal(v)
 	return managementResponse{StatusCode: status, Headers: http.Header{"Content-Type": {"application/json; charset=utf-8"}, "Cache-Control": {"no-store"}}, Body: raw}
+}
+
+// manualFailureResponse maps an operator action's refusal to its status.
+func manualFailureResponse(err error) managementResponse {
+	var failure *manualPoolError
+	if errors.As(err, &failure) {
+		return jsonError(failure.status, failure.message)
+	}
+	return jsonError(http.StatusInternalServerError, err.Error())
 }

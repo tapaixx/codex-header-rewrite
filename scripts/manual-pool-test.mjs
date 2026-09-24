@@ -32,10 +32,14 @@ try {
   const inTitle = await action.evaluate((el) => el.closest('.ts-block')?.querySelector('.ts-title')?.textContent.includes('上游返回'));
   assert.ok(inTitle, 'the action sits on the upstream card, not the outbound one');
 
+  // The same drawer pools the request's session into the Cookie 池.
+  await page.locator('#detailPane-analysis [data-cookie-pool]').click();
+  await page.waitForFunction(() => document.getElementById('toast').textContent.includes('已入池：路由目标 gw-iad-7.internal'));
+  await page.waitForFunction(() => document.querySelector('#cookiePoolBody .cookie-pool-row')?.textContent.includes('手动'));
   const before = await page.evaluate(() => store.turnStates.map((s) => `${s.model}:${s.digest}`));
   assert.ok(before.includes('gpt-6-astra:c91a0e77bb42'), JSON.stringify(before));
   await action.click();
-  await page.waitForFunction(() => document.getElementById('toast').dataset.show === 'true');
+  await page.waitForFunction(() => document.getElementById('toast').textContent.includes('已手动入池'));
   const message = await page.locator('#toast').textContent();
   assert.ok(message.includes('已手动入池') && message.includes('替换'), 'the toast says it took the slot from a newer state: ' + message);
   await page.waitForFunction(() => store.turnStates.some((s) => s.digest === 'a13f9c21b4e0'));

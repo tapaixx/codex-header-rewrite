@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"math/rand/v2"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -164,4 +166,110 @@ func invalidateCookiePoolLocked(authIndex, cookie, by string) string {
 		return host
 	}
 	return ""
+}
+
+// poolCookieByHand adds a cookie to the pool on an operator's word: pasted,
+// or the session of a recorded request -- what went out, updated by what the
+// response set. It needs an __oailb to key on, like every other entry.
+func poolCookieByHand(authIndex, id, pasted string) (cookiePoolEntry, error) {
+	authIndex = strings.TrimSpace(authIndex)
+	if authIndex == "" {
+		return cookiePoolEntry{}, manualPoolFailure(http.StatusBadRequest, "auth_index is required")
+	}
+	state.mu.Lock()
+	store := state.store
+	state.mu.Unlock()
+	if store == nil {
+		return cookiePoolEntry{}, manualPoolFailure(http.StatusServiceUnavailable, "persistence is not initialized")
+	}
+	cookie, model, digest := strings.TrimSpace(pasted), "", ""
+	if id = strings.TrimSpace(id); id != "" {
+		record, found := findRecord(store, authIndex, id)
+		if !found {
+			return cookiePoolEntry{}, manualPoolFailure(http.StatusNotFound, "history record not found")
+		}
+		sent := joinCookieHeader(record.AfterHeaders)
+		if sent == "" {
+			sent = joinCookieHeader(record.BeforeHeaders)
+		}
+		cookie = applySetCookies(sent, record.ResponseHeaders)
+		model = sentModel(record.Model, record.RequestedModel)
+		if record.TurnStateMinted != nil {
+			digest = record.TurnStateMinted.Digest
+		}
+	}
+	if cookie == "" {
+		return cookiePoolEntry{}, manualPoolFailure(http.StatusBadRequest, "no cookie to pool")
+	}
+	if _, _, _, ok := oailbRoute(cookie); !ok {
+		return cookiePoolEntry{}, manualPoolFailure(http.StatusUnprocessableEntity, "the cookie carries no __oailb routing target")
+	}
+	state.mu.Lock()
+	saved := noteCookiePoolLocked(authIndex, cookie, "manual", model, digest)
+	state.mu.Unlock()
+	if !saved {
+		return cookiePoolEntry{}, errors.New("the cookie could not be saved to the pool")
+	}
+	host, _, _, _ := oailbRoute(cookie)
+	entries, _ := cookiePoolFor(authIndex)
+	for _, entry := range entries {
+		if entry.Host == host {
+			return entry, nil
+		}
+	}
+	return cookiePoolEntry{}, errors.New("the cookie could not be read back")
+}
+
+// findRecord looks a record up in the request history, then the probe
+// history; both are bounded, so a scan is the lookup.
+func findRecord(store persistence, authIndex, id string) (historyRecord, bool) {
+	if page, err := store.History(authIndex, 1, historyLimit); err == nil {
+		for _, record := range page.Items {
+			if record.ID == id {
+				return record, true
+			}
+		}
+	}
+	if page, err := store.ProbeHistory(authIndex, 1, probeHistoryLimit); err == nil {
+		for _, record := range page.Items {
+			if record.ID == id {
+				return record, true
+			}
+		}
+	}
+	return historyRecord{}, false
+}
+
+// useCookieForCredential writes a pool entry's cookie into the credential's
+// own jar, the one the probe's credential mode presents. Live traffic keeps
+// writing that jar, so the next live response replaces it again; the liveness
+// clock is left alone.
+func useCookieForCredential(authIndex, host string) (credentialSession, error) {
+	authIndex, host = strings.TrimSpace(authIndex), strings.TrimSpace(host)
+	if authIndex == "" || host == "" {
+		return credentialSession{}, manualPoolFailure(http.StatusBadRequest, "auth_index and host are required")
+	}
+	entries, err := cookiePoolFor(authIndex)
+	if err != nil {
+		return credentialSession{}, err
+	}
+	for _, entry := range entries {
+		if entry.Host != host {
+			continue
+		}
+		state.mu.Lock()
+		store := state.store
+		state.mu.Unlock()
+		if store == nil {
+			return credentialSession{}, manualPoolFailure(http.StatusServiceUnavailable, "persistence is not initialized")
+		}
+		session, _, _ := store.Session(authIndex, "")
+		session.AuthIndex, session.Egress = authIndex, ""
+		session.Cookie, session.RefreshAt = entry.Cookie, time.Now().UTC()
+		if err := store.SaveSession(session); err != nil {
+			return credentialSession{}, err
+		}
+		return session, nil
+	}
+	return credentialSession{}, manualPoolFailure(http.StatusNotFound, "no cookie for that routing target")
 }

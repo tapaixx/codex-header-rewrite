@@ -279,7 +279,7 @@ const stub = `
     }
     if (path.endsWith("/cookie-pool")) {
       const hour = 3600 * 1000;
-      return json({ auth_index: authIndex, entries: authIndex !== "acct-a" ? [] : [
+      F.cookiePool = F.cookiePool || [
         { host: "gw-iad-7.internal", cookie: "__oailb=" + F.oailb + "; __cf_bm=" + F.cfbm, issued_at: new Date(Date.now() - 600000).toISOString(),
           expires_at: new Date(Date.now() + 1.8 * hour).toISOString(), source: "probe", model: "gpt-6-astra", digest: "c91a0e77bb42",
           saved_at: new Date(Date.now() - 11000).toISOString(), usable: true },
@@ -291,9 +291,28 @@ const stub = `
           issued_at: new Date(Date.now() - (i + 1) * 900000).toISOString(), expires_at: new Date(Date.now() + (5 - i) * 1200000).toISOString(),
           source: i % 2 ? "live" : "probe", model: "gpt-6-astra", digest: "", saved_at: new Date(Date.now() - (i + 1) * 60000 - 20000).toISOString(),
           // One taken out by a degraded turn: listed, never drawn.
-          usable: i !== 1, ...(i === 1 ? { invalidated_at: new Date(Date.now() - 30000).toISOString(), invalidated_by: "live" } : {}) })) ] });
+          usable: i !== 1, ...(i === 1 ? { invalidated_at: new Date(Date.now() - 30000).toISOString(), invalidated_by: "live" } : {}) })) ];
+      if (init.method === "POST") {
+        // Read the routing target the way the plugin does: from __oailb.
+        let cookie = body?.cookie || "";
+        if (body?.id) {
+          const record = F.items.find((item) => item.id === body.id);
+          if (!record) return json({ error: "history record not found" }, 404);
+          cookie = ((record.after_headers || {}).Cookie || [""])[0];
+        }
+        const token = (cookie.match(/(?:^|;\s*)__oailb=([^;]+)/) || [])[1] || "";
+        let host = "";
+        try { host = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).host || ""; } catch {}
+        if (!host) return json({ error: "the cookie carries no __oailb routing target" }, 422);
+        F.cookiePool = F.cookiePool.filter((entry) => entry.host !== host);
+        F.cookiePool.unshift({ host, cookie, issued_at: new Date().toISOString(), expires_at: new Date(Date.now() + 2 * hour).toISOString(),
+          source: "manual", model: "", digest: "", saved_at: new Date().toISOString(), usable: true });
+        return json({ host, source: "manual" });
+      }
+      return json({ auth_index: authIndex, entries: authIndex !== "acct-a" ? [] : F.cookiePool });
     }
     if (path.endsWith("/session")) {
+      if (init.method === "POST") return json({ auth_index: body.auth_index, refreshed_at: new Date().toISOString() });
       return json(authIndex === "acct-a"
         ? { auth_index: authIndex, found: true, cookie: "__oailb=" + F.oailb + "; __cf_bm=" + F.cfbm + "; oai-did=demo-device",
             refreshed_at: new Date(Date.now() - 42000).toISOString(), last_live_at: new Date(Date.now() - 42000).toISOString() }
