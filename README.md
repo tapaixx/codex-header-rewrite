@@ -22,6 +22,7 @@ CLIProxyAPI 原生插件：只处理 **Codex credential**，按 `auth_index` 动
 - 保存 request / response body（v0.21.0），但**会话内容被遮蔽**：请求体的 `input` / `messages` / `system`、响应体的 `output` / `content` / `tools` / `usage` 一律替换为 `[MASKED N bytes]`，Codex Responses 与 Claude Messages 两种格式都覆盖；只留下模型、instructions、reasoning、turn metadata、错误结构这些解释请求本身的字段。单个 body 最多保留 256 KB，超出截断并记录原始大小。
 - 自定义测试请求：从凭证可用模型中选择模型、发送默认 `hi` 或自定义 JSON、预览改写结果，或向自定义端点发一次真实请求。
 - 模型一致性核对：记录上游实际声明的模型，与发出的模型比对，不一致时标红。
+- 探针不带 Cookie（v0.25.7）：探针首个请求不带 Cookie，出口回的 state 与 Set-Cookie 成对入池，多重判断带着这对复核；去掉三种 Cookie 来源与预热请求；State 池卡片可查看凭证级 Cookie 的原值与解析。
 - Cookie 转发与配额刷新（v0.25.5）：「注入 Cookie」生效时在凭证 auth 文件写入 `"headers": {"Cookie": "$Cookie"}` 让 CPA 转发 Cookie（开启前弹窗确认）；配额刷新改为读取上游用量接口（不消耗额度）；State 池列表与详情、请求与探针历史加上 `__oailb` 路由目标等 Cookie 解析。
 - 多重判断降智（v0.25.4）：去掉 v0.25.3 的探针耗时判定；探针卡片新增「多重判断降智」开关，打开后探针拿到 state 要再带着它、不带 Cookie 发一次最小请求，上游没回写新 state 才入池。
 - 降智判定改版（v0.25.3）：正常请求按「注入了 state 而上游是否回写」判定，探针按自己的响应耗时分三档（≤10 秒入池 / 10–20 秒可疑 / >20 秒疑似降智）；`probe_degraded_markers` 配置项随旧规则一起移除。
@@ -79,7 +80,7 @@ checksums.txt
 
 | 插件目录里的文件名 | 宿主解析出的 ID | 宿主解析出的版本 |
 |---|---|---|
-| `codex-header-rewrite-v0.25.6.so` | `codex-header-rewrite` | `0.25.6` |
+| `codex-header-rewrite-v0.25.7.so` | `codex-header-rewrite` | `0.25.7` |
 | `codex-header-rewrite.so` | `codex-header-rewrite` | 空 |
 | `codex-header-rewrite-linux-amd64.so` | `codex-header-rewrite-linux-amd64` | 空 |
 
@@ -92,7 +93,7 @@ checksums.txt
 ```bash
 sha256sum --check codex-header-rewrite-linux-amd64.so.sha256
 sudo install -m 0644 codex-header-rewrite-linux-amd64.so \
-  /CLIProxyAPI/plugins/codex-header-rewrite-v0.25.6.so
+  /CLIProxyAPI/plugins/codex-header-rewrite-v0.25.7.so
 ```
 
 升级时删掉旧的那个文件，只保留一个 `codex-header-rewrite*.so`。
