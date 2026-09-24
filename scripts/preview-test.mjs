@@ -85,6 +85,23 @@ try {
     await page.waitForFunction(() => document.getElementById('drawerTitle').textContent === 'Cookie 池');
     assert.ok((await page.locator('#drawerBody').textContent()).includes('多重判断复核通过'), label);
     await page.locator('#drawerClose').click();
+    // Scrolled past, the history card's tab strip stops at the bottom of the
+    // header stack instead of sliding under it; the rows keep scrolling.
+    const pinned = await page.evaluate(async () => {
+      const body = document.getElementById('historyBody');
+      const rows = [...body.children];
+      for (let i = 0; i < 8; i++) rows.forEach((r) => body.append(r.cloneNode(true)));
+      const tabs = document.querySelector('#historyPanel .detail-tabs');
+      window.scrollTo({ top: tabs.getBoundingClientRect().top + scrollY + 300, behavior: 'instant' });
+      await new Promise((r) => setTimeout(r, 150));
+      const result = { tabs: Math.round(tabs.getBoundingClientRect().top), nav: Math.round(document.querySelector('.workspace-nav').getBoundingClientRect().bottom),
+        row: Math.round(body.querySelector('tr').getBoundingClientRect().top) };
+      for (const extra of [...body.children].slice(rows.length)) extra.remove();
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      return result;
+    });
+    assert.equal(pinned.tabs, pinned.nav, `${label}: the strip stops at the header stack ${JSON.stringify(pinned)}`);
+    assert.ok(pinned.row < pinned.tabs, `${label}: the rows keep scrolling beneath it`);
     // The history list names the backend each request's session was pinned to.
     const historyHeads = await page.locator('#historyPanel thead th').allTextContents();
     assert.ok(historyHeads.includes('路由目标'), `${label}: ${historyHeads}`);
