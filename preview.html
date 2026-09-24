@@ -2175,6 +2175,71 @@ html[data-theme="dark"]{color-scheme:dark!important}
    use resolve on the dark side. */
 .code-pane,.hint-layer,.toast{color-scheme:dark}
 
+
+/* The cookie pool sits directly under the state pool, full width, and every
+   card below it moves down one row. */
+body[data-workspace="history"] #cookiePoolPanel{display:block!important;grid-column:1/-1!important;grid-row:2!important;margin-top:0!important}
+body[data-workspace="history"] #cookiePoolPanel .state-pool{display:block}
+body[data-workspace="history"] #degradedPanel{grid-row:3!important}
+body[data-workspace="history"] #probePanel{grid-row:4!important}
+body[data-workspace="history"] #historyPanel{grid-row:5!important}
+@media (min-width:1340px){
+  body[data-workspace="history"] #degradedPanel{grid-column:1!important;grid-row:3!important}
+  body[data-workspace="history"] #probePanel{grid-column:2!important;grid-row:3!important}
+  body[data-workspace="history"] #historyPanel{grid-row:4!important}
+}
+
+/* ==========================================================================
+   Components after Ant Design: Pagination, Modal.confirm, message, Empty.
+   Rebuilt in this file's tokens rather than imported -- the panel is one
+   static page with no framework.
+   ========================================================================== */
+/* Pagination: total on the left, numbered pages with ellipses, arrows. */
+.ant-pagination{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:13px}
+.ant-pagination .ant-total{color:var(--text-mute);margin-right:4px;font-variant-numeric:tabular-nums}
+.ant-pagination .page{position:relative;min-width:32px;height:32px;min-height:32px;padding:0 6px;justify-content:center;
+  border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:var(--r-sm);font-variant-numeric:tabular-nums}
+.ant-pagination .page:hover:not(:disabled){border-color:var(--accent);color:var(--accent);background:var(--surface)}
+.ant-pagination .page[aria-current=true]{border-color:var(--accent);color:var(--accent);font-weight:600;background:var(--surface)}
+.ant-pagination .page:disabled{opacity:.4}
+.ant-pagination .page::after{content:"";position:absolute;left:50%;top:50%;translate:-50% -50%;width:max(100%,40px);height:max(100%,40px)}
+.ant-pagination .ant-ellipsis{min-width:24px;text-align:center;color:var(--text-mute);letter-spacing:2px;user-select:none}
+@media (max-width:820px){.ant-pagination{justify-content:center}.ant-pagination .page::after{width:max(100%,44px)}}
+
+/* Modal.confirm: an icon, a title, the explanation, then the two actions. */
+.ant-modal-mask{position:fixed;inset:0;z-index:1200;display:grid;place-items:start center;padding:12vh 16px 16px;
+  background:color-mix(in srgb,#000 45%,transparent);opacity:0;transition:opacity var(--t-fade) var(--ease)}
+.ant-modal-mask[data-show=true]{opacity:1}
+.ant-modal{width:min(440px,100%);background:var(--surface);color:var(--text);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-float);padding:20px 22px 16px;transform:translateY(-8px);transition:transform var(--t-move) var(--ease)}
+.ant-modal-mask[data-show=true] .ant-modal{transform:none}
+.ant-modal-body{display:grid;grid-template-columns:22px minmax(0,1fr);gap:4px 12px}
+.ant-modal-body>svg{width:22px;height:22px;color:var(--warn);margin-top:1px}
+.ant-modal[data-kind=danger] .ant-modal-body>svg{color:var(--gone)}
+.ant-modal-title{font-size:15px;font-weight:600;line-height:1.5}
+.ant-modal-content{grid-column:2;font-size:13px;line-height:1.65;color:var(--text-soft)}
+.ant-modal-content ul{margin:6px 0 0;padding-left:18px}
+.ant-modal-content li+li{margin-top:3px}
+.ant-modal-content code{font-family:var(--mono);font-size:12px}
+.ant-modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.ant-modal-footer button.danger{background:var(--gone);border-color:var(--gone);color:#fff}
+@media (prefers-reduced-motion:reduce){.ant-modal-mask,.ant-modal{transition:none}}
+
+/* message: a small card at the top centre with a status icon. */
+#toast.toast{color-scheme:inherit;top:calc(14px + env(safe-area-inset-top))!important;bottom:auto!important;transform:translate(-50%,-10px);
+  display:flex;align-items:center;gap:8px;max-width:min(560px,calc(100vw - 32px));padding:9px 14px;
+  background:var(--surface)!important;color:var(--text)!important;border:0!important;border-radius:var(--r-md);
+  box-shadow:var(--shadow-float);font-size:13px;line-height:1.5;z-index:1300}
+#toast.toast[data-show=true]{transform:translate(-50%,0)}
+#toast.toast>svg{flex:none;width:16px;height:16px;color:var(--set)}
+#toast.toast.bad>svg{color:var(--gone)}
+
+/* Empty: the simple inbox figure above the description, for empty lists. */
+.state-pool>.empty,#historyBody td.empty{padding:26px 12px 22px}
+.state-pool>.empty::before,#historyBody td.empty::before{
+  content:"";display:block;width:64px;height:41px;margin:0 auto 10px;background:var(--line-strong);
+  -webkit-mask:var(--empty-figure) center/contain no-repeat;mask:var(--empty-figure) center/contain no-repeat}
+:root{--empty-figure:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 41'%3E%3Cellipse cx='32' cy='33' rx='32' ry='7' opacity='.35'/%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.6' d='M55 12.8 44.9 1.3A2.6 2.6 0 0 0 43 .5H21a2.6 2.6 0 0 0-1.9.8L9 12.8V22h46z'/%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.6' d='M41.6 15.8c0-1.6 1-2.9 2.2-2.9H55v18.1c0 2.1-1.3 3.9-3 3.9H12c-1.7 0-3-1.7-3-3.9V12.9h11.2c1.2 0 2.2 1.3 2.2 2.9s1 2.9 2.2 2.9h14.8c1.2 0 2.2-1.3 2.2-2.9z'/%3E%3C/svg%3E")}
 </style>
 </head>
 <body data-workspace="rules">
@@ -2450,8 +2515,19 @@ html[data-theme="dark"]{color-scheme:dark!important}
       </div>
     </section>
 
+    <section class="panel" id="cookiePoolPanel">
+      <div class="panel-head"><svg class="i"><use href="#i-clock"/></svg><div class="panel-title"><h2>Cookie 池</h2><div class="panel-caption">判定为不降智的会话 Cookie，按路由目标各留最新一条<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="Cookie 池的说明">!</button><span class="hint-text"><span class="hint-k">入池</span><span class="hint-v">只收有「不降智」判定的会话：开了多重判断、复核通过的探针会话，以及注入了 state 而上游没有回写的线上会话。按 <code>__oailb</code> 里的路由目标去重，同一个路由目标来了新的就覆盖；没有 <code>__oailb</code> 的会话不收。</span><span class="hint-k">状态</span><span class="hint-v">由 <code>__oailb</code> 的过期时间决定：没过期就可用。</span><span class="hint-k">使用</span><span class="hint-v">自动探针的 Cookie 来源选「Cookie 池」时，随机取一条可用的带上；池里没有可用的就不带 Cookie。</span></span></span></div></div>
+        <div class="spacer"></div>
+        <span class="muted" id="cookiePoolMeta"></span>
+        <button class="quiet icon" id="cookiePoolRefresh" title="刷新" aria-label="刷新 Cookie 池"><svg class="i"><use href="#i-refresh"/></svg></button>
+      </div>
+      <div class="panel-body">
+        <div id="cookiePoolBody" class="state-pool"></div>
+      </div>
+    </section>
+
     <section class="panel" id="probePanel">
-      <div class="panel-head"><svg class="i"><use href="#i-refresh"/></svg><div class="panel-title"><h2>自动 State 探针</h2><div class="panel-caption">按时补池，而不是等降智了才反应<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="探针的说明">!</button><span class="hint-text"><span class="hint-k">做什么</span><span class="hint-v">按间隔检查探针模型，池里没有 state 或已过期的就补发一次最小 <code>hi</code> 请求（思考强度 <code>low</code>，<b>不带 Cookie</b>，出口回给它的 state 和 Set-Cookie 就是一对）。拿到的 state 连同会话自动入池；打开下面的「多重判断降智」后，要先通过一次复核才入池。</span><span class="hint-k">何时不跑</span><span class="hint-v">开关关着、不在生效时段、或者距离上一次<b>真实请求</b>超过下面的活跃判定时间 —— 账号没人用就不该继续烧额度。探针自己的请求不算「真实请求」。</span><span class="hint-p">与「拦截后重试」互斥，两者都在给同一个池补货。每次探针都是一次计费的真实调用。</span></span></span></div></div>
+      <div class="panel-head"><svg class="i"><use href="#i-refresh"/></svg><div class="panel-title"><h2>自动 State 探针</h2><div class="panel-caption">按时补池，而不是等降智了才反应<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="探针的说明">!</button><span class="hint-text"><span class="hint-k">做什么</span><span class="hint-v">按间隔检查探针模型，池里没有 state 或已过期的就补发一次最小 <code>hi</code> 请求（思考强度 <code>low</code>，带哪份 Cookie 由下面的「Cookie 来源」决定）。拿到的 state 连同会话自动入池；打开下面的「多重判断降智」后，要先通过一次复核才入池。</span><span class="hint-k">何时不跑</span><span class="hint-v">开关关着、不在生效时段、或者距离上一次<b>真实请求</b>超过下面的活跃判定时间 —— 账号没人用就不该继续烧额度。探针自己的请求不算「真实请求」。</span><span class="hint-p">与「拦截后重试」互斥，两者都在给同一个池补货。每次探针都是一次计费的真实调用。</span></span></span></div></div>
         <div class="spacer"></div>
         <label class="switch panel-switch"><input type="checkbox" id="probeEnabled"><span>启用自动探针</span></label>
       </div>
@@ -2463,7 +2539,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
         </div>
 
         <div class="probe-side" style="flex-basis:100%">
-          <label class="switch"><input type="checkbox" id="probeVerify" disabled><span>多重判断降智<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="多重判断降智的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">探针拿到 state 后，再发一次同样的最小请求：<b>带上这条 state 和同一响应下发的 Cookie</b>，从同一个出口发出。复核响应里<b>没有</b>新 state，说明这条 state 撑住了，才入池；回写了新 state 判为降智，复核请求失败算没判定，都不入池。和正常请求的判定是同一条规则。</span><span class="hint-k">关掉</span><span class="hint-v">探针拿到什么就入池，不做判定。</span><span class="hint-p">每次探针多一次上游调用，也多计一次额度。默认关闭。</span></span></span></span></label>
+          <label class="switch"><input type="checkbox" id="probeVerify" disabled><span>多重判断降智<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="多重判断降智的说明">!</button><span class="hint-text"><span class="hint-k">开着</span><span class="hint-v">探针拿到 state 后，再发一次同样的最小请求：<b>带上这条 state 和它的会话</b>（Cookie 来源给的 Cookie，叠加这次响应的 Set-Cookie），从同一个出口发出。复核响应里<b>没有</b>新 state，说明这条 state 撑住了，才入池；回写了新 state 判为降智，复核请求失败算没判定，都不入池。和正常请求的判定是同一条规则。</span><span class="hint-k">关掉</span><span class="hint-v">探针拿到什么就入池，不做判定。</span><span class="hint-p">每次探针多一次上游调用，也多计一次额度。默认关闭。</span></span></span></span></label>
         </div>
 
         <label class="field-inline" for="probeInterval">间隔<span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="间隔的说明">!</button><span class="hint-text"><span class="hint-v">从<b>上一轮结束</b>算起等这么久再跑下一轮，所以相邻两次上游调用的间距就是这个值。</span><span class="hint-p">一轮跑得比间隔久时，下一次自然被跳过；池里都新鲜时任务立刻结束，只花一次查表。没有上限，下限 1 秒。</span></span></span><input id="probeInterval" type="number" inputmode="numeric" min="1" step="1" value="30" autocomplete="off" disabled><span class="field-unit">秒</span></label>
@@ -2490,6 +2566,17 @@ html[data-theme="dark"]{color-scheme:dark!important}
             <button class="quiet" type="button" id="copyRetryToProbe" disabled>← 从重试代理池复制</button>
             <button class="quiet" type="button" id="copyProbeToRetry" disabled>复制到重试代理池 →</button>
           </div>
+        </div>
+
+        <div class="field" style="flex-basis:100%" id="probeCookieField">
+          <label id="probeCookieLabel">Cookie 来源</label>
+          <div class="probe-modes" role="radiogroup" aria-labelledby="probeCookieLabel">
+            <label class="probe-mode"><input type="radio" name="probeCookieMode" value="credential" disabled><span>凭证级</span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="凭证级的说明">!</button><span class="hint-text"><span class="hint-v">用<b>真实请求</b>留下的那份 cookie，探针不自己维护。</span><span class="hint-p">代理出口和真实出口不是同一个 IP 时，这份 cookie 绑的是另一个 IP，带出去可能反而更可疑。没配代理时它是唯一说得通的选择。</span></span></span></label>
+            <label class="probe-mode"><input type="radio" name="probeCookieMode" value="static_proxy" disabled><span>静态代理</span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="静态代理的说明">!</button><span class="hint-text"><span class="hint-v">每个代理各自一个 cookie 罐，由经过它的探针响应维护。</span><span class="hint-p">前提是这条代理的出口 IP 稳定：罐里的 <code>__cf_bm</code> 是按 IP 发的，出口一变就作废。</span></span></span></label>
+            <label class="probe-mode"><input type="radio" name="probeCookieMode" value="rotating_proxy" disabled><span>动态代理池</span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="动态代理池的说明">!</button><span class="hint-text"><span class="hint-v">不存 cookie。每次在<b>同一条连接</b>上先取一次再用，所以<b>请求数翻倍</b>。</span><span class="hint-p">出口每次都变时只有这个是对的：拿到的 cookie 和接下来那一次请求走的是同一个出口。</span></span></span></label>
+            <label class="probe-mode"><input type="radio" name="probeCookieMode" value="cookie_pool" disabled><span>Cookie 池</span><span class="hint-wrap"><button class="hint" type="button" aria-expanded="false" aria-label="Cookie 池的说明">!</button><span class="hint-text"><span class="hint-v">从下面的 <b>Cookie 池</b>里随机取一条<b>未过期</b>的会话带上；池里没有可用的，就<b>不带 Cookie</b>。</span><span class="hint-p">不维护自己的 cookie 罐。直连、静态代理、动态代理池都能选。</span></span></span></label>
+          </div>
+          <span class="muted" id="probeCookieHint"></span>
         </div>
 
         <div class="probe-foot" style="flex-basis:100%">
@@ -2566,7 +2653,7 @@ html[data-theme="dark"]{color-scheme:dark!important}
 /* Preview only: the management API is answered from fixtures baked in at build
    time by scripts/make-preview.mjs. Nothing here runs in the shipped panel. */
 (() => {
-  const F = {"credentials":[{"auth_index":"acct-a","auth_id":"auth-a","name":"alex.json","label":"alex@example.com","email":"alex@example.com","provider":"codex","type":"codex","plan_type":"team","plan_resolved":true},{"auth_index":"acct-b","auth_id":"auth-b","name":"sam.json","label":"sam@example.com","email":"sam@example.com","provider":"codex","type":"codex","plan_type":"plus","plan_resolved":true}],"rules":{"acct-a":{"auth_index":"acct-a","enabled":true,"set":{"X-Codex-Beta-Features":"remote_compaction_v2"},"remove":["X-Openai-Internal-Codex-Responses-Lite"],"inject_turn_state":true,"state_ttl_seconds":200,"reject_degraded_response":true,"reject_degraded_models":["gpt-6-astra"],"retry_on_degraded":false,"retry_attempts":2,"retry_proxies":["socks5://127.0.0.1:1080"],"probe_enabled":true,"probe_verify":true,"probe_models":["gpt-6-astra","gpt-5.6-luna"],"probe_proxies":["socks5://user:secret@127.0.0.1:1080"],"probe_cookie_ttl_seconds":1800,"probe_interval_seconds":30,"probe_window_start_minute":60,"probe_window_end_minute":900,"probe_resolve_exit_ip":true,"updated_at":"2026-09-23T23:08:14.132Z"},"acct-b":{"auth_index":"acct-b","enabled":false,"set":{},"remove":[],"inject_turn_state":false,"state_ttl_seconds":0,"updated_at":"2026-09-23T00:08:14.132Z"}},"items":[{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"high","upstream_effort":"high","status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["__cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; path=/; expires=Thu, 24 Sep 2026 00:38:14 GMT; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None","__cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; SameSite=None; Secure; path=/; expires=Fri, 25 Sep 2026 00:08:14 GMT; HttpOnly","__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; path=/; Max-Age=7200; SameSite=Lax; Secure"]},"id":"rec-1#1","request_id":"rec-1","started_at":"2026-09-24T00:07:44.132Z","completed_at":"2026-09-24T00:07:48.132Z","cookie_injected":true,"turn_state_minted":{"digest":"a13f9c21b4e0","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-24T00:07:46.132Z","fernet_like":true,"decodable":true,"plan_type":"team","judgement":"injected","manual_pool":true}},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"high","upstream_effort":"high","status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Request-Id":["req_5c10"]},"id":"rec-1b#1","request_id":"rec-1b","started_at":"2026-09-24T00:07:14.132Z","completed_at":"2026-09-24T00:07:19.132Z","turn_state_injected":true,"turn_state_held":true},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"high","upstream_effort":"high","status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_71bd"]},"id":"rec-2#1","request_id":"rec-2","started_at":"2026-09-24T00:05:14.132Z","completed_at":"2026-09-24T00:05:23.132Z","turn_state_rejected":true,"turn_state_injected":true,"turn_state_minted":{"digest":"7c02dd48fa91","chars":356,"bytes":265,"version":128,"issued_at":"2026-09-24T00:05:15.132Z","fernet_like":true,"decodable":true,"plan_type":"team","judgement":"injected","non_degraded":false,"pooled":false},"turn_state_invalidated":true,"turn_state_echo":{"digest":"a13f9c21b4e0","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-24T00:01:34.132Z","fernet_like":true,"decodable":true},"turn_state_origin_index":"acct-a","turn_state_origin_label":"alex@example.com","turn_state_origin_model":"gpt-6-astra","turn_state_cross_account":false,"turn_state_cross_model":false,"turn_state_age_seconds":400,"turn_state_expired":true},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"plugin_retry","stream":true,"origin":"retry","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"high","upstream_effort":"high","status_code":200,"outcome":"succeeded","before_headers":{"Accept":["text/event-stream"],"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["codex-cli"]},"after_headers":{"Accept":["text/event-stream"],"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["codex-cli"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["__cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; path=/; expires=Thu, 24 Sep 2026 00:38:14 GMT; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None","__cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; SameSite=None; Secure; path=/; expires=Fri, 25 Sep 2026 00:08:14 GMT; HttpOnly","__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; path=/; Max-Age=7200; SameSite=Lax; Secure"]},"id":"retry-1789952479137822421-6#1","request_id":"retry-1789952479137822421-6","started_at":"2026-09-24T00:05:18.132Z","completed_at":"2026-09-24T00:05:20.132Z","retry_attempts":2,"turn_state_minted":{"digest":"e4418b0c7d35","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-24T00:05:19.132Z","fernet_like":true,"decodable":true,"plan_type":"team","judgement":"paused","pooled":true}},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-5.6-luna","requested_model":"gpt-5.6-luna","upstream_model":"gpt-5.6-sol","model_mismatch":true,"request_effort":"xhigh","upstream_effort":"low","status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["__cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; path=/; expires=Thu, 24 Sep 2026 00:38:14 GMT; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None","__cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; SameSite=None; Secure; path=/; expires=Fri, 25 Sep 2026 00:08:14 GMT; HttpOnly","__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; path=/; Max-Age=7200; SameSite=Lax; Secure"]},"id":"rec-3#1","request_id":"rec-3","started_at":"2026-09-23T23:53:14.132Z","completed_at":"2026-09-23T23:53:21.132Z"},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"","model_mismatch":null,"request_effort":"high","upstream_effort":"high","status_code":429,"outcome":"failed","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["__cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; path=/; expires=Thu, 24 Sep 2026 00:38:14 GMT; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None","__cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; SameSite=None; Secure; path=/; expires=Fri, 25 Sep 2026 00:08:14 GMT; HttpOnly","__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; path=/; Max-Age=7200; SameSite=Lax; Secure"]},"id":"rec-4#1","request_id":"rec-4","started_at":"2026-09-23T23:38:14.132Z","completed_at":"2026-09-23T23:38:15.132Z","error":"{\"error\":{\"message\":\"Rate limit reached for gpt-6-astra\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}"}],"bodies":{"rec-1#1":{"request_body":"{\"model\":\"gpt-6-astra\",\"instructions\":\"You are Codex, a coding agent.\",\"input\":\"[MASKED 412880 bytes]\",\"tools\":[{\"type\":\"function\",\"name\":\"shell\"},{\"type\":\"function\",\"name\":\"apply_patch\"}],\"reasoning\":{\"effort\":\"high\",\"context\":\"all_turns\"},\"parallel_tool_calls\":false,\"stream\":true,\"store\":false}","request_bytes":413021,"response_body":"event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"in_progress\",\"output\":\"[MASKED 2 bytes]\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":41,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"completed\",\"output\":\"[MASKED 2210 bytes]\",\"usage\":{\"input_tokens\":18422,\"output_tokens\":512}}}\n\ndata: [DONE]\n","response_bytes":2480},"rec-2#1":{"request_body":"{\"model\":\"gpt-6-astra\",\"instructions\":\"You are Codex, a coding agent.\",\"input\":\"[MASKED 412880 bytes]\",\"tools\":[{\"type\":\"function\",\"name\":\"shell\"},{\"type\":\"function\",\"name\":\"apply_patch\"}],\"reasoning\":{\"effort\":\"high\",\"context\":\"all_turns\"},\"parallel_tool_calls\":false,\"stream\":true,\"store\":false}","request_bytes":3324118,"response_body":"event: response.createddata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"created_at\":1790057487,\"status\":\"in_progress\",\"model\":\"gpt-6-astra\",\"output\":\"[MASKED 2 bytes]\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"low\",\"summary\":\"detailed\"},\"service_tier\":\"auto\",\"store\":false,\"temperature\":1.0,\"tools\":\"[MASKED 14822 bytes]\"}}event: response.in_progressdata: {\"masked\":\"1184 bytes\",\"type\":\"response.in_progress\"}event: response.output_text.deltadata: {\"masked\":\"118 bytes\",\"type\":\"response.output_text.delta\"}event: response.output_item.donedata: {\"masked\":\"406 bytes\",\"type\":\"response.output_item.done\"}event: response.completeddata: {\"type\":\"response.completed\",\"sequence_number\":13,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-6-astra\",\"output\":\"[MASKED 2210 bytes]\",\"service_tier\":\"default\",\"usage\":\"[MASKED 2104 bytes]\"}}","response_bytes":1960},"retry-1789952479137822421-6#1":{"request_body":"{\"model\":\"gpt-6-astra\",\"instructions\":\"You are Codex, a coding agent.\",\"input\":\"[MASKED 74 bytes]\",\"stream\":true,\"store\":false,\"tools\":[],\"parallel_tool_calls\":false}","request_bytes":286,"response_body":"event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"in_progress\",\"output\":\"[MASKED 2 bytes]\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":41,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"completed\",\"output\":\"[MASKED 2210 bytes]\",\"usage\":{\"input_tokens\":18422,\"output_tokens\":512}}}\n\ndata: [DONE]\n","response_bytes":2312}},"turnStates":[{"state":"gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","digest":"c91a0e77bb42","auth_index":"acct-a","label":"alex@example.com","model":"gpt-6-astra","plan_type":"team","chars":332,"max_chars":0,"minted_at":"2026-09-24T00:08:03.132Z","age_seconds":11,"expired":false,"reuse_window_seconds":200,"cookie":"__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"},{"state":"gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","digest":"b7710f3e55aa","auth_index":"acct-a","label":"alex@example.com","model":"gpt-5.6-luna","plan_type":"team","chars":332,"max_chars":0,"minted_at":"2026-09-23T23:53:14.132Z","age_seconds":900,"expired":true,"reuse_window_seconds":200,"cookie":""}],"teamState":"gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","probes":[{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"plugin_probe","stream":true,"origin":"probe","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"low","upstream_effort":"low","status_code":200,"outcome":"succeeded","probe_exit_region":"IAD","before_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"Cf-Ray":["a3e22f4439f2dddf-IAD"],"X-Codex-Primary-Used-Percent":["47"],"Set-Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; Path=/; Secure; HttpOnly","__cf_bm=for-this-exit; path=/; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None"]},"id":"probe-1#1","request_id":"probe-1","started_at":"2026-09-24T00:08:02.132Z","completed_at":"2026-09-24T00:08:04.132Z","probe_egress":"socks5://127.0.0.1:1080","probe_verified":true,"probe_verify_status":200,"turn_state_minted":{"digest":"c91a0e77bb42","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-24T00:08:03.132Z","fernet_like":true,"decodable":true,"plan_type":"team","judgement":"verify","non_degraded":true,"pooled":true}},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"plugin_probe","stream":true,"origin":"probe","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"low","upstream_effort":"low","status_code":200,"outcome":"succeeded","probe_exit_region":"IAD","before_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"Cf-Ray":["a3e22f4439f2dddf-IAD"],"X-Codex-Primary-Used-Percent":["47"],"Set-Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; Path=/; Secure; HttpOnly","__cf_bm=for-this-exit; path=/; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None"]},"id":"probe-1b#1","request_id":"probe-1b","started_at":"2026-09-24T00:07:26.132Z","completed_at":"2026-09-24T00:07:41.132Z","probe_egress":"socks5://127.0.0.1:1080","probe_verified":true,"probe_verify_status":502,"probe_verify_error":"verification returned HTTP 502","turn_state_minted":{"digest":"88be41d0c7a2","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-24T00:07:40.132Z","fernet_like":true,"decodable":true,"plan_type":"team","judgement":"verify","pooled":false}},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"plugin_probe","stream":true,"origin":"probe","model":"gpt-5.6-luna","requested_model":"gpt-5.6-luna","upstream_model":"gpt-5.6-luna","model_mismatch":false,"request_effort":"low","upstream_effort":"low","status_code":200,"outcome":"succeeded","probe_exit_region":"LHR","before_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"Cf-Ray":["a3e22f4439f2dddf-IAD"],"X-Codex-Primary-Used-Percent":["47"],"Set-Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; Path=/; Secure; HttpOnly","__cf_bm=for-this-exit; path=/; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None"]},"id":"probe-2#1","request_id":"probe-2","started_at":"2026-09-24T00:06:59.132Z","completed_at":"2026-09-24T00:07:01.132Z","probe_egress":"","turn_state_minted":{"digest":"2f80ab19cc63","chars":356,"bytes":265,"version":128,"issued_at":"2026-09-24T00:07:00.132Z","fernet_like":true,"decodable":true,"plan_type":"team","judgement":"verify","non_degraded":false,"pooled":false},"probe_verified":true,"probe_verify_status":200},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"plugin_probe","stream":true,"origin":"probe","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"","model_mismatch":null,"request_effort":"low","upstream_effort":"low","status_code":429,"outcome":"failed","probe_exit_region":"","before_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"Cf-Ray":["a3e22f4439f2dddf-IAD"],"X-Codex-Primary-Used-Percent":["47"],"Set-Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; Path=/; Secure; HttpOnly","__cf_bm=for-this-exit; path=/; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None"]},"id":"probe-3#1","request_id":"probe-3","started_at":"2026-09-24T00:05:54.132Z","completed_at":"2026-09-24T00:05:55.132Z","probe_egress":"socks5://127.0.0.1:1080","probe_cookie_mode":"rotating_proxy","probe_primed":true,"error":"probe returned HTTP 429"}],"oailb":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIwNzg5NCwiZXhwIjoxNzkwMjE1MDk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0","cfbm":"2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790208194-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH"};
+  const F = {"credentials":[{"auth_index":"acct-a","auth_id":"auth-a","name":"alex.json","label":"alex@example.com","email":"alex@example.com","provider":"codex","type":"codex","plan_type":"team","plan_resolved":true},{"auth_index":"acct-b","auth_id":"auth-b","name":"sam.json","label":"sam@example.com","email":"sam@example.com","provider":"codex","type":"codex","plan_type":"plus","plan_resolved":true}],"rules":{"acct-a":{"auth_index":"acct-a","enabled":true,"set":{"X-Codex-Beta-Features":"remote_compaction_v2"},"remove":["X-Openai-Internal-Codex-Responses-Lite"],"inject_turn_state":true,"state_ttl_seconds":200,"reject_degraded_response":true,"reject_degraded_models":["gpt-6-astra"],"retry_on_degraded":false,"retry_attempts":2,"retry_proxies":["socks5://127.0.0.1:1080"],"probe_enabled":true,"probe_verify":true,"probe_models":["gpt-6-astra","gpt-5.6-luna"],"probe_proxies":["socks5://user:secret@127.0.0.1:1080"],"probe_cookie_mode":"cookie_pool","probe_cookie_ttl_seconds":1800,"probe_interval_seconds":30,"probe_window_start_minute":60,"probe_window_end_minute":900,"probe_resolve_exit_ip":true,"updated_at":"2026-09-23T23:51:34.824Z"},"acct-b":{"auth_index":"acct-b","enabled":false,"set":{},"remove":[],"inject_turn_state":false,"state_ttl_seconds":0,"updated_at":"2026-09-23T00:51:34.824Z"}},"items":[{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"high","upstream_effort":"high","status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["__cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; path=/; expires=Thu, 24 Sep 2026 01:21:34 GMT; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None","__cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; SameSite=None; Secure; path=/; expires=Fri, 25 Sep 2026 00:51:34 GMT; HttpOnly","__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; path=/; Max-Age=7200; SameSite=Lax; Secure"]},"id":"rec-1#1","request_id":"rec-1","started_at":"2026-09-24T00:51:04.824Z","completed_at":"2026-09-24T00:51:08.824Z","cookie_injected":true,"turn_state_minted":{"digest":"a13f9c21b4e0","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-24T00:51:06.824Z","fernet_like":true,"decodable":true,"plan_type":"team","judgement":"injected","manual_pool":true}},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"high","upstream_effort":"high","status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Request-Id":["req_5c10"]},"id":"rec-1b#1","request_id":"rec-1b","started_at":"2026-09-24T00:50:34.824Z","completed_at":"2026-09-24T00:50:39.824Z","turn_state_injected":true,"turn_state_held":true},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"high","upstream_effort":"high","status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_71bd"]},"id":"rec-2#1","request_id":"rec-2","started_at":"2026-09-24T00:48:34.824Z","completed_at":"2026-09-24T00:48:43.824Z","turn_state_rejected":true,"turn_state_injected":true,"turn_state_minted":{"digest":"7c02dd48fa91","chars":356,"bytes":265,"version":128,"issued_at":"2026-09-24T00:48:35.824Z","fernet_like":true,"decodable":true,"plan_type":"team","judgement":"injected","non_degraded":false,"pooled":false},"turn_state_invalidated":true,"turn_state_echo":{"digest":"a13f9c21b4e0","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-24T00:44:54.824Z","fernet_like":true,"decodable":true},"turn_state_origin_index":"acct-a","turn_state_origin_label":"alex@example.com","turn_state_origin_model":"gpt-6-astra","turn_state_cross_account":false,"turn_state_cross_model":false,"turn_state_age_seconds":400,"turn_state_expired":true},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"plugin_retry","stream":true,"origin":"retry","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"high","upstream_effort":"high","status_code":200,"outcome":"succeeded","before_headers":{"Accept":["text/event-stream"],"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["codex-cli"]},"after_headers":{"Accept":["text/event-stream"],"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"],"Originator":["codex-cli"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["__cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; path=/; expires=Thu, 24 Sep 2026 01:21:34 GMT; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None","__cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; SameSite=None; Secure; path=/; expires=Fri, 25 Sep 2026 00:51:34 GMT; HttpOnly","__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; path=/; Max-Age=7200; SameSite=Lax; Secure"]},"id":"retry-1789952479137822421-6#1","request_id":"retry-1789952479137822421-6","started_at":"2026-09-24T00:48:38.824Z","completed_at":"2026-09-24T00:48:40.824Z","retry_attempts":2,"turn_state_minted":{"digest":"e4418b0c7d35","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-24T00:48:39.824Z","fernet_like":true,"decodable":true,"plan_type":"team","judgement":"paused","pooled":true}},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-5.6-luna","requested_model":"gpt-5.6-luna","upstream_model":"gpt-5.6-sol","model_mismatch":true,"request_effort":"xhigh","upstream_effort":"low","status_code":200,"outcome":"succeeded","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["__cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; path=/; expires=Thu, 24 Sep 2026 01:21:34 GMT; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None","__cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; SameSite=None; Secure; path=/; expires=Fri, 25 Sep 2026 00:51:34 GMT; HttpOnly","__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; path=/; Max-Age=7200; SameSite=Lax; Secure"]},"id":"rec-3#1","request_id":"rec-3","started_at":"2026-09-24T00:36:34.824Z","completed_at":"2026-09-24T00:36:41.824Z"},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"openai-response","stream":true,"origin":"live","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"","model_mismatch":null,"request_effort":"high","upstream_effort":"high","status_code":429,"outcome":"failed","before_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Openai-Internal-Codex-Responses-Lite":["true"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Chatgpt-Account-Id":["1d2b0e1c-0000-4a6d-9a11-6f0b9f2a77c1"],"Content-Type":["application/json"],"Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; __cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; oai-did=demo-device"],"Originator":["@agentclientprotocol/codex-acp"],"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Codex-Beta-Features":["remote_compaction_v2"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"X-Request-Id":["req_9f2a"],"Set-Cookie":["__cf_bm=2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH; path=/; expires=Thu, 24 Sep 2026 01:21:34 GMT; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None","__cflb=02DiuFnsSsHWYH8WqVXbZzkQHoM3kAqeZi2kTEqx4y8; SameSite=None; Secure; path=/; expires=Fri, 25 Sep 2026 00:51:34 GMT; HttpOnly","__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; path=/; Max-Age=7200; SameSite=Lax; Secure"]},"id":"rec-4#1","request_id":"rec-4","started_at":"2026-09-24T00:21:34.824Z","completed_at":"2026-09-24T00:21:35.824Z","error":"{\"error\":{\"message\":\"Rate limit reached for gpt-6-astra\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}"}],"bodies":{"rec-1#1":{"request_body":"{\"model\":\"gpt-6-astra\",\"instructions\":\"You are Codex, a coding agent.\",\"input\":\"[MASKED 412880 bytes]\",\"tools\":[{\"type\":\"function\",\"name\":\"shell\"},{\"type\":\"function\",\"name\":\"apply_patch\"}],\"reasoning\":{\"effort\":\"high\",\"context\":\"all_turns\"},\"parallel_tool_calls\":false,\"stream\":true,\"store\":false}","request_bytes":413021,"response_body":"event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"in_progress\",\"output\":\"[MASKED 2 bytes]\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":41,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"completed\",\"output\":\"[MASKED 2210 bytes]\",\"usage\":{\"input_tokens\":18422,\"output_tokens\":512}}}\n\ndata: [DONE]\n","response_bytes":2480},"rec-2#1":{"request_body":"{\"model\":\"gpt-6-astra\",\"instructions\":\"You are Codex, a coding agent.\",\"input\":\"[MASKED 412880 bytes]\",\"tools\":[{\"type\":\"function\",\"name\":\"shell\"},{\"type\":\"function\",\"name\":\"apply_patch\"}],\"reasoning\":{\"effort\":\"high\",\"context\":\"all_turns\"},\"parallel_tool_calls\":false,\"stream\":true,\"store\":false}","request_bytes":3324118,"response_body":"event: response.createddata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"created_at\":1790057487,\"status\":\"in_progress\",\"model\":\"gpt-6-astra\",\"output\":\"[MASKED 2 bytes]\",\"reasoning\":{\"context\":\"all_turns\",\"effort\":\"low\",\"summary\":\"detailed\"},\"service_tier\":\"auto\",\"store\":false,\"temperature\":1.0,\"tools\":\"[MASKED 14822 bytes]\"}}event: response.in_progressdata: {\"masked\":\"1184 bytes\",\"type\":\"response.in_progress\"}event: response.output_text.deltadata: {\"masked\":\"118 bytes\",\"type\":\"response.output_text.delta\"}event: response.output_item.donedata: {\"masked\":\"406 bytes\",\"type\":\"response.output_item.done\"}event: response.completeddata: {\"type\":\"response.completed\",\"sequence_number\":13,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-6-astra\",\"output\":\"[MASKED 2210 bytes]\",\"service_tier\":\"default\",\"usage\":\"[MASKED 2104 bytes]\"}}","response_bytes":1960},"retry-1789952479137822421-6#1":{"request_body":"{\"model\":\"gpt-6-astra\",\"instructions\":\"You are Codex, a coding agent.\",\"input\":\"[MASKED 74 bytes]\",\"stream\":true,\"store\":false,\"tools\":[],\"parallel_tool_calls\":false}","request_bytes":286,"response_body":"event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"in_progress\",\"output\":\"[MASKED 2 bytes]\"}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":41,\"response\":{\"id\":\"resp_68f2\",\"object\":\"response\",\"model\":\"gpt-6-astra\",\"status\":\"completed\",\"output\":\"[MASKED 2210 bytes]\",\"usage\":{\"input_tokens\":18422,\"output_tokens\":512}}}\n\ndata: [DONE]\n","response_bytes":2312}},"turnStates":[{"state":"gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","digest":"c91a0e77bb42","auth_index":"acct-a","label":"alex@example.com","model":"gpt-6-astra","plan_type":"team","chars":332,"max_chars":0,"minted_at":"2026-09-24T00:51:23.824Z","age_seconds":11,"expired":false,"reuse_window_seconds":200,"cookie":"__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; __Secure-next-auth.session-token=demo-session-value; oai-did=demo-device"},{"state":"gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","digest":"b7710f3e55aa","auth_index":"acct-a","label":"alex@example.com","model":"gpt-5.6-luna","plan_type":"team","chars":332,"max_chars":0,"minted_at":"2026-09-24T00:36:34.824Z","age_seconds":900,"expired":true,"reuse_window_seconds":200,"cookie":""}],"teamState":"gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq","probes":[{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"plugin_probe","stream":true,"origin":"probe","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"low","upstream_effort":"low","status_code":200,"outcome":"succeeded","probe_cookie_mode":"cookie_pool","probe_exit_region":"IAD","probe_pool_host":"gw-iad-7.internal","before_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"Cf-Ray":["a3e22f4439f2dddf-IAD"],"X-Codex-Primary-Used-Percent":["47"],"Set-Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; Path=/; Secure; HttpOnly","__cf_bm=for-this-exit; path=/; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None"]},"id":"probe-1#1","request_id":"probe-1","started_at":"2026-09-24T00:51:22.824Z","completed_at":"2026-09-24T00:51:24.824Z","probe_egress":"socks5://127.0.0.1:1080","probe_verified":true,"probe_verify_status":200,"turn_state_minted":{"digest":"c91a0e77bb42","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-24T00:51:23.824Z","fernet_like":true,"decodable":true,"plan_type":"team","judgement":"verify","non_degraded":true,"pooled":true}},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"plugin_probe","stream":true,"origin":"probe","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"gpt-6-astra","model_mismatch":false,"request_effort":"low","upstream_effort":"low","status_code":200,"outcome":"succeeded","probe_cookie_mode":"cookie_pool","probe_exit_region":"IAD","probe_pool_host":"gw-iad-7.internal","before_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"Cf-Ray":["a3e22f4439f2dddf-IAD"],"X-Codex-Primary-Used-Percent":["47"],"Set-Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; Path=/; Secure; HttpOnly","__cf_bm=for-this-exit; path=/; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None"]},"id":"probe-1b#1","request_id":"probe-1b","started_at":"2026-09-24T00:50:46.824Z","completed_at":"2026-09-24T00:51:01.824Z","probe_egress":"socks5://127.0.0.1:1080","probe_verified":true,"probe_verify_status":502,"probe_verify_error":"verification returned HTTP 502","turn_state_minted":{"digest":"88be41d0c7a2","chars":332,"bytes":249,"version":128,"issued_at":"2026-09-24T00:51:00.824Z","fernet_like":true,"decodable":true,"plan_type":"team","judgement":"verify","pooled":false}},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"plugin_probe","stream":true,"origin":"probe","model":"gpt-5.6-luna","requested_model":"gpt-5.6-luna","upstream_model":"gpt-5.6-luna","model_mismatch":false,"request_effort":"low","upstream_effort":"low","status_code":200,"outcome":"succeeded","probe_cookie_mode":"credential","probe_exit_region":"LHR","probe_pool_host":"gw-iad-7.internal","before_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"],"Cookie":["oai-did=demo-device"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"Cf-Ray":["a3e22f4439f2dddf-IAD"],"X-Codex-Primary-Used-Percent":["47"],"Set-Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; Path=/; Secure; HttpOnly","__cf_bm=for-this-exit; path=/; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None"]},"id":"probe-2#1","request_id":"probe-2","started_at":"2026-09-24T00:50:19.824Z","completed_at":"2026-09-24T00:50:21.824Z","probe_egress":"","turn_state_minted":{"digest":"2f80ab19cc63","chars":356,"bytes":265,"version":128,"issued_at":"2026-09-24T00:50:20.824Z","fernet_like":true,"decodable":true,"plan_type":"team","judgement":"verify","non_degraded":false,"pooled":false},"probe_verified":true,"probe_verify_status":200},{"auth_index":"acct-a","auth_id":"auth-a","credential_name":"alex.json","credential_label":"alex@example.com","attempt":1,"source_format":"plugin_probe","stream":true,"origin":"probe","model":"gpt-6-astra","requested_model":"gpt-6-astra","upstream_model":"","model_mismatch":null,"request_effort":"low","upstream_effort":"low","status_code":429,"outcome":"failed","probe_cookie_mode":"rotating_proxy","probe_exit_region":"","probe_pool_host":"gw-iad-7.internal","before_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"after_headers":{"Authorization":["Bearer [REDACTED]"],"Content-Type":["application/json"],"Originator":["codex-cli"]},"response_headers":{"X-Codex-Turn-State":["gAAAAABqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"],"Cf-Ray":["a3e22f4439f2dddf-IAD"],"X-Codex-Primary-Used-Percent":["47"],"Set-Cookie":["__oailb=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0; Path=/; Secure; HttpOnly","__cf_bm=for-this-exit; path=/; domain=.chatgpt.com; HttpOnly; Secure; SameSite=None"]},"id":"probe-3#1","request_id":"probe-3","started_at":"2026-09-24T00:49:14.824Z","completed_at":"2026-09-24T00:49:15.824Z","probe_egress":"socks5://127.0.0.1:1080","probe_primed":true,"error":"probe returned HTTP 429"}],"oailb":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imd3LTIifQ.eyJob3N0IjoiZ3ctaWFkLTcuaW50ZXJuYWwiLCJpc3MiOiJvYWktbGIiLCJhdWQiOiJjaGF0Z3B0LmNvbSIsImlhdCI6MTc5MDIxMDQ5NCwiZXhwIjoxNzkwMjE3Njk0fQ.eyJzaWciOiJub3QtYS1yZWFsLXNpZ25hdHVyZS1qdXN0LWJ5dGVzLWZvci1wcmV2aWV3In0","cfbm":"2d4f1c9a7e3b5d0f8a6c4e2b1d9f7a5c3e1b0d8f6a4c2e0b9d7f5a3c1e8b6d4f2-1790210794-1.0.1.1-Q1o9u4Kz8mX2nP5vT7wY0aB3cD6eF9gH"};
   const json = (payload, status = 200) => new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json" } });
   // Opened from the filesystem, localStorage is unavailable in some browsers
   // and throws in others, so the panel found no key and asked for one. Give it
@@ -2635,6 +2722,20 @@ html[data-theme="dark"]{color-scheme:dark!important}
     if (path.endsWith("/history")) {
       const items = authIndex === "acct-a" ? F.items : [];
       return json({ auth_index: authIndex, page: 1, page_size: 10, total: items.length, total_pages: 1, items });
+    }
+    if (path.endsWith("/cookie-pool")) {
+      const hour = 3600 * 1000;
+      return json({ auth_index: authIndex, entries: authIndex !== "acct-a" ? [] : [
+        { host: "gw-iad-7.internal", cookie: "__oailb=" + F.oailb + "; __cf_bm=" + F.cfbm, issued_at: new Date(Date.now() - 600000).toISOString(),
+          expires_at: new Date(Date.now() + 1.8 * hour).toISOString(), source: "probe", model: "gpt-6-astra", digest: "c91a0e77bb42",
+          saved_at: new Date(Date.now() - 11000).toISOString(), usable: true },
+        { host: "gw-sjc-3.internal", cookie: "__oailb=" + F.oailb, issued_at: new Date(Date.now() - 3 * hour).toISOString(),
+          expires_at: new Date(Date.now() - hour).toISOString(), source: "live", model: "gpt-6-astra", digest: "a13f9c21b4e0",
+          saved_at: new Date(Date.now() - 3 * hour).toISOString(), usable: false },
+        // Enough backends to need a second page.
+        ...["ord-2", "dfw-5", "lax-1", "ams-4", "fra-8"].map((dc, i) => ({ host: "gw-" + dc + ".internal", cookie: "__oailb=" + F.oailb,
+          issued_at: new Date(Date.now() - (i + 1) * 900000).toISOString(), expires_at: new Date(Date.now() + (5 - i) * 1200000).toISOString(),
+          source: i % 2 ? "live" : "probe", model: "gpt-6-astra", digest: "", saved_at: new Date(Date.now() - (i + 1) * 60000 - 20000).toISOString(), usable: true })) ] });
     }
     if (path.endsWith("/session")) {
       return json(authIndex === "acct-a"
@@ -3058,13 +3159,101 @@ async function request(url, options = {}) {
 let toastTimer = 0;
 function toast(message, bad = false) {
   const node = $("toast");
-  node.textContent = message;
+  node.innerHTML = `<svg class="i" aria-hidden="true"><use href="#i-${bad ? "alert" : "check"}"/></svg><span></span>`;
+  node.lastElementChild.textContent = message;
   node.classList.toggle("bad", bad);
   node.dataset.show = "true";
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { node.dataset.show = "false"; }, bad ? 5200 : 2600);
 }
 const fail = (error) => toast(error?.message || String(error), true);
+
+/* ---------- components after Ant Design ------------------------------------
+   Pagination, Modal.confirm and message, rebuilt for this page. */
+
+// Pagination: "共 N 条", numbered pages collapsing to ellipses around the
+// current one, and arrows. Renders nothing for a single page.
+function renderPagination(host, { page, total, pageSize, onChange, label = "分页" }) {
+  if (!host) return;
+  host.replaceChildren();
+  host.className = "ant-pagination";
+  host.setAttribute("role", "navigation");
+  host.setAttribute("aria-label", label);
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (pages <= 1) return;
+  const totalNode = document.createElement("span");
+  totalNode.className = "ant-total";
+  totalNode.textContent = `共 ${total} 条`;
+  host.append(totalNode);
+  const button = (content, target, { disabled = false, current = false, aria = "" } = {}) => {
+    const node = document.createElement("button");
+    node.type = "button";
+    node.className = "page";
+    node.innerHTML = content;
+    node.disabled = disabled;
+    if (aria) node.setAttribute("aria-label", aria);
+    if (current) node.setAttribute("aria-current", "true");
+    node.addEventListener("click", () => { if (!current) onChange(target); });
+    return node;
+  };
+  const ellipsis = () => { const node = document.createElement("span"); node.className = "ant-ellipsis"; node.textContent = "•••"; node.setAttribute("aria-hidden", "true"); return node; };
+  host.append(button('<svg class="i"><use href="#i-left"/></svg>', page - 1, { disabled: page <= 1, aria: "上一页" }));
+  // Up to seven buttons: all of them, or first, a window around the current
+  // page, and last, with ellipses standing in for the gaps.
+  let numbers;
+  if (pages <= 7) numbers = Array.from({ length: pages }, (_, i) => i + 1);
+  else {
+    const from = Math.max(2, Math.min(page - 2, pages - 5));
+    const to = Math.min(pages - 1, Math.max(page + 2, 6));
+    numbers = [1, ...(from > 2 ? ["…"] : []), ...Array.from({ length: to - from + 1 }, (_, i) => from + i), ...(to < pages - 1 ? ["…"] : []), pages];
+  }
+  for (const n of numbers) host.append(n === "…" ? ellipsis() : button(String(n), n, { current: n === page, aria: `第 ${n} 页` }));
+  host.append(button('<svg class="i"><use href="#i-right"/></svg>', page + 1, { disabled: page >= pages, aria: "下一页" }));
+}
+
+// Modal.confirm. Resolves true on OK, false on cancel or Escape. Focus stays
+// inside while it is open and returns to where it was after.
+function confirmDialog({ title, content = "", okText = "确定", cancelText = "取消", danger = false }) {
+  return new Promise((resolve) => {
+    const opener = document.activeElement;
+    const mask = document.createElement("div");
+    mask.className = "ant-modal-mask";
+    const id = `modal-${Date.now()}`;
+    mask.innerHTML = `<div class="ant-modal" role="alertdialog" aria-modal="true" aria-labelledby="${id}-t" aria-describedby="${id}-c" data-kind="${danger ? "danger" : "confirm"}">
+      <div class="ant-modal-body"><svg class="i"><use href="#i-alert"/></svg>
+        <div class="ant-modal-title" id="${id}-t">${esc(title)}</div>
+        <div class="ant-modal-content" id="${id}-c">${content}</div></div>
+      <div class="ant-modal-footer"><button type="button" data-act="cancel">${esc(cancelText)}</button>
+        <button type="button" data-act="ok" class="${danger ? "danger" : "primary"}">${esc(okText)}</button></div></div>`;
+    document.body.append(mask);
+    const buttons = [...mask.querySelectorAll("button")];
+    const close = (answer) => {
+      mask.dataset.show = "false";
+      document.removeEventListener("keydown", onKey, true);
+      setTimeout(() => mask.remove(), 180);
+      opener?.focus?.({ preventScroll: true });
+      resolve(answer);
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") { event.preventDefault(); close(false); }
+      else if (event.key === "Tab") {
+        event.preventDefault();
+        const at = buttons.indexOf(document.activeElement);
+        buttons[(at + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length].focus();
+      }
+    };
+    mask.addEventListener("click", (event) => {
+      const act = event.target.closest?.("[data-act]")?.dataset.act;
+      if (act) close(act === "ok");
+    });
+    document.addEventListener("keydown", onKey, true);
+    // Focus moves at once, so a key pressed straight away lands in the
+    // dialog; only the fade waits a frame.
+    (danger ? buttons[0] : buttons[1]).focus({ preventScroll: true });
+    requestAnimationFrame(() => { mask.dataset.show = "true"; });
+  });
+}
+
 
 /* ---------- header row editors ---------------------------------------- */
 
@@ -3216,6 +3405,7 @@ async function selectCredential(authIndex) {
   renderQuota(null);
   const epoch = ++store.selectionEpoch;
   store.selected = authIndex;
+  store.cookiePoolPage = 1;
   store.rule = null;
   store.models = [];
   renderModelOptions();
@@ -3225,7 +3415,7 @@ async function selectCredential(authIndex) {
   store.turnStates = [];
   store.diffBefore = {};
   store.diffAfter = {};
-  for (const id of ["setRows", "removeRows", "historyBody", "turnStateBody", "diffBox", "diffExtra", "testOutcome", "decodeOutput", "pager", "testRemoveRows"]) $(id).replaceChildren();
+  for (const id of ["setRows", "removeRows", "historyBody", "turnStateBody", "cookiePoolBody", "diffBox", "diffExtra", "testOutcome", "decodeOutput", "pager", "testRemoveRows"]) $(id).replaceChildren();
   for (const id of ["ruleUpdated", "historyMeta", "turnStateMeta", "diffSource", "modelHint"]) $(id).textContent = "";
   $("ruleEnabled").checked = false;
   if ($("poolMaintain")) $("poolMaintain").checked = true;
@@ -3970,6 +4160,7 @@ async function loadHistory(page = 1) {
   closeHistoryDrawer();
   store.page = payload.page || 1;
   store.totalPages = payload.total_pages || 0;
+  store.historyTotal = payload.total || 0;
   $("historyMeta").textContent = payload.total ? `${payload.total} 条，第 ${store.page}/${store.totalPages} 页` : "";
   if (probes) $("probeTabCount").textContent = String(payload.total || 0);
   $("probeTabCount").hidden = !probes || !payload.total;
@@ -4009,22 +4200,8 @@ async function loadHistory(page = 1) {
 }
 
 function renderPager() {
-  const pager = $("pager");
-  pager.replaceChildren();
-  if (store.totalPages <= 1) return;
-  const button = (label, page, disabled, current, aria) => {
-    const node = document.createElement("button");
-    node.className = "quiet page";
-    node.innerHTML = label;
-    node.disabled = !!disabled;
-    if (aria) node.setAttribute("aria-label", aria);
-    if (current) node.setAttribute("aria-current", "true");
-    node.addEventListener("click", () => loadHistory(page).catch(fail));
-    return node;
-  };
-  pager.append(button('<svg class="i"><use href="#i-left"/></svg>', store.page - 1, store.page <= 1, false, "上一页"));
-  for (let page = 1; page <= store.totalPages; page += 1) pager.append(button(String(page), page, false, page === store.page));
-  pager.append(button('<svg class="i"><use href="#i-right"/></svg>', store.page + 1, store.page >= store.totalPages, false, "下一页"));
+  renderPagination($("pager"), { page: store.page, total: store.historyTotal || 0, pageSize: store.pageSize,
+    onChange: (page) => loadHistory(page).catch(fail), label: "历史分页" });
 }
 // The detail is a drawer over the right edge, not a row inside the table: an
 // inline row shoved the rest of the list down a full screen, so opening one
@@ -4191,6 +4368,7 @@ const COOKIE_MODES = {
   credential: "凭证级 cookie",
   static_proxy: "静态代理 cookie 罐",
   rotating_proxy: "动态代理池（每次现取）",
+  cookie_pool: "Cookie 池",
 };
 
 // A probe chose its own exit and its own cookie, and neither is visible
@@ -4207,14 +4385,21 @@ function probeDetail(record) {
   if (record.probe_exit_ip) {
     rows.push(`<dt>出口 IP</dt><dd class="mono">${esc(record.probe_exit_ip)}</dd>`);
   }
-  if (record.probe_cookie_mode) {
-    // Written before probes stopped carrying a cookie.
-    rows.push(`<dt>Cookie 来源</dt><dd>${esc(COOKIE_MODES[record.probe_cookie_mode] || record.probe_cookie_mode)}<span class="muted"> · 旧版</span></dd>`);
-    if (record.probe_primed) rows.push('<dt>预热请求</dt><dd>有<span class="muted"> · 旧版</span></dd>');
-  } else {
-    const issued = parseSetCookies(record.response_headers).length;
-    rows.push(`<dt>Cookie</dt><dd>不带 Cookie 发出<span class="muted"> · 上游下发 ${issued} 个，${issued ? "和 state 一起入池" : "入池时没有会话"}</span></dd>`);
+  // A row without a mode was written by v0.25.7, which sent no cookie.
+  const mode = record.probe_cookie_mode || "none";
+  if (mode === "rotating_proxy" && !record.probe_exit_ip) {
+    rows.push('<dt>出口 IP</dt><dd><span class="muted">动态代理池下取不到真实值</span></dd>');
   }
+  if (mode === "cookie_pool") {
+    rows.push(`<dt>Cookie 来源</dt><dd>Cookie 池<span class="muted"> · ${record.probe_pool_host
+      ? `取了路由目标 <span class="mono">${esc(record.probe_pool_host)}</span> 的那条`
+      : "池里没有可用的，未带 Cookie"}</span></dd>`);
+  } else if (mode === "none") {
+    rows.push('<dt>Cookie 来源</dt><dd>不带 Cookie<span class="muted"> · v0.25.7</span></dd>');
+  } else {
+    rows.push(`<dt>Cookie 来源</dt><dd>${esc(COOKIE_MODES[mode] || mode)}</dd>`);
+  }
+  if (record.probe_primed) rows.push('<dt>预热请求</dt><dd>有<span class="muted"> · 多一次上游调用</span></dd>');
   if (record.probe_verified) {
     const minted = record.turn_state_minted || {};
     const outcome = record.probe_verify_error
@@ -4562,7 +4747,89 @@ async function loadRecordBodies(record) {
 }
 
 /* State pool: one non-degraded state per credential and model, newest first. */
+// The non-degraded cookie pool rides along with the state pool: both change
+// with the same traffic, and one refresh reads both.
+const COOKIE_POOL_PAGE_SIZE = 5;
+async function loadCookiePool(page) {
+  const body = $("cookiePoolBody");
+  const epoch = store.selectionEpoch;
+  const authIndex = store.selected;
+  if (!body || !authIndex) return;
+  try {
+    const payload = await api(`/cookie-pool?auth_index=${encodeURIComponent(authIndex)}`);
+    if (epoch !== store.selectionEpoch) return;
+    const entries = payload.entries || [];
+    store.cookiePool = entries;
+    const usable = entries.filter((entry) => entry.usable).length;
+    $("cookiePoolMeta").textContent = entries.length ? `${usable} / ${entries.length} 条可用` : "";
+    if (!entries.length) {
+      body.innerHTML = '<div class="empty">还没有不降智的 Cookie：开启多重判断的探针复核通过，或注入了 state 而上游没有回写时才会入池</div>';
+      return;
+    }
+    // Five to a page: a busy account can pin many backends.
+    const pages = Math.ceil(entries.length / COOKIE_POOL_PAGE_SIZE);
+    store.cookiePoolPage = Math.min(Math.max(1, page || store.cookiePoolPage || 1), pages);
+    const start = (store.cookiePoolPage - 1) * COOKIE_POOL_PAGE_SIZE;
+    body.innerHTML = `<div class="pool-scroll"><table class="history-table pool-table">
+      <thead><tr><th>路由目标</th><th>签发 (本地)</th><th>过期 (本地)</th><th>来源</th><th>入池时间</th><th>状态</th></tr></thead>
+      <tbody></tbody></table></div><div id="cookiePoolPager"></div>`;
+    const tbody = body.querySelector("tbody");
+    entries.slice(start, start + COOKIE_POOL_PAGE_SIZE).forEach((entry) => {
+      const issued = entry.issued_at && !entry.issued_at.startsWith("0001") ? new Date(entry.issued_at) : null;
+      const expires = entry.expires_at && !entry.expires_at.startsWith("0001") ? new Date(entry.expires_at) : null;
+      const saved = new Date(entry.saved_at);
+      const row = document.createElement("tr");
+      row.className = "pool-row cookie-pool-row";
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.setAttribute("aria-haspopup", "dialog");
+      row.innerHTML = `<td class="mono pool-lb-host" translate="no">${esc(entry.host)}</td>
+        <td class="num" title="${esc(issued ? issued.toLocaleString() : "")}">${esc(shortLocalTime(issued) || "-")}</td>
+        <td class="num" title="${esc(expires ? expires.toLocaleString() : "")}">${esc(shortLocalTime(expires) || "-")}</td>
+        <td><span class="tag flat">${entry.source === "probe" ? "探针" : "线上"}</span></td>
+        <td class="num pool-minted">${esc(saved.toLocaleString())} · ${esc(formatAge(Math.max(0, Math.round((Date.now() - saved) / 1000))))}</td>
+        <td>${entry.usable ? '<span class="tag ok beam">可用</span>' : '<span class="tag warn">已过期</span>'}</td>`;
+      const open = () => showCookiePoolEntry(entry);
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); } });
+      tbody.append(row);
+    });
+    renderPagination($("cookiePoolPager"), { page: store.cookiePoolPage, total: entries.length, pageSize: COOKIE_POOL_PAGE_SIZE,
+      onChange: (next) => loadCookiePool(next), label: "Cookie 池分页" });
+  } catch (error) {
+    if (epoch === store.selectionEpoch) body.innerHTML = `<div class="empty">${esc(error.message || String(error))}</div>`;
+  }
+}
+function showCookiePoolEntry(entry) {
+  store.selectedRecord = "";
+  store.selectedState = "";
+  const at = (iso) => iso && !iso.startsWith("0001") ? esc(new Date(iso).toLocaleString()) : '<span class="muted">未声明</span>';
+  openDrawer("Cookie 池", `<div class="history-detail-shell">
+    <div class="history-detail-head">
+      <div><div class="chain"><span class="mono">${esc(entry.host)}</span>${entry.usable ? '<span class="tag ok beam">可用</span>' : '<span class="tag warn">已过期</span>'}</div></div>
+    </div>
+    <div class="history-detail-section">
+      <div class="history-detail-label"><span>入池</span></div>
+      <dl class="ts-grid">
+        <dt>来源</dt><dd>${entry.source === "probe" ? "探针（多重判断复核通过）" : "线上（注入后上游没有回写 state）"}</dd>
+        <dt>模型</dt><dd class="mono">${esc(entry.model || "-")}</dd>
+        <dt>对应 state</dt><dd class="mono">${esc(entry.digest || "-")}</dd>
+        <dt>入池时间</dt><dd>${at(entry.saved_at)}</dd>
+        <dt>过期 (本地)</dt><dd>${at(entry.expires_at)}</dd>
+      </dl>
+    </div>
+    <div class="history-detail-section">
+      <div class="history-detail-label"><span>解析</span><span class="muted">结构解析 · 长度、声明与属性</span></div>
+      ${cookieCard("会话", parseRequestCookies({ Cookie: [entry.cookie] }), "")}
+    </div>
+    <div class="history-detail-section">
+      <div class="history-detail-label"><span>原值</span></div>
+      <div class="pool-state-value mono">${esc(entry.cookie)}</div>
+    </div>
+  </div>`);
+}
 async function loadTurnStates() {
+  loadCookiePool().catch(() => {});
   const body = $("turnStateBody");
   const epoch = store.selectionEpoch;
   const authIndex = store.selected;
@@ -4688,7 +4955,8 @@ async function runTest(dryRun) {
     const name = credentialDisplayName(cred) || store.selected;
     const target = $("testEndpoint").value.trim() || store.defaults.endpoint || "Codex 默认端点";
     const credential = $("testAttach").checked ? "并附带该凭证" : "且不附带该凭证";
-    if (!confirm(`将以「${name}」的测试配置向 ${target} 发送一次真实请求，${credential}。如果目标计费，会消耗真实额度。继续？`)) return;
+    if (!await confirmDialog({ title: "发送真实请求？", okText: "发送",
+      content: `将以「${esc(name)}」的测试配置向 <code>${esc(target)}</code> 发送一次真实请求，${esc(credential)}。如果目标计费，会消耗真实额度。` })) return;
   }
   const button = dryRun ? $("previewBtn") : $("sendBtn");
   button.disabled = true;
@@ -4793,7 +5061,7 @@ $("saveRule").addEventListener("click", async () => {
   } catch (error) { fail(error); }
 });
 $("deleteRule").addEventListener("click", async () => {
-  if (!store.selected || !confirm("删除该凭证的 Header 规则？历史记录不受影响。")) return;
+  if (!store.selected || !await confirmDialog({ title: "删除该凭证的 Header 规则？", content: "历史记录不受影响。", okText: "删除", danger: true })) return;
   try {
     await api(`/rule?auth_index=${encodeURIComponent(store.selected)}`, { method: "DELETE" });
     await Promise.all([loadRule(), loadCredentials()]);
@@ -4822,7 +5090,7 @@ $("historyRefresh").addEventListener("click", async () => {
 $("clearHistory").addEventListener("click", async () => {
   const probes = store.historyTab === "probe";
   const what = probes ? "探针历史" : "请求历史";
-  if (!store.selected || !confirm(`清空该凭证的全部${what}？`)) return;
+  if (!store.selected || !await confirmDialog({ title: `清空该凭证的全部${what}？`, content: "清空后无法恢复。", okText: "清空", danger: true })) return;
   try {
     await api(probes ? "/probes/clear" : "/history/clear", { method: "POST", body: { auth_index: store.selected } });
     store.history = [];
@@ -4836,7 +5104,7 @@ $("clearHistory").addEventListener("click", async () => {
   } catch (error) { fail(error); }
 });
 $("cleanupBtn").addEventListener("click", async () => {
-  if (!confirm("清理宿主中已不存在的凭证留下的规则与历史？")) return;
+  if (!await confirmDialog({ title: "清理残留数据？", content: "删除宿主中已不存在的凭证留下的规则与历史。", okText: "清理", danger: true })) return;
   try {
     const payload = await api("/orphans/cleanup", { method: "POST" });
     await loadCredentials();
@@ -4845,6 +5113,7 @@ $("cleanupBtn").addEventListener("click", async () => {
 });
 $("decodeBtn").addEventListener("click", () => decodeTurnState());
 $("turnStateRefresh").addEventListener("click", () => loadTurnStates());
+$("cookiePoolRefresh").addEventListener("click", () => loadCookiePool());
 $("diffExample").addEventListener("change", () => renderRulePreview());
 $("diffExampleSwitch").addEventListener("click", () => {
   $("diffExample").value = $("diffExample").value === "chat" ? "responses" : "chat";
@@ -5338,18 +5607,17 @@ const poolFrozen = () => !!$("poolMaintain") && !$("poolMaintain").checked;
 for (const id of ["poolMaintain", "poolInject"]) $(id)?.addEventListener("change", savePoolSettings);
 // Turning cookie injection on writes to the credential's auth file, so it is
 // confirmed first; turning it off undoes that and needs no warning.
-$("poolCookie")?.addEventListener("change", () => {
+$("poolCookie")?.addEventListener("change", async () => {
   const box = $("poolCookie");
-  if (box.checked && !confirm([
-    "打开「注入 Cookie」会修改这个凭证的 auth 文件：",
-    "",
-    "· 写入 \"headers\": {\"Cookie\": \"$Cookie\"}，让 CPA 把改写后的 Cookie 转发给上游（CPA 默认不转发 Cookie）。",
-    "· 只增删这一条，文件里其他字段和自定义 Header 不变；已有别的 Cookie 值时会拒绝写入。",
-    "· CPA 保存 auth 文件时会把凭证重建为可用状态：如果你在 CPA 里停用过它，它可能重新参与轮换。",
-    "· 关闭开关或暂停 State 池维护时，插件会把这一条删掉。",
-    "",
-    "继续？",
-  ].join("\n"))) {
+  if (box.checked && !await confirmDialog({
+    title: "打开「注入 Cookie」会修改这个凭证的 auth 文件",
+    okText: "打开",
+    content: `<ul>
+      <li>写入 <code>"headers": {"Cookie": "$Cookie"}</code>，让 CPA 把改写后的 Cookie 转发给上游（CPA 默认不转发 Cookie）。</li>
+      <li>只增删这一条，文件里其他字段和自定义 Header 不变；已有别的 Cookie 值时会拒绝写入。</li>
+      <li>CPA 保存 auth 文件时会把凭证重建为可用状态：如果你在 CPA 里停用过它，它可能重新参与轮换。</li>
+      <li>关闭开关或暂停 State 池维护时，插件会把这一条删掉。</li></ul>`,
+  })) {
     box.checked = false;
     return;
   }
@@ -5405,6 +5673,7 @@ function collectProbe() {
     probe_window_start_minute: window.start,
     probe_window_end_minute: window.end,
     probe_resolve_exit_ip: !!$("probeResolveIP")?.checked,
+    probe_cookie_mode: probeCookieMode(),
     probe_verify: !!$("probeVerify")?.checked,
   };
 }
@@ -5415,6 +5684,9 @@ function fillProbeForm(rule) {
   $("probeInterval").value = String(rule.probe_interval_seconds || 30);
   $("probeCookieTTL").value = String(rule.probe_cookie_ttl_seconds || 1800);
   $("probeResolveIP").checked = rule.probe_resolve_exit_ip !== false;
+  for (const radio of document.querySelectorAll('input[name="probeCookieMode"]')) {
+    radio.checked = radio.value === (rule.probe_cookie_mode || "credential");
+  }
   if ($("probeVerify")) $("probeVerify").checked = !!rule.probe_verify;
   const start = rule.probe_window_start_minute || 0;
   const end = rule.probe_window_end_minute || 0;
@@ -5431,15 +5703,18 @@ function fillProbeForm(rule) {
 function probeRateText() {
   const models = probeModelList().length;
   if (!models) return "";
+  const primed = probeCookieMode() === "rotating_proxy";
   const verified = !!$("probeVerify")?.checked;
-  const perRound = verified ? 2 : 1;
+  const perRound = 1 + (primed ? 1 : 0) + (verified ? 1 : 0);
   const perHour = Math.round((3600 / probeInterval()) * models * perRound);
-  const note = verified ? "（含复核请求）" : "";
+  const extras = [primed ? "预热请求" : "", verified ? "复核请求" : ""].filter(Boolean);
+  const note = extras.length ? `（含${extras.join("、")}）` : "";
   return `按当前配置最多约 ${perHour.toLocaleString()} 次/小时${note}`;
 }
 
 // Real usage beats an estimate, and the upstream reports it on every response.
 
+const probeCookieMode = () => document.querySelector('input[name="probeCookieMode"]:checked')?.value || "";
 function syncProbeControls() {
   if (!$("probeEnabled")) return;
   renderStatusLights();
@@ -5468,7 +5743,23 @@ function syncProbeControls() {
   for (const id of ["copyRetryToProbe", "copyProbeToRetry"]) {
     if ($(id)) $(id).disabled = !editable;
   }
-  if ($("probeResolveIP")) $("probeResolveIP").disabled = !editable;
+  // Credential and no-cookie are coherent for any egress; the two jar-per-
+  // exit modes only mean something once a proxy is actually in use.
+  const proxied = viaProxy && probeProxyList().length > 0;
+  for (const radio of document.querySelectorAll('input[name="probeCookieMode"]')) {
+    const needsProxy = radio.value === "static_proxy" || radio.value === "rotating_proxy";
+    radio.disabled = !editable || (needsProxy && !proxied);
+    radio.closest(".probe-mode").title = needsProxy && !proxied ? "先配好并打开「走代理」" : "";
+  }
+  if (!proxied && ["static_proxy", "rotating_proxy"].includes(probeCookieMode())) {
+    document.querySelector('input[name="probeCookieMode"][value="credential"]').checked = true;
+  }
+  $("probeCookieHint").textContent = proxied && !probeCookieMode() ? "配了代理就必须选一个" : "";
+  const rotating = probeCookieMode() === "rotating_proxy";
+  if ($("probeResolveIP")) {
+    $("probeResolveIP").disabled = !editable || rotating;
+    $("probeResolveIP").parentElement.title = rotating ? "动态代理池下取不到真实出口，留空" : "";
+  }
   const window = probeWindowMinutes();
   $("probeWindowHint").textContent = window.start === window.end
     ? "全天生效"
@@ -5584,6 +5875,9 @@ $("probeEnabled")?.addEventListener("change", () => {
   syncProbeControls();
   saveProbeSettings(() => { $("probeEnabled").checked = !$("probeEnabled").checked; });
 });
+for (const radio of document.querySelectorAll('input[name="probeCookieMode"]')) {
+  radio.addEventListener("change", () => { syncProbeControls(); saveProbeSettings(() => {}); });
+}
 for (const id of ["probeInterval", "probeCookieTTL", "probeResolveIP", "probeProxyOn", "probeVerify"]) {
   $(id)?.addEventListener("change", () => { syncProbeControls(); saveProbeSettings(() => {}); });
 }

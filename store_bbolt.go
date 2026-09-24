@@ -30,6 +30,8 @@ var (
 	// One cookie jar per (credential, egress), flat, because there are only
 	// ever a handful and they are read one at a time.
 	sessionsBucket = []byte("sessions")
+	// The non-degraded cookie pool, keyed by credential and __oailb backend.
+	cookiePoolBucket = []byte("cookie_pool")
 )
 
 func sessionKey(authIndex, egress string) []byte {
@@ -61,6 +63,9 @@ func openPersistence(path string) (persistence, error) {
 			return err
 		}
 		if _, err := tx.CreateBucketIfNotExists(sessionsBucket); err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucketIfNotExists(cookiePoolBucket); err != nil {
 			return err
 		}
 		_, err := tx.CreateBucketIfNotExists(turnStatesBucket)
@@ -125,6 +130,29 @@ func (p *boltPersistence) SaveTurnState(record persistedTurnState) error {
 	}
 	key := []byte(turnStateLatestKey(record.AuthIndex, record.Model))
 	return p.db.Update(func(tx *bolt.Tx) error { return tx.Bucket(turnStatesBucket).Put(key, raw) })
+}
+
+func (p *boltPersistence) SaveCookiePoolEntry(entry cookiePoolEntry) error {
+	raw, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+	key := []byte(cookiePoolKey(entry.AuthIndex, entry.Host))
+	return p.db.Update(func(tx *bolt.Tx) error { return tx.Bucket(cookiePoolBucket).Put(key, raw) })
+}
+
+func (p *boltPersistence) ListCookiePool() ([]cookiePoolEntry, error) {
+	out := []cookiePoolEntry{}
+	err := p.db.View(func(tx *bolt.Tx) error {
+		return tx.Bucket(cookiePoolBucket).ForEach(func(_, value []byte) error {
+			var entry cookiePoolEntry
+			if json.Unmarshal(value, &entry) == nil {
+				out = append(out, entry)
+			}
+			return nil
+		})
+	})
+	return out, err
 }
 
 func (p *boltPersistence) DeleteTurnState(authIndex, model string) error {
@@ -447,12 +475,17 @@ func (p *boltPersistence) DeleteCredentialData(authIndex string) error {
 				return err
 			}
 		}
-		states := tx.Bucket(turnStatesBucket)
-		cursor := states.Cursor()
 		prefix := []byte(authIndex + "\x00")
-		for key, _ := cursor.Seek(prefix); key != nil && bytes.HasPrefix(key, prefix); key, _ = cursor.Next() {
-			if err := cursor.Delete(); err != nil {
-				return err
+		for _, name := range [][]byte{turnStatesBucket, cookiePoolBucket} {
+			bucket := tx.Bucket(name)
+			if bucket == nil {
+				continue
+			}
+			cursor := bucket.Cursor()
+			for key, _ := cursor.Seek(prefix); key != nil && bytes.HasPrefix(key, prefix); key, _ = cursor.Next() {
+				if err := cursor.Delete(); err != nil {
+					return err
+				}
 			}
 		}
 		return nil

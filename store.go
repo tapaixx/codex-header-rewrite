@@ -101,6 +101,9 @@ type persistence interface {
 	SaveTurnState(record persistedTurnState) error
 	DeleteTurnState(authIndex, model string) error
 	ListTurnStates() ([]persistedTurnState, error)
+	// The non-degraded cookie pool, one entry per (credential, backend).
+	SaveCookiePoolEntry(entry cookiePoolEntry) error
+	ListCookiePool() ([]cookiePoolEntry, error)
 	Flush() error
 }
 

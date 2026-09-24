@@ -15,7 +15,7 @@ func probeRuleFixture() headerRule {
 	return headerRule{
 		AuthIndex: "idx-a", ProbeEnabled: true,
 		ProbeModels: []string{"gpt-6-astra"}, ProbeCookieTTLSeconds: 1800,
-		ProbeIntervalSeconds: 5,
+		ProbeIntervalSeconds: 5, ProbeCookieMode: probeCookieCredential,
 	}
 }
 
@@ -100,6 +100,70 @@ func TestProbeLivenessGate(t *testing.T) {
 	}
 }
 
+// A probe request must never refresh the account's liveness clock: if it did,
+// the probe would keep an abandoned account warm forever.
+func TestProbeNeverRefreshesLiveness(t *testing.T) {
+	store := resetState(t)
+	before := time.Now().Add(-time.Minute).UTC()
+	if err := store.SaveSession(credentialSession{AuthIndex: "idx-a", Cookie: "old=1", LastLiveAt: before}); err != nil {
+		t.Fatal(err)
+	}
+	rememberSession("idx-a", "", probeCookieCredential, "new=2")
+	session, _, _ := store.Session("idx-a", "")
+	if !session.LastLiveAt.Equal(before) {
+		t.Fatalf("liveness moved: %v -> %v", before, session.LastLiveAt)
+	}
+	if session.Cookie != "new=2" {
+		t.Fatalf("cookie=%q", session.Cookie)
+	}
+}
+
+// A jar is only written from a response that came back through the egress it
+// is keyed to. A proxied probe touching the credential jar would put a cookie
+// bound to the proxy's address where the direct traffic's cookie belongs.
+func TestProxiedProbeNeverTouchesTheCredentialJar(t *testing.T) {
+	store := resetState(t)
+	if err := store.SaveSession(credentialSession{AuthIndex: "idx-a", Cookie: "direct=1", LastLiveAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	// In credential mode a proxied response writes nothing at all: its cookie
+	// belongs to the proxy's address, and the only jar this mode reads is the
+	// direct one.
+	rememberSession("idx-a", "socks5://127.0.0.1:1080", probeCookieCredential, "proxy=2")
+	direct, _, _ := store.Session("idx-a", "")
+	if direct.Cookie != "direct=1" {
+		t.Fatalf("the credential jar was overwritten: %q", direct.Cookie)
+	}
+	if _, found, _ := store.Session("idx-a", "socks5://127.0.0.1:1080"); found {
+		t.Fatal("credential mode should leave no proxy jar behind either")
+	}
+	// A static-proxy jar is keyed to its own egress and does get written.
+	rememberSession("idx-a", "socks5://127.0.0.1:1080", probeCookieStaticProxy, "proxy=2")
+	proxied, found, _ := store.Session("idx-a", "socks5://127.0.0.1:1080")
+	if !found || proxied.Cookie != "proxy=2" {
+		t.Fatalf("static proxy jar: found=%v cookie=%q", found, proxied.Cookie)
+	}
+	// A rotating egress stores nothing: no address it could be keyed to.
+	rememberSession("idx-a", "socks5://127.0.0.1:2080", probeCookieRotatingProxy, "rotating=3")
+	if _, found, _ := store.Session("idx-a", "socks5://127.0.0.1:2080"); found {
+		t.Fatal("a rotating egress must not leave a jar behind")
+	}
+}
+
+func TestProbeCookieModeFallsBackOnlyWithoutProxies(t *testing.T) {
+	rule := probeRuleFixture()
+	rule.ProbeCookieMode = ""
+	if got := probeCookieModeFor(rule); got != probeCookieCredential {
+		t.Fatalf("no proxies should mean the credential jar, got %q", got)
+	}
+	rule.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
+	rule.ProbeProxyEnabled = true
+	rule.ProbeCookieMode = probeCookieRotatingProxy
+	if got := probeCookieModeFor(rule); got != probeCookieRotatingProxy {
+		t.Fatalf("got %q", got)
+	}
+}
+
 // probeRows drains the writer the way lastAttempt does: the queue batches, so
 // a test that reads straight from the store sees nothing yet.
 func probeRows(t *testing.T) []historyRecord {
@@ -162,13 +226,13 @@ func TestProbePoolsTheStateWithItsSession(t *testing.T) {
 	state.mu.Unlock()
 
 	rule := probeRuleFixture()
-	probeModel(context.Background(), "idx-a", "gpt-6-astra", rule)
+	probeModel(context.Background(), "idx-a", "gpt-6-astra", rule, credentialSession{Cookie: "carried=1"})
 
 	if len(*sent) != 1 {
-		t.Fatalf("one request, sent %d", len(*sent))
+		t.Fatalf("the credential mode sends one request, sent %d", len(*sent))
 	}
-	if got := (*sent)[0].Headers.Get("Cookie"); got != "" {
-		t.Fatalf("the probe goes out without a cookie, sent %q", got)
+	if got := (*sent)[0].Headers.Get("Cookie"); got != "carried=1" {
+		t.Fatalf("the credential jar's cookie should have gone out, got %q", got)
 	}
 	state.mu.Lock()
 	origin, pooled := state.turnStateLatest[turnStateLatestKey("idx-a", "gpt-6-astra")]
@@ -176,7 +240,7 @@ func TestProbePoolsTheStateWithItsSession(t *testing.T) {
 	if !pooled {
 		t.Fatal("a non-degraded state should have been pooled")
 	}
-	if origin.cookie != "__cf_bm=fresh" {
+	if origin.cookie != "carried=1; __cf_bm=fresh" {
 		t.Fatalf("the session pooled with it is wrong: %q", origin.cookie)
 	}
 	rows := probeRows(t)
@@ -198,6 +262,48 @@ func TestProbePoolsTheStateWithItsSession(t *testing.T) {
 	// And the allowance the response reported is kept for the credential.
 	if quota, ok := credentialQuotaFor("idx-a"); !ok || quota.PrimaryUsedPercent != 47 || quota.SecondaryUsedPercent != 15 || quota.SecondaryResetAt.IsZero() {
 		t.Fatalf("the quota reading should be kept: %+v %v", quota, ok)
+	}
+	if row.ProbePrimed {
+		t.Fatal("the credential mode does not prime")
+	}
+}
+
+// A rotating pool cannot reuse a stored cookie, so it spends a request getting
+// one for this connection and uses it on the same connection. The priming
+// response's state is not the state this probe is for.
+func TestRotatingProxyPrimesThenUses(t *testing.T) {
+	store := resetState(t)
+	resetTurnStates(t)
+	blob := fernetToken(0x80, time.Now(), 1)
+	sent := probeStub(t, blob, []string{"__cf_bm=for-this-exit; Path=/"})
+	state.mu.Lock()
+	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	state.mu.Unlock()
+
+	rule := probeRuleFixture()
+	rule.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
+	rule.ProbeProxyEnabled = true
+	rule.ProbeCookieMode = probeCookieRotatingProxy
+	probeModel(context.Background(), "idx-a", "gpt-6-astra", rule, credentialSession{Cookie: "not-this-one=1"})
+
+	if len(*sent) != 2 {
+		t.Fatalf("priming plus the probe is two requests, sent %d", len(*sent))
+	}
+	if got := (*sent)[0].Headers.Get("Cookie"); got != "" {
+		t.Fatalf("the priming request carries no cookie, got %q", got)
+	}
+	if got := (*sent)[1].Headers.Get("Cookie"); got != "__cf_bm=for-this-exit" {
+		t.Fatalf("the probe should use what priming obtained, got %q", got)
+	}
+	if _, found, _ := store.Session("idx-a", "socks5://127.0.0.1:1080"); found {
+		t.Fatal("a rotating egress leaves no jar behind")
+	}
+	rows := probeRows(t)
+	if len(rows) != 1 {
+		t.Fatalf("priming is part of this probe, not a probe of its own: %d rows", len(rows))
+	}
+	if !rows[0].ProbePrimed {
+		t.Fatal("the row should say it primed")
 	}
 }
 
@@ -412,7 +518,7 @@ func TestProbeMultiCheck(t *testing.T) {
 			rule := probeRuleFixture()
 			rule.ProbeVerify = tc.verify
 
-			probeModel(context.Background(), "idx-a", "gpt-6-astra", rule)
+			probeModel(context.Background(), "idx-a", "gpt-6-astra", rule, credentialSession{Cookie: "carried=1"})
 
 			if len(*sent) != 1 {
 				t.Fatalf("one probe request expected, got %d", len(*sent))
@@ -428,8 +534,10 @@ func TestProbeMultiCheck(t *testing.T) {
 				if got := second[0].Headers.Get(turnStateHeader); got != blob {
 					t.Fatalf("the check must carry the probe's own state, got %q", got)
 				}
-				if got := second[0].Headers.Get("Cookie"); got != "__cf_bm=fresh" {
-					t.Fatalf("the check carries the cookie the first response set, sent %q", got)
+				// The check carries the session that goes with the state: here
+				// the credential jar's cookie updated by the probe's Set-Cookie.
+				if got := second[0].Headers.Get("Cookie"); got != "carried=1; __cf_bm=fresh" {
+					t.Fatalf("the check carries the state's session, sent %q", got)
 				}
 			}
 			state.mu.Lock()
@@ -455,39 +563,98 @@ func TestProbeMultiCheck(t *testing.T) {
 
 func boolPtr(v bool) *bool { return &v }
 
-// The probe keeps no jar of its own and never touches the credential's: the
-// live traffic's cookie and liveness clock stay as they were, and no jar keyed
-// to the proxy appears.
-func TestProbeLeavesTheCredentialJarAlone(t *testing.T) {
-	store := resetState(t)
-	resetTurnStates(t)
-	before := time.Now().Add(-time.Minute).UTC()
-	if err := store.SaveSession(credentialSession{AuthIndex: "idx-a", Cookie: "direct=1", LastLiveAt: before}); err != nil {
-		t.Fatal(err)
+// The no-cookie mode presents nothing and keeps no jar: the state and the
+// Set-Cookie its exit hands back are the pair that is checked and pooled, and
+// the credential jar is left exactly as it was.
+func TestNoCookieModePoolsWhatTheExitHandsBack(t *testing.T) {
+	for _, proxied := range []bool{false, true} {
+		t.Run(map[bool]string{false: "direct", true: "proxied"}[proxied], func(t *testing.T) {
+			store := resetState(t)
+			resetTurnStates(t)
+			if err := store.SaveSession(credentialSession{AuthIndex: "idx-a", Cookie: "direct=1", LastLiveAt: time.Now()}); err != nil {
+				t.Fatal(err)
+			}
+			blob := fernetToken(0x80, time.Now(), 1)
+			sent := probeStub(t, blob, []string{"__cf_bm=exit; Path=/"})
+			inner := probeHTTPDoFunc
+			var checks []hostHTTPRequest
+			probeHTTPDoFunc = func(ctx context.Context, transport *http.Transport, req hostHTTPRequest, via bool) (hostHTTPResponse, error) {
+				if req.Headers.Get(turnStateHeader) == "" {
+					return inner(ctx, transport, req, via)
+				}
+				checks = append(checks, req)
+				return hostHTTPResponse{StatusCode: 200, Headers: http.Header{"Set-Cookie": {"__cflb=after-check; Path=/"}}}, nil
+			}
+			state.mu.Lock()
+			state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+			state.mu.Unlock()
+			rule := probeRuleFixture()
+			rule.ProbeCookieMode = probeCookiePool
+			rule.ProbeVerify = true
+			if proxied {
+				rule.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
+				rule.ProbeProxyEnabled = true
+			}
+			if got := probeCookieModeFor(rule); got != probeCookiePool {
+				t.Fatalf("mode=%q", got)
+			}
+			probeModel(context.Background(), "idx-a", "gpt-6-astra", rule, credentialSession{Cookie: "direct=1"})
+
+			if len(*sent) != 1 || (*sent)[0].Headers.Get("Cookie") != "" {
+				t.Fatalf("the probe presents no cookie, sent %d", len(*sent))
+			}
+			if len(checks) != 1 || checks[0].Headers.Get("Cookie") != "__cf_bm=exit" {
+				t.Fatalf("the check carries what the exit handed back: %v", checks)
+			}
+			state.mu.Lock()
+			origin, pooled := state.turnStateLatest[turnStateLatestKey("idx-a", "gpt-6-astra")]
+			state.mu.Unlock()
+			if !pooled || origin.cookie != "__cf_bm=exit; __cflb=after-check" {
+				t.Fatalf("pooled=%v session=%q", pooled, origin.cookie)
+			}
+			if direct, _, _ := store.Session("idx-a", ""); direct.Cookie != "direct=1" {
+				t.Fatalf("the credential jar moved: %q", direct.Cookie)
+			}
+			if _, found, _ := store.Session("idx-a", "socks5://127.0.0.1:1080"); found {
+				t.Fatal("the no-cookie mode keeps no jar")
+			}
+		})
 	}
-	sent := probeStub(t, fernetToken(0x80, time.Now(), 1), []string{"__cf_bm=exit; Path=/"})
+}
+
+// The cookie_pool mode sends a drawn cookie and records its backend; a clean
+// multi-check puts the session it vouched for back in the pool.
+func TestCookiePoolModeDrawsAndFeeds(t *testing.T) {
+	resetState(t)
+	resetTurnStates(t)
+	now := time.Now()
+	drawn := "__oailb=" + oailbToken("gw-drawn", now, now.Add(time.Hour))
 	state.mu.Lock()
 	state.credentials["idx-a"] = credentialSnapshot{AuthIndex: "idx-a", AuthID: "auth-a", Provider: "codex", Name: "a.json"}
+	noteCookiePoolLocked("idx-a", drawn, "live", "m", "")
 	state.mu.Unlock()
+	blob := fernetToken(0x80, now, 1)
+	sent := probeStub(t, blob, []string{"__cf_bm=exit; Path=/"})
+	inner := probeHTTPDoFunc
+	probeHTTPDoFunc = func(ctx context.Context, transport *http.Transport, req hostHTTPRequest, via bool) (hostHTTPResponse, error) {
+		if req.Headers.Get(turnStateHeader) == "" {
+			return inner(ctx, transport, req, via)
+		}
+		return hostHTTPResponse{StatusCode: 200, Headers: http.Header{}}, nil
+	}
 	rule := probeRuleFixture()
-	rule.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
-	rule.ProbeProxyEnabled = true
-	probeModel(context.Background(), "idx-a", "gpt-6-astra", rule)
+	rule.ProbeCookieMode = probeCookiePool
+	rule.ProbeVerify = true
+	probeModel(context.Background(), "idx-a", "gpt-6-astra", rule, credentialSession{Cookie: "direct=1"})
 
-	if len(*sent) != 1 || (*sent)[0].Headers.Get("Cookie") != "" {
-		t.Fatalf("one request with no cookie, got %d", len(*sent))
+	if got := (*sent)[0].Headers.Get("Cookie"); got != drawn {
+		t.Fatalf("the probe should send the drawn cookie, sent %q", got)
 	}
-	direct, _, _ := store.Session("idx-a", "")
-	if direct.Cookie != "direct=1" || !direct.LastLiveAt.Equal(before) {
-		t.Fatalf("the credential jar moved: %+v", direct)
+	if row := probeRows(t)[0]; row.ProbePoolHost != "gw-drawn" {
+		t.Fatalf("the row names the backend it drew: %q", row.ProbePoolHost)
 	}
-	if _, found, _ := store.Session("idx-a", "socks5://127.0.0.1:1080"); found {
-		t.Fatal("the probe keeps no jar of its own")
-	}
-	state.mu.Lock()
-	origin := state.turnStateLatest[turnStateLatestKey("idx-a", "gpt-6-astra")]
-	state.mu.Unlock()
-	if origin.cookie != "__cf_bm=exit" {
-		t.Fatalf("the pooled session is what this exit was handed: %q", origin.cookie)
+	entries, _ := cookiePoolFor("idx-a")
+	if len(entries) != 1 || entries[0].Source != "probe" || entries[0].Cookie != drawn+"; __cf_bm=exit" {
+		t.Fatalf("the vouched session replaces the entry for its backend: %+v", entries)
 	}
 }

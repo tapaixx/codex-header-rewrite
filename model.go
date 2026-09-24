@@ -111,6 +111,12 @@ type headerRule struct {
 	ProbeProxies []string `json:"probe_proxies,omitempty"`
 	// ProbeProxyEnabled is the probe list's switch, same contract as the retry's.
 	ProbeProxyEnabled bool `json:"probe_proxy_enabled,omitempty"`
+	// ProbeCookieMode decides which cookie jar a probe request presents, which
+	// only has one right answer once the egress is known -- see probe.go. With
+	// no proxies configured this is forced to probeCookieCredential; with
+	// proxies it must be chosen, because the wrong choice sends a cookie bound
+	// to one IP out through another.
+	ProbeCookieMode string `json:"probe_cookie_mode,omitempty"`
 	// How long after the last live request the credential still counts as in
 	// use. Past it the probe stops rather than keeping an idle account warm.
 	ProbeCookieTTLSeconds int `json:"probe_cookie_ttl_seconds,omitempty"`
@@ -226,6 +232,9 @@ type historyRecord struct {
 	ProbeVerified     bool   `json:"probe_verified,omitempty"`
 	ProbeVerifyStatus int    `json:"probe_verify_status,omitempty"`
 	ProbeVerifyError  string `json:"probe_verify_error,omitempty"`
+	// ProbePoolHost is the backend of the cookie the cookie_pool mode drew;
+	// empty when the pool had nothing usable and the probe went out bare.
+	ProbePoolHost string `json:"probe_pool_host,omitempty"`
 	// Bodies travel on the record only between the request path and the store,
 	// which splits them into their own bucket. They are absent from a record
 	// read back by History, because a page of fifty records would otherwise
@@ -397,11 +406,42 @@ func appendBody(buffer []byte, total int, chunk []byte) ([]byte, int) {
 	return buffer, total
 }
 
-// credentialSession is one cookie jar: what the credential's live traffic last
-// presented, updated by what its response set, and when. Only the direct jar
-// (empty Egress) is written now; probes take their cookie from their own
-// response and keep no jar. Jars keyed to a proxy were written by earlier
-// versions and are left as they are.
+// The four ways a probe request can present a cookie. Which one is right
+// follows from what the egress is, not from preference:
+//
+//   - probeCookieCredential uses the jar the live traffic fills. Correct when
+//     the probe goes out the same way live traffic does, which is the case
+//     when no proxy is configured.
+//   - probeCookieStaticProxy keeps a jar per proxy URL. Correct when that URL
+//     always exits from the same address, because a Cloudflare bot token is
+//     bound to the address that obtained it.
+//   - probeCookieRotatingProxy keeps no jar at all. A rotating pool exits from
+//     a different address per connection, so a stored cookie is always the
+//     wrong address's; instead each probe primes a cookie and uses it over the
+//     same connection, which a SOCKS5 tunnel guarantees is one exit.
+//   - probeCookiePool draws a random unexpired cookie from the non-degraded
+//     cookie pool (see cookiepool.go), and presents nothing when the pool has
+//     none. It keeps no jar of its own: what the exit hands back is added to
+//     the state's session as in every mode.
+const (
+	probeCookieCredential    = "credential"
+	probeCookieStaticProxy   = "static_proxy"
+	probeCookieRotatingProxy = "rotating_proxy"
+	probeCookiePool          = "cookie_pool"
+)
+
+func validProbeCookieMode(mode string) bool {
+	switch mode {
+	case probeCookieCredential, probeCookieStaticProxy, probeCookieRotatingProxy, probeCookiePool:
+		return true
+	}
+	return false
+}
+
+// credentialSession is one cookie jar: what a given egress last handed back,
+// and when. A jar is only ever written from a response that came back through
+// the egress it is keyed to, so a proxied probe can never overwrite the jar
+// the live traffic fills.
 type credentialSession struct {
 	AuthIndex string    `json:"auth_index"`
 	Egress    string    `json:"egress"`

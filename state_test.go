@@ -1281,3 +1281,57 @@ func TestCookieInjectionManagesTheAuthFileEntry(t *testing.T) {
 		t.Fatalf("deleting the rule removes the entry: %s err=%v", file, err)
 	}
 }
+
+// The cookie pool keeps one cookie per backend, a newer one replacing the
+// older; a cookie without __oailb is not kept; only unexpired ones are drawn.
+func TestCookiePoolKeysByBackend(t *testing.T) {
+	resetState(t)
+	now := time.Now()
+	fresh := "__oailb=" + oailbToken("gw-a", now, now.Add(time.Hour)) + "; __cf_bm=one"
+	newer := "__oailb=" + oailbToken("gw-a", now, now.Add(2*time.Hour)) + "; __cf_bm=two"
+	stale := "__oailb=" + oailbToken("gw-b", now.Add(-3*time.Hour), now.Add(-time.Hour))
+	state.mu.Lock()
+	okFresh := noteCookiePoolLocked("idx-a", fresh, "probe", "m", "d1")
+	okNewer := noteCookiePoolLocked("idx-a", newer, "live", "m", "d2")
+	okStale := noteCookiePoolLocked("idx-a", stale, "probe", "m", "d3")
+	okBare := noteCookiePoolLocked("idx-a", "__cf_bm=no-route", "probe", "m", "d4")
+	state.mu.Unlock()
+	if !okFresh || !okNewer || !okStale || okBare {
+		t.Fatalf("kept: %v %v %v, bare kept: %v", okFresh, okNewer, okStale, okBare)
+	}
+	entries, _ := cookiePoolFor("idx-a")
+	if len(entries) != 2 {
+		t.Fatalf("one entry per backend: %+v", entries)
+	}
+	for _, e := range entries {
+		if e.Host == "gw-a" && (e.Cookie != newer || e.Source != "live") {
+			t.Fatalf("the newer cookie replaces the older: %+v", e)
+		}
+	}
+	for i := 0; i < 20; i++ {
+		entry, ok := pickPoolCookie("idx-a", now)
+		if !ok || entry.Host != "gw-a" {
+			t.Fatalf("only the unexpired entry is drawn: %+v %v", entry, ok)
+		}
+	}
+	if _, ok := pickPoolCookie("idx-other", now); ok {
+		t.Fatal("another credential's pool is its own")
+	}
+}
+
+// A live turn that carried an injected state and drew none back vouches for
+// the session it went out with.
+func TestHeldLiveTurnFeedsTheCookiePool(t *testing.T) {
+	stubCredentialPlan(t, "team")
+	resetState(t)
+	resetTurnStates(t)
+	poolFixture(t, headerRule{AuthIndex: "idx-a", InjectTurnState: true})
+	now := time.Now()
+	lb := oailbToken("gw-live", now, now.Add(time.Hour))
+	injectTestRequest(t, "held", http.Header{"Cookie": {"__oailb=" + lb}})
+	observeResponse(responseInterceptRequest{RequestID: "held", StatusCode: 200, ResponseHeaders: http.Header{"Set-Cookie": {"__cf_bm=fresh; Path=/"}}})
+	entries, _ := cookiePoolFor("idx-a")
+	if len(entries) != 1 || entries[0].Host != "gw-live" || entries[0].Source != "live" || entries[0].Cookie != "__oailb="+lb+"; __cf_bm=fresh" {
+		t.Fatalf("the held turn's session should be pooled: %+v", entries)
+	}
+}

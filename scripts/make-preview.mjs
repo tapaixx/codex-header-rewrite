@@ -76,6 +76,7 @@ const rules = {
     probe_enabled: true, probe_verify: true,
     probe_models: ['gpt-6-astra', 'gpt-5.6-luna'],
     probe_proxies: ['socks5://user:secret@127.0.0.1:1080'],
+    probe_cookie_mode: 'cookie_pool',
     probe_cookie_ttl_seconds: 1800,
     probe_interval_seconds: 30,
     probe_window_start_minute: 60,
@@ -169,8 +170,8 @@ const probeRow = (over) => ({
   attempt: 1, source_format: 'plugin_probe', stream: true, origin: 'probe',
   model: 'gpt-6-astra', requested_model: 'gpt-6-astra', upstream_model: 'gpt-6-astra', model_mismatch: false,
   request_effort: 'low', upstream_effort: 'low', status_code: 200, outcome: 'succeeded',
-  probe_exit_region: 'IAD',
-  // Probes go out with no cookie; the session is what the response sets.
+  probe_cookie_mode: 'cookie_pool', probe_exit_region: 'IAD', probe_pool_host: 'gw-iad-7.internal',
+  // The cookie pool mode: the drawn cookie went out, the response added to it.
   before_headers: { 'Authorization': ['Bearer [REDACTED]'], 'Content-Type': ['application/json'], 'Originator': ['codex-cli'] },
   after_headers: { 'Authorization': ['Bearer [REDACTED]'], 'Content-Type': ['application/json'], 'Originator': ['codex-cli'] },
   response_headers: { 'X-Codex-Turn-State': [teamState], 'Cf-Ray': ['a3e22f4439f2dddf-IAD'], 'X-Codex-Primary-Used-Percent': ['47'],
@@ -189,11 +190,11 @@ const probes = [
     turn_state_minted: { digest: '88be41d0c7a2', chars: 332, bytes: 249, version: 128, issued_at: at(34), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'verify', pooled: false } }),
   probeRow({ id: 'probe-2#1', request_id: 'probe-2', started_at: at(75), completed_at: at(73),
     model: 'gpt-5.6-luna', requested_model: 'gpt-5.6-luna', upstream_model: 'gpt-5.6-luna',
-    probe_egress: '', probe_exit_region: 'LHR',
+    probe_egress: '', probe_cookie_mode: 'credential', probe_exit_region: 'LHR',
+    before_headers: { 'Authorization': ['Bearer [REDACTED]'], 'Content-Type': ['application/json'], 'Originator': ['codex-cli'], 'Cookie': ['oai-did=demo-device'] },
     turn_state_minted: { digest: '2f80ab19cc63', chars: 356, bytes: 265, version: 128, issued_at: at(74), fernet_like: true, decodable: true, plan_type: 'team', judgement: 'verify', non_degraded: false, pooled: false },
     probe_verified: true, probe_verify_status: 200 }),
   probeRow({ id: 'probe-3#1', request_id: 'probe-3', started_at: at(140), completed_at: at(139),
-    // Written before probes stopped carrying a cookie.
     probe_egress: 'socks5://127.0.0.1:1080', probe_cookie_mode: 'rotating_proxy', probe_primed: true, outcome: 'failed', status_code: 429,
     upstream_model: '', model_mismatch: null, probe_exit_region: '',
     error: 'probe returned HTTP 429' }),
@@ -275,6 +276,20 @@ const stub = `
     if (path.endsWith("/history")) {
       const items = authIndex === "acct-a" ? F.items : [];
       return json({ auth_index: authIndex, page: 1, page_size: 10, total: items.length, total_pages: 1, items });
+    }
+    if (path.endsWith("/cookie-pool")) {
+      const hour = 3600 * 1000;
+      return json({ auth_index: authIndex, entries: authIndex !== "acct-a" ? [] : [
+        { host: "gw-iad-7.internal", cookie: "__oailb=" + F.oailb + "; __cf_bm=" + F.cfbm, issued_at: new Date(Date.now() - 600000).toISOString(),
+          expires_at: new Date(Date.now() + 1.8 * hour).toISOString(), source: "probe", model: "gpt-6-astra", digest: "c91a0e77bb42",
+          saved_at: new Date(Date.now() - 11000).toISOString(), usable: true },
+        { host: "gw-sjc-3.internal", cookie: "__oailb=" + F.oailb, issued_at: new Date(Date.now() - 3 * hour).toISOString(),
+          expires_at: new Date(Date.now() - hour).toISOString(), source: "live", model: "gpt-6-astra", digest: "a13f9c21b4e0",
+          saved_at: new Date(Date.now() - 3 * hour).toISOString(), usable: false },
+        // Enough backends to need a second page.
+        ...["ord-2", "dfw-5", "lax-1", "ams-4", "fra-8"].map((dc, i) => ({ host: "gw-" + dc + ".internal", cookie: "__oailb=" + F.oailb,
+          issued_at: new Date(Date.now() - (i + 1) * 900000).toISOString(), expires_at: new Date(Date.now() + (5 - i) * 1200000).toISOString(),
+          source: i % 2 ? "live" : "probe", model: "gpt-6-astra", digest: "", saved_at: new Date(Date.now() - (i + 1) * 60000 - 20000).toISOString(), usable: true })) ] });
     }
     if (path.endsWith("/session")) {
       return json(authIndex === "acct-a"

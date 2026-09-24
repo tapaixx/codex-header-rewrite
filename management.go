@@ -31,6 +31,7 @@ const (
 	apiTurnStatePoolPath   = "/codex-header-rewrite/turn-state/pool"
 	apiQuotaPath           = "/codex-header-rewrite/quota"
 	apiSessionPath         = "/codex-header-rewrite/session"
+	apiCookiePoolPath      = "/codex-header-rewrite/cookie-pool"
 )
 
 type credentialView struct {
@@ -62,6 +63,7 @@ func registerManagement() managementRegistration {
 		{Method: http.MethodPost, Path: apiTurnStatePoolPath, Description: "Pool the turn state a recorded live response returned"},
 		{Method: http.MethodGet, Path: apiQuotaPath, Description: "The credential's allowance as the upstream last reported it"},
 		{Method: http.MethodGet, Path: apiSessionPath, Description: "The credential-level cookie jar the live traffic fills"},
+		{Method: http.MethodGet, Path: apiCookiePoolPath, Description: "The non-degraded cookie pool, one cookie per backend"},
 	}, Resources: []resourceRoute{{Path: resourceIndexPath, Menu: pluginName, Description: "Codex credential header rewrite and history"}}}
 }
 
@@ -264,6 +266,25 @@ func handleManagementAPI(req managementRequest) (managementResponse, error) {
 			return jsonError(http.StatusInternalServerError, err.Error()), nil
 		}
 		return jsonResponse(http.StatusOK, map[string]any{"cleared": strings.TrimSpace(body.AuthIndex)}), nil
+	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiCookiePoolPath):
+		authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
+		if authIndex == "" {
+			return jsonError(http.StatusBadRequest, "auth_index is required"), nil
+		}
+		entries, err := cookiePoolFor(authIndex)
+		if err != nil {
+			return jsonError(http.StatusInternalServerError, err.Error()), nil
+		}
+		now := time.Now()
+		items := make([]map[string]any, 0, len(entries))
+		for _, entry := range entries {
+			items = append(items, map[string]any{
+				"host": entry.Host, "cookie": entry.Cookie, "issued_at": entry.IssuedAt, "expires_at": entry.ExpiresAt,
+				"source": entry.Source, "model": entry.Model, "digest": entry.Digest, "saved_at": entry.SavedAt,
+				"usable": entry.usable(now),
+			})
+		}
+		return jsonResponse(http.StatusOK, map[string]any{"auth_index": authIndex, "entries": items}), nil
 	case req.Method == http.MethodGet && strings.HasSuffix(req.Path, apiSessionPath):
 		// The credential-level jar: the cookie the live traffic presented,
 		// updated by what its responses set. Cookies are recorded in plain text

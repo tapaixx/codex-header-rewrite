@@ -113,12 +113,23 @@ func TestProbeRuleValidation(t *testing.T) {
 		{"a wrapping window is allowed", func(r *headerRule) {
 			r.ProbeWindowStartMinute, r.ProbeWindowEndMinute = 1320, 120
 		}, ""},
-		{"a proxied probe needs no cookie choice", func(r *headerRule) {
+		{"an unknown cookie mode is refused", func(r *headerRule) { r.ProbeCookieMode = "whatever" }, "probe_cookie_mode must be one of"},
+		{"no cookie is a mode of its own", func(r *headerRule) {
 			r.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
 			r.ProbeProxyEnabled = true
+			r.ProbeCookieMode = probeCookiePool
 		}, ""},
+		{"proxies force an explicit mode", func(r *headerRule) {
+			r.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
+			r.ProbeProxyEnabled = true
+		}, "probe_cookie_mode must be chosen"},
 		{"a listed but switched-off pool asks nothing", func(r *headerRule) {
 			r.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
+		}, ""},
+		{"an explicit mode satisfies it", func(r *headerRule) {
+			r.ProbeProxies = []string{"socks5://127.0.0.1:1080"}
+			r.ProbeProxyEnabled = true
+			r.ProbeCookieMode = probeCookieRotatingProxy
 		}, ""},
 		{"a bad proxy is refused", func(r *headerRule) { r.ProbeProxies = []string{"http://x"} }, "probe_proxies[1]"},
 		{"an off probe validates nothing", func(r *headerRule) {
@@ -143,6 +154,34 @@ func TestProbeRuleValidation(t *testing.T) {
 				t.Fatalf("err=%v want it to mention %q (out=%#v)", err, tc.wantErr, out)
 			}
 		})
+	}
+}
+
+// With no proxy the egress is the host's own, so there is exactly one coherent
+// jar and asking would be noise.
+func TestProbeCookieModeIsForcedWithoutProxies(t *testing.T) {
+	rule := headerRule{
+		AuthIndex: "i", ProbeEnabled: true, ProbeModels: []string{"m"},
+		ProbeCookieTTLSeconds: 60, ProbeIntervalSeconds: 1,
+		ProbeCookieMode: probeCookieRotatingProxy,
+	}
+	out, err := validateRule(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.ProbeCookieMode != probeCookieCredential {
+		t.Fatalf("mode=%q", out.ProbeCookieMode)
+	}
+}
+
+// Without a proxy, no-cookie stays what it is; the jar-per-proxy modes fall
+// back to the credential jar.
+func TestNoCookieModeSurvivesWithoutProxies(t *testing.T) {
+	rule := headerRule{AuthIndex: "i", ProbeEnabled: true, ProbeModels: []string{"m"},
+		ProbeCookieTTLSeconds: 60, ProbeIntervalSeconds: 1, ProbeCookieMode: probeCookiePool}
+	out, err := validateRule(rule)
+	if err != nil || out.ProbeCookieMode != probeCookiePool {
+		t.Fatalf("mode=%q err=%v", out.ProbeCookieMode, err)
 	}
 }
 

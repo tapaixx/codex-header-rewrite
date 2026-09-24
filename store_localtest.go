@@ -17,6 +17,7 @@ type localDiskState struct {
 	Sessions   map[string]credentialSession  `json:"sessions"`
 	Bodies     map[string]bodyRecord         `json:"bodies"`
 	TurnStates map[string]persistedTurnState `json:"turn_states"`
+	CookiePool map[string]cookiePoolEntry    `json:"cookie_pool"`
 }
 type localPersistence struct {
 	mu    sync.Mutex
@@ -50,6 +51,9 @@ func openPersistence(path string) (persistence, error) {
 	}
 	if p.state.TurnStates == nil {
 		p.state.TurnStates = map[string]persistedTurnState{}
+	}
+	if p.state.CookiePool == nil {
+		p.state.CookiePool = map[string]cookiePoolEntry{}
 	}
 	return p, nil
 }
@@ -104,6 +108,21 @@ func (p *localPersistence) DeleteTurnState(authIndex, model string) error {
 	defer p.mu.Unlock()
 	delete(p.state.TurnStates, turnStateLatestKey(authIndex, model))
 	return p.save()
+}
+func (p *localPersistence) SaveCookiePoolEntry(e cookiePoolEntry) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.state.CookiePool[cookiePoolKey(e.AuthIndex, e.Host)] = e
+	return p.save()
+}
+func (p *localPersistence) ListCookiePool() ([]cookiePoolEntry, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]cookiePoolEntry, 0, len(p.state.CookiePool))
+	for _, e := range p.state.CookiePool {
+		out = append(out, e)
+	}
+	return out, nil
 }
 func (p *localPersistence) ListTurnStates() ([]persistedTurnState, error) {
 	p.mu.Lock()
@@ -244,6 +263,11 @@ func (p *localPersistence) DeleteCredentialData(a string) error {
 	for k, r := range p.state.TurnStates {
 		if r.AuthIndex == a {
 			delete(p.state.TurnStates, k)
+		}
+	}
+	for k, e := range p.state.CookiePool {
+		if e.AuthIndex == a {
+			delete(p.state.CookiePool, k)
 		}
 	}
 	return p.save()

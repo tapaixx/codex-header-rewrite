@@ -21,16 +21,20 @@ The live judgement (`judgeInjectedTurn`). A request that went out carrying an in
 _Avoid_: Echo rule
 
 **Multi-check**:
-The probe's optional verification (`probe_verify`, `judgeProbeVerification`). After a probe obtains a state it sends one more minimal request carrying that state and the cookie the same response set; the state pools only if the upstream writes no new state back. A failed check gives no verdict and does not pool. Off, the probe pools unjudged.
+The probe's optional verification (`probe_verify`, `judgeProbeVerification`). After a probe obtains a state it sends one more minimal request carrying that state and its session (the cookie the cookie-source mode presented, updated by the response's Set-Cookie); the state pools only if the upstream writes no new state back. A failed check gives no verdict and does not pool. Off, the probe pools unjudged.
 _Avoid_: Double probe, re-probe
 
 **Probe session**:
-The cookie a probe pools with its state: what that probe's own response set. Probes go out with no cookie and keep no jar, so the session always belongs to the exit that obtained it.
-_Avoid_: Probe jar, primed cookie
+The cookie a probe pools with its state: what its cookie-source mode presented, updated by the response's Set-Cookie. In the cookie-pool mode that is the drawn cookie, or only what the exit handed back when the pool had none usable.
+_Avoid_: Primed cookie
 
 **Credential-level cookie**:
-The credential's direct jar: the cookie its live traffic presented, updated by what its responses set. Viewable in the State pool card; probes no longer use it.
+The credential's direct jar: the cookie its live traffic presented, updated by what its responses set. Viewable in the State pool card; the probe's credential mode presents it.
 _Avoid_: Credential jar mode
+
+**Cookie pool**:
+Per credential, the newest session cookie vouched for by a non-degraded verdict (a clean multi-check, or a live turn that held), keyed by its `__oailb` routing target; a newer cookie for the same target replaces the older. Status follows the `__oailb` expiry. The probe's `cookie_pool` mode sends a random unexpired entry, or nothing.
+_Avoid_: Cookie jar
 
 **Manual pool**:
 An operator minting a recorded live state from the history drawer. The plugin rebuilds the entry from the stored record (response state, request Cookie merged with Set-Cookie) without calling the upstream, and it takes the slot even from a newer state.

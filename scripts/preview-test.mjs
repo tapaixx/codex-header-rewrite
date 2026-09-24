@@ -59,12 +59,31 @@ try {
     await page.evaluate(()=>setWorkspace('history',false));
     await page.waitForSelector('.history-summary');
     assert.equal(await page.locator('.history-summary').count(), 6, label);
-    assert.equal(await page.locator('.pool-row').count(), 2, label);
+    assert.equal(await page.locator('#turnStateBody .pool-row').count(), 2, label);
     // The credential-level jar opens in the drawer: raw value plus the parsed card.
     await page.locator('#credentialCookieOpen').click();
     await page.waitForFunction(() => document.getElementById('drawerTitle').textContent === '凭证级 Cookie' && !document.getElementById('drawerBody').textContent.includes('读取中'));
     const jar = (await page.locator('#drawerBody').textContent()).replace(/\s+/g,' ');
     assert.ok(jar.includes('路由目标') && jar.includes('gw-iad-7.internal') && jar.includes('原值') && jar.includes('oai-did=demo-device'), `${label}: ${jar.slice(0,200)}`);
+    await page.locator('#drawerClose').click();
+    // The cookie pool lists one cookie per backend, with its local expiry and
+    // a status read from it.
+    await page.waitForSelector('#cookiePoolBody .cookie-pool-row');
+    const cookieRows = await page.locator('#cookiePoolBody .cookie-pool-row').allTextContents();
+    assert.equal(cookieRows.length, 5, `${label}: five to a page`);
+    assert.ok(cookieRows[0].includes('gw-iad-7.internal') && cookieRows[0].includes('可用') && /\d\d-\d\d \d\d:\d\d:\d\d/.test(cookieRows[0]), `${label}: ${cookieRows[0]}`);
+    assert.ok(cookieRows[1].includes('已过期'), `${label}: ${cookieRows[1]}`);
+    assert.equal(await page.locator('#cookiePoolMeta').textContent(), '6 / 7 条可用', label);
+    // The pager says how many there are and turns to the rest.
+    assert.ok((await page.locator('#cookiePoolPager').textContent()).includes('共 7 条'), label);
+    await page.locator('#cookiePoolPager button[aria-label="第 2 页"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#cookiePoolBody .cookie-pool-row').length === 2);
+    assert.equal(await page.locator('#cookiePoolPager button[aria-current="true"]').textContent(), '2', label);
+    await page.locator('#cookiePoolPager button[aria-label="上一页"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#cookiePoolBody .cookie-pool-row').length === 5);
+    await page.locator('#cookiePoolBody .cookie-pool-row').first().click();
+    await page.waitForFunction(() => document.getElementById('drawerTitle').textContent === 'Cookie 池');
+    assert.ok((await page.locator('#drawerBody').textContent()).includes('多重判断复核通过'), label);
     await page.locator('#drawerClose').click();
     // The history list names the backend each request's session was pinned to.
     const historyHeads = await page.locator('#historyPanel thead th').allTextContents();
@@ -80,11 +99,11 @@ try {
     // local issue and expiry times, or says the session has none.
     const heads = await page.locator('.pool-table th').allTextContents();
     assert.ok(heads.includes('路由目标') && heads.includes('签发 (本地)') && heads.includes('过期 (本地)'), `${label}: ${heads}`);
-    const firstPool = await page.locator('.pool-row').first().textContent();
+    const firstPool = await page.locator('#turnStateBody .pool-row').first().textContent();
     assert.ok(firstPool.includes('gw-iad-7.internal') && /\d\d-\d\d \d\d:\d\d:\d\d/.test(firstPool), `${label}: ${firstPool}`);
-    assert.ok((await page.locator('.pool-row').nth(1).textContent()).includes('会话里没有 __oailb'), label);
+    assert.ok((await page.locator('#turnStateBody .pool-row').nth(1).textContent()).includes('会话里没有 __oailb'), label);
     // Its drawer parses the session instead of showing only the raw string.
-    await page.locator('.pool-row').first().click();
+    await page.locator('#turnStateBody .pool-row').first().click();
     await page.waitForSelector('#drawerBody .pool-cookie-raw');
     const session = (await page.locator('#drawerBody .history-detail-section').filter({hasText:'会话 Cookie'}).textContent()).replace(/\s+/g,' ');
     assert.ok(session.includes('__oailb') && session.includes('路由目标') && session.includes('gw-iad-7.internal'), `${label}: ${session.slice(0,200)}`);

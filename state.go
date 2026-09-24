@@ -468,6 +468,10 @@ func noteTurnStateMintLocked2(attempt *pendingAttempt, responseHeaders http.Head
 		// Nothing was minted, and under the injection rule that silence is the
 		// verdict: the turn kept the state it went out with.
 		attempt.TurnStateHeld = verdict.Judged && !verdict.Degraded
+		// The session that carried the healthy turn is a non-degraded cookie.
+		if attempt.TurnStateHeld {
+			noteCookiePoolLocked(attempt.AuthIndex, session, "live", sentModel(attempt.Model, attempt.RequestedModel), attempt.injectedDigest)
+		}
 		return
 	}
 	info := classifyTurnStateWith(decodeTurnState(blob), attempt.CredentialPlan, verdict)

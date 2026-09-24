@@ -110,17 +110,21 @@ try {
   assert.equal(await cookieLight.getAttribute('data-on'), '0', 'its light is off');
   // Turning it on edits the credential's auth file, so it asks first:
   // declined, nothing is saved; accepted, it saves at once.
-  let asked = '';
-  page.once('dialog', (d) => { asked = d.message(); d.dismiss(); });
-  const beforeDecline = saved;
   await page.evaluate(()=>document.querySelector('#poolCookie').click());
-  await new Promise(r=>setTimeout(r,300));
+  const modal = page.locator('.ant-modal[role=alertdialog]');
+  await modal.waitFor();
+  const asked = await modal.textContent();
   assert.ok(asked.includes('auth 文件') && asked.includes('$Cookie'), 'the confirmation explains the file edit: ' + asked);
+  // Focus is inside the dialog, and Escape declines.
+  assert.equal(await page.evaluate(() => !!document.activeElement.closest('.ant-modal')), true, 'focus moves into the dialog');
+  await page.keyboard.press('Escape');
+  await modal.waitFor({ state: 'detached' });
   assert.equal(await page.locator('#poolCookie').isChecked(), false, 'declined, the switch stays off');
-  assert.equal(saved, beforeDecline, 'and nothing was sent');
-  page.once('dialog', (d) => d.accept());
+  assert.notEqual(saved?.inject_cookie, true, 'and cookie injection was not saved on');
   await page.evaluate(()=>document.querySelector('#poolCookie').click());
-  await new Promise(r=>setTimeout(r,300));
+  await modal.waitFor();
+  await page.locator('.ant-modal button[data-act=ok]').click();
+  await new Promise(r=>setTimeout(r,400));
   assert.equal(saved.inject_cookie, true, 'turning it on saved at once');
   assert.equal(saved.inject_turn_state, false, 'without touching state injection');
   assert.equal(await cookieLight.getAttribute('data-on'), '1', 'and its light came on');
